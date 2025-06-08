@@ -15,6 +15,9 @@ body{
     /*background-color: #8c8c8c;*/
     background: var(--bg-image);/* 0 0 fixed;*/
     background-size: 50%;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
 }
 
 ::selection{
@@ -95,12 +98,13 @@ body{
 .blogs-section{
     word-break: break-word;
     width: 100%;
-    padding: 0px 0vw;
+    padding: 20px;
     display: grid;
-    /*margin-left: auto;*/
-    /*margin-right: auto;*/
-    grid-template-columns: repeat(4, 1fr);
-    grid-gap: 0px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-auto-rows: minmax(250px, auto);
+    gap: 20px;
+    flex-grow: 1;
+    box-sizing: border-box;
 }
 
 .blog-image{
@@ -150,6 +154,13 @@ body{
 @font-face {
     font-family: 'Impact'; /*a name to be used later*/
     src: url('public/fonts/impact.ttf'); /*URL to font*/
+}
+
+@font-face {
+    font-family: 'ChalkStickFont'; /* Updated font family name */
+    src: url('../fonts/ChalkStick-WjAv.ttf') format('truetype'); /* Updated path */
+    font-weight: normal;
+    font-style: normal;
 }
 
 /*https://2.bp.blogspot.com/-ACUy1-KwROo/VtQv5VsSXeI/AAAAAAAAJBI/7Hg1r7445HQ/s640/tissue%2Bpaper%2Btexture.jpg*/
@@ -349,16 +360,24 @@ body{
     font-size: 17.5px;
     font-weight: bold;
     /*border: 10px solid transparent;*/
-    /*border-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZW1ib3NzLWdyYWRpZW50IiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0icmdiYSgwLCAwLCAwLCAwLjIwKSIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSJyZ2JhKDI1NSwgMjU1LCAyNTUsIDAuNDUpIiAvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxjbGlwUGF0aCBpZD0icm91bmRlZCI+CiAgICAgIDxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcng9IjE1IiByeT0iMTUiIC8+CiAgICA8L2NsaXBQYXRoPgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIGZpbGw9InVybCgjZW1ib3NzLWdyYWRpZW50KSIgY2xpcC1wYXRoPSJ1cmwoI3JvdW5kZWQpIiAvPgo8L3N2Zz4=") 10;*/
-    box-shadow: inset 0 7px 9px -7px rgba(0,0,0,0.7), inset 7px 0 9px -7px rgba(0,0,0,0.7), inset 0 -7px 9px -7px rgba(255,255,255,0.26), inset -7px 0 9px -7px rgba(255,255,255,0.26);
+    /*border-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZW1ib3NzLWdyYWRpZW50IiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0icmdiYSgwLCAwLCAwLjIwKSIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSJyZ2JhKDI1NSwgMjU1LCAyNTUsIDAuNDUpIiAvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxjbGlwUGF0aCBpZD0icm91bmRlZCI+CiAgICAgIDxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcng9IjE1IiByeT0iMTUiIC8+CiAgICA8L2NsaXBQYXRoPgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIGZpbGw9InVybCgjZW1ib3NzLWdyYWRpZW50KSIgY2xpcC1wYXRoPSJ1cmwoI3JvdW5kZWQpIiAvPgo8L3N2Zz4=") 10;*/
+    /* box-shadow: inset 0 7px 9px -7px rgba(0,0,0,0.7), inset 7px 0 9px -7px rgba(0,0,0,0.7), inset 0 -7px 9px -7px rgba(255,255,255,0.26), inset -7px 0 9px -7px rgba(255,255,255,0.26);
     -webkit-box-shadow: inset 0 7px 9px -7px rgba(0,0,0,0.7), inset 7px 0 9px -7px rgba(0,0,0,0.7),inset 0 -7px 9px -7px  rgba(255,255,255,0.26), inset -7px 0 9px -7px rgba(255,255,255,0.26);
-    -moz-box-shadow:  inset 0 7px 9px -7px rgba(0,0,0,0.7), inset 7px 0 9px -7px rgba(0,0,0,0.7),inset 0 -7px 9px -7px  rgba(255,255,255,0.26), inset -7px 0 9px -7px rgba(255,255,255,0.26);
+    -moz-box-shadow:  inset 0 7px 9px -7px rgba(0,0,0,0.7), inset 7px 0 9px -7px rgba(0,0,0,0.7),inset 0 -7px 9px -7px  rgba(255,255,255,0.26), inset -7px 0 9px -7px rgba(255,255,255,0.26); */
     /*border-image-slice: 10;*/
     /*border-color: #8c8c8c;*/
     /*color: transparent;*/
     /*background: #444444;*/
     /*-webkit-background-clip: text;*/
     /*text-shadow: 1px 2px 2px rgba(255, 255, 255, 0.3);*/
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    /* background-color: rgba(255,255,255,0.1); */
+    /* border-radius: 10px; */
+    padding: 15px;
 }
 
 .blog-card:hover{
@@ -473,7 +492,7 @@ body{
 /*}*/
 
 .blog-title {
-    position: relative;
+    position: absolute;
     text-transform: uppercase;
     font-weight: bold;
     /*font-size: 11vw;*/
@@ -601,3 +620,17 @@ body{
 /*    !*width: 100%;*!*/
 /*    !*position:absolute;*!*/
 /*}*/
+
+.blog-author {
+    position: absolute; /* Positioned relative to .blog-card */
+    font-family: 'ChalkStickFont', sans-serif; /* Apply the new chalkboard font */
+    font-size: 0.9em; /* Slightly increased for potentially thinner font, adjust as needed */
+    /* color: #555; /* Color is now set randomly by JS */
+    /* Add any other styling like font-weight, etc. if needed */
+    /* JavaScript will set top and left */
+    white-space: nowrap; /* Prevent author name from wrapping if it's long */
+    /* Example: if using the ::before pseudo-element text effect like .blog-title has */
+    /* you might want to style this similarly or ensure it looks good with it. */
+    /* For simplicity, direct text styling is shown here. */
+    z-index: 2; /* Ensure it's on top of other card content if necessary, same as .blog-title for example */
+}
