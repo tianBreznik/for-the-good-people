@@ -96,83 +96,105 @@ function positionCardsInGrid() {
     const container = document.querySelector('.blogs-section');
     const containerWidth = container.offsetWidth;
     const containerHeight = container.offsetHeight;
-    
-    const spacing = 5;
-    const maxCardWidth = 150; // Maximum width for each card
-    const baseCardHeight = 20; // Reduced base height for tighter fit
-    
-    // Calculate optimal grid dimensions for a more square shape
-    const totalCards = cards.length;
-    const aspectRatio = containerWidth / containerHeight;
-    
-    // Calculate rows and columns to make a more square grid
-    const cardsPerRow = Math.ceil(Math.sqrt(totalCards * aspectRatio));
-    const totalRows = Math.ceil(totalCards / cardsPerRow);
-    
-    // First pass: calculate all card dimensions and row heights
-    const cardData = [];
-    const rowHeights = new Array(totalRows).fill(0);
-    
-    cards.forEach((card, index) => {
+    const spacing = 0;
+    const maxTitleWidth = 400; // Maximum width before text wrapping
+
+    // First, measure all cards and sort by height (tallest first for better packing)
+    const cardData = Array.from(cards).map(card => {
         const title = card.querySelector('.blog-title');
-        const titleStyle = window.getComputedStyle(title);
         
-        // Set title to wrap text and constrain width
-        title.style.width = `${maxCardWidth - 10}px`; // Reduced padding
-        title.style.wordWrap = 'break-word';
-        title.style.overflowWrap = 'break-word';
-        title.style.whiteSpace = 'normal';
-        title.style.lineHeight = '1.1'; // Tighter line height
-        title.style.padding = '5px'; // Minimal padding
+        // Reset all spacing to eliminate gaps
+        title.style.margin = '0';
+        title.style.padding = '0';
+        title.style.lineHeight = '1';
         
-        // Force a reflow to get the new dimensions
+        // First measure the title at its natural width (no width constraint)
+        title.style.width = 'auto';
+        title.style.wordWrap = 'normal';
+        title.style.overflowWrap = 'normal';
+        title.style.whiteSpace = 'nowrap';
+        title.offsetHeight; // Force reflow
+        const naturalWidth = title.getBoundingClientRect().width;
+        
+        // If natural width exceeds max, then apply wrapping
+        if (naturalWidth > maxTitleWidth) {
+            title.style.width = `${maxTitleWidth}px`;
+            title.style.wordWrap = 'break-word';
+            title.style.overflowWrap = 'break-word';
+            title.style.whiteSpace = 'normal';
+            title.style.lineHeight = '1';
+        } else {
+            // Keep natural width
+            title.style.width = `${naturalWidth}px`;
+        }
+        
+        // Force reflow to get final dimensions
         title.offsetHeight;
-        
         const titleRect = title.getBoundingClientRect();
         
-        // Calculate actual height needed based on wrapped text with minimal padding
-        const actualTitleHeight = titleRect.height;
-        const cardHeight = Math.max(actualTitleHeight + 10, baseCardHeight); // Reduced padding
-        const cardWidth = Math.min(titleRect.width + 10, maxCardWidth); // Reduced padding
+        // Calculate card dimensions with minimal padding
+        const cardWidth = titleRect.width + 4; // Minimal padding
+        const cardHeight = titleRect.height + 2; // Minimal padding
         
-        const row = Math.floor(index / cardsPerRow);
-        const col = index % cardsPerRow;
-        
-        // Track the maximum height needed in each row
-        rowHeights[row] = Math.max(rowHeights[row], cardHeight);
-        
-        cardData.push({
-            card,
-            row,
-            col,
-            width: cardWidth,
-            height: cardHeight
-        });
+        return { card, width: cardWidth, height: cardHeight };
     });
-    
-    // Calculate total grid height and starting position
-    const totalGridHeight = rowHeights.reduce((sum, height) => sum + height + spacing, 0) - spacing;
-    const gridWidth = cardsPerRow * (maxCardWidth + spacing) - spacing;
-    const startX = (containerWidth - gridWidth) / 2;
-    const startY = (containerHeight - totalGridHeight) / 2;
-    
-    // Second pass: position cards with proper row spacing
-    let currentY = startY;
-    
-    cardData.forEach(({card, row, col, width, height}) => {
-        const x = startX + col * (maxCardWidth + spacing);
-        const y = currentY;
-        
+
+    // Sort by height descending (tallest first for better packing)
+    cardData.sort((a, b) => b.height - a.height);
+
+    // Packing algorithm: place each card in the best available position
+    const placedCards = [];
+    const containerPadding = 10; // Reduced container padding from 20 to 10
+
+    cardData.forEach(({ card, width, height }) => {
+        let bestX = containerPadding;
+        let bestY = containerPadding;
+        let minOverlap = Infinity;
+
+        // Try placing the card at different positions
+        for (let x = containerPadding; x <= containerWidth - width - containerPadding; x += 5) { // Reduced step from 10 to 5
+            for (let y = containerPadding; y <= containerHeight - height - containerPadding; y += 5) { // Reduced step from 10 to 5
+                // Check if this position overlaps with any placed card
+                let overlap = 0;
+                let canPlace = true;
+                
+                for (const placed of placedCards) {
+                    if (x < placed.x + placed.width + spacing && 
+                        x + width + spacing > placed.x &&
+                        y < placed.y + placed.height + spacing && 
+                        y + height + spacing > placed.y) {
+                        canPlace = false;
+                        break;
+                    }
+                }
+                
+                if (canPlace) {
+                    // Calculate distance from center (prefer center placement)
+                    const centerX = containerWidth / 2;
+                    const centerY = containerHeight / 2;
+                    const distanceFromCenter = Math.sqrt(
+                        Math.pow(x + width/2 - centerX, 2) + 
+                        Math.pow(y + height/2 - centerY, 2)
+                    );
+                    
+                    if (distanceFromCenter < minOverlap) {
+                        minOverlap = distanceFromCenter;
+                        bestX = x;
+                        bestY = y;
+                    }
+                }
+            }
+        }
+
+        // Place the card at the best position found
         card.style.position = 'absolute';
-        card.style.left = `${x}px`;
-        card.style.top = `${y}px`;
+        card.style.left = `${bestX}px`;
+        card.style.top = `${bestY}px`;
         card.style.width = `${width}px`;
         card.style.height = `${height}px`;
         
-        // Move to next row if this is the last card in the current row
-        if (col === cardsPerRow - 1 || cardData.indexOf({card, row, col, width, height}) === cardData.length - 1) {
-            currentY += rowHeights[row] + spacing;
-        }
+        // Record the placed card
+        placedCards.push({ x: bestX, y: bestY, width, height });
     });
 }
 
