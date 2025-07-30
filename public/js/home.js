@@ -14,6 +14,9 @@ db.collection("blogs").get().then((blogs) => {
     
     // Position cards in a tight grid after all blogs are created
     positionCardsInGrid();
+    
+    // Add hover interactions after positioning
+    setupHoverInteractions();
 })
 
 const createBlog = (blog) => {
@@ -47,7 +50,7 @@ const createBlog = (blog) => {
         uniqueAuthors.add(authorName);
         blogSection.innerHTML += `
             <div class="cardcontainer">
-                <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;">
+                <div class="blog-card author-card" data-author="${authorName}" style="cursor: pointer;">
                     <h1 class="blog-title" id="${authorName}" data-text="@${authorName}">@${authorName}</h1>
                 </div>
             </div>
@@ -209,6 +212,73 @@ function positionCardsInGrid() {
         
         // Record the placed card
         placedCards.push({ x: bestX, y: bestY, width, height });
+    });
+}
+
+function setupHoverInteractions() {
+    console.log('Setting up hover interactions...');
+    
+    // Get all blog cards and author cards
+    const blogCards = document.querySelectorAll('.cardcontainer[data-author] .blog-card');
+    const authorCards = document.querySelectorAll('.author-card');
+    
+    console.log('Found blog cards:', blogCards.length);
+    console.log('Found author cards:', authorCards.length);
+    
+    // Add hover listeners to blog cards
+    blogCards.forEach(card => {
+        const authorName = card.closest('.cardcontainer').getAttribute('data-author');
+        console.log('Blog card author:', authorName);
+        
+        card.addEventListener('mouseenter', () => {
+            console.log('Blog hover:', authorName);
+            // Find and highlight the corresponding author card by adding hover class
+            const authorCard = document.querySelector(`.author-card[data-author="${authorName}"]`);
+            if (authorCard) {
+                authorCard.classList.add('hover');
+                console.log('Added hover to author card');
+            } else {
+                console.log('Author card not found for:', authorName);
+            }
+        });
+        
+        card.addEventListener('mouseleave', () => {
+            console.log('Blog leave:', authorName);
+            // Remove highlight from author card
+            const authorCard = document.querySelector(`.author-card[data-author="${authorName}"]`);
+            if (authorCard) {
+                authorCard.classList.remove('hover');
+                console.log('Removed hover from author card');
+            }
+        });
+    });
+    
+    // Add hover listeners to author cards
+    authorCards.forEach(authorCard => {
+        const authorName = authorCard.getAttribute('data-author');
+        console.log('Setting up author card:', authorName);
+        
+        authorCard.addEventListener('mouseenter', () => {
+            console.log('Author hover:', authorName);
+            // Find and highlight all blog cards by this author by adding hover class
+            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card`);
+            console.log('Found blog cards:', blogCardsByAuthor.length);
+            blogCardsByAuthor.forEach(card => {
+                card.classList.add('hover');
+                console.log('Added hover class to:', card);
+                console.log('Card classes after adding hover:', card.className);
+            });
+        });
+        
+        authorCard.addEventListener('mouseleave', () => {
+            console.log('Author leave:', authorName);
+            // Remove highlight from all blog cards by this author
+            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card`);
+            blogCardsByAuthor.forEach(card => {
+                card.classList.remove('hover');
+                console.log('Removed hover class from:', card);
+            });
+        });
     });
 }
 
