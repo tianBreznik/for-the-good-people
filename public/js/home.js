@@ -3,6 +3,8 @@ const topdiv = document.querySelector('#first-container');
 const navbar = document.querySelector('.navbar');
 
 let topfaded = false;
+let uniqueAuthors = new Set(); // Track unique authors
+
 db.collection("blogs").get().then((blogs) => {
     blogs.forEach(blog => {
         if(blog.id != decodeURI(location.pathname.split("/").pop())){
@@ -20,24 +22,36 @@ const createBlog = (blog) => {
 
     if(data.bannerImage != ''){
         blogSection.innerHTML += `
-            <div class="cardcontainer">
+            <div class="cardcontainer" data-author="${authorName}">
                 <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;"">
                     <!--<img src="${data.bannerImage}" class="blog-image" alt="">-->
                     <h1 class="blog-title" data-text="${data.title.substring(0,100)}">${data.title.substring(0, 100) + '...'}</h1>
                     <!--<p class="blog-author">@${authorName}</p>-->
                 </div>
             </div>
-    `;
+        `;
     }
     else{
         blogSection.innerHTML += `
-            <div class="cardcontainer">
+            <div class="cardcontainer" data-author="${authorName}">
                 <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;">
                     <h1 class="blog-title" data-text="${data.title.substring(0,100)}">${data.title.substring(0, 100) + '...'}</h1>
                     <!--<p class="blog-author">@${authorName}</p>-->
                 </div>
             </div>
-    `;
+        `;
+    }
+    
+    // Only create author card if this author hasn't been seen before
+    if (!uniqueAuthors.has(authorName)) {
+        uniqueAuthors.add(authorName);
+        blogSection.innerHTML += `
+            <div class="cardcontainer">
+                <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;">
+                    <h1 class="blog-title" id="${authorName}" data-text="@${authorName}">@${authorName}</h1>
+                </div>
+            </div>
+        `;
     }
 }
 
