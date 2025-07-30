@@ -377,7 +377,7 @@ body{
     padding: 15px;
 }
 
-.blog-card:hover{
+/* .blog-card:hover{
     background: #fdfcf8;
     color: black;
     border-left-style: ridge;
@@ -391,7 +391,7 @@ body{
     -webkit-text-fill-color: black;
 
 
-}
+} */
 
 .blog-card:hover .blog-title::before {
     display: none;
@@ -402,18 +402,18 @@ body{
 
 }
 
-.blog-card:hover .blog-title {
+/* .blog-card:hover .blog-title { */
     /*position: absolute;*/
     /*width: 100%;*/
     /*height: 100%;*/
-    font-family: 'IBM Plex Mono', monospace;
+    
+    /* font-family: 'IBM Plex Mono', monospace;
     font-weight: normal;
     font-size: 16px;
     line-height: 1.5;
     color: #222;
     -webkit-text-fill-color: #222;
     text-transform: lowercase;
-    /* font-size: 11vw; */
     text-align: center;
     text-shadow:
             0.3px 0.3px 0.5px rgba(0, 0, 0, 0.2),
@@ -421,8 +421,7 @@ body{
     filter: contrast(1.1) brightness(0.95);
     -webkit-font-smoothing: none;
     -moz-osx-font-smoothing: grayscale;
-    /* background-size: cover; */
-    z-index: 2;
+    z-index: 2; */
 }
 
 .blog-card:hover .blog-overview {
@@ -631,3 +630,20 @@ body{
     /* For simplicity, direct text styling is shown here. */
     z-index: 2; /* Ensure it's on top of other card content if necessary, same as .blog-title for example */
 }
+
+.blog-card:hover .blog-title {
+    color: #fdf6e3; /* pearl white/beige */
+    -webkit-text-fill-color: #fdf6e3;
+    text-shadow:
+        0 0 1px #fffbe6,
+        0 0 1px #fffbe6,
+        0 0 1px #ffe6fb,
+        0 0 1.5px #e6f7ff,
+        0 0 1px #fffbe6;
+    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
+}
+
+.blog-card:hover .blog-title::before {
+    display: none;
+}
+
