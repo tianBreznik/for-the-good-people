@@ -219,8 +219,8 @@ function setupHoverInteractions() {
     console.log('Setting up hover interactions...');
     
     // Get all blog cards and author cards
-    const blogCards = document.querySelectorAll('.cardcontainer[data-author] .blog-card');
-    const authorCards = document.querySelectorAll('.author-card');
+    const blogCards = document.querySelectorAll('.cardcontainer[data-author] .blog-card:not(.author-card)');
+    const authorCards = document.querySelectorAll('.blog-card.author-card');
     
     console.log('Found blog cards:', blogCards.length);
     console.log('Found author cards:', authorCards.length);
@@ -233,7 +233,7 @@ function setupHoverInteractions() {
         card.addEventListener('mouseenter', () => {
             console.log('Blog hover:', authorName);
             // Find and highlight the corresponding author card by adding hover class
-            const authorCard = document.querySelector(`.author-card[data-author="${authorName}"]`);
+            const authorCard = document.querySelector(`.blog-card.author-card[data-author="${authorName}"]`);
             if (authorCard) {
                 authorCard.classList.add('hover');
                 console.log('Added hover to author card');
@@ -245,7 +245,7 @@ function setupHoverInteractions() {
         card.addEventListener('mouseleave', () => {
             console.log('Blog leave:', authorName);
             // Remove highlight from author card
-            const authorCard = document.querySelector(`.author-card[data-author="${authorName}"]`);
+            const authorCard = document.querySelector(`.blog-card.author-card[data-author="${authorName}"]`);
             if (authorCard) {
                 authorCard.classList.remove('hover');
                 console.log('Removed hover from author card');
@@ -261,7 +261,7 @@ function setupHoverInteractions() {
         authorCard.addEventListener('mouseenter', () => {
             console.log('Author hover:', authorName);
             // Find and highlight all blog cards by this author by adding hover class
-            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card`);
+            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card:not(.author-card)`);
             console.log('Found blog cards:', blogCardsByAuthor.length);
             blogCardsByAuthor.forEach(card => {
                 card.classList.add('hover');
@@ -273,7 +273,7 @@ function setupHoverInteractions() {
         authorCard.addEventListener('mouseleave', () => {
             console.log('Author leave:', authorName);
             // Remove highlight from all blog cards by this author
-            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card`);
+            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card:not(.author-card)`);
             blogCardsByAuthor.forEach(card => {
                 card.classList.remove('hover');
                 console.log('Removed hover class from:', card);

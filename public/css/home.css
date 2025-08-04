@@ -647,16 +647,13 @@ body{
     display: none;
 }
 
-/* Use same styling as hover for connected cards */
+/* Subtle highlight for connected cards when author is hovered */
 .blog-card.hover .blog-title {
-    color: #fdf6e3 !important; /* pearl white/beige */
-    -webkit-text-fill-color: #fdf6e3 !important;
-    text-shadow:
-        0 0 1px #fffbe6,
-        0 0 1px #fffbe6,
-        0 0 1px #ffe6fb,
-        0 0 1.5px #e6f7ff,
-        0 0 1px #fffbe6 !important;
-    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1) !important;
+    filter: brightness(1.2) !important;
+}
+
+/* Override hover when .hover class is present */
+.blog-card.hover:hover .blog-title {
+    filter: brightness(1.2) !important;
 }
 
