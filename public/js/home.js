@@ -116,18 +116,22 @@ function positionCardsInGrid() {
     const spacing = 0;
     const maxTitleWidth = 400; // Maximum width before text wrapping
 
-    // Create filler cards first
+    // Create filler cards efficiently using DocumentFragment
     const fillerTexts = ["good people", "posting"];
+    const fragment = document.createDocumentFragment();
     for (let i = 0; i < 300; i++) {
         const text = fillerTexts[i % fillerTexts.length];
-        blogSection.innerHTML += `
-            <div class="cardcontainer" data-author="filler@system">
-                <div class="blog-card" style="cursor: pointer;">
-                    <h1 class="blog-title" data-text="${text}">${text}</h1>
-                </div>
+        const div = document.createElement('div');
+        div.className = 'cardcontainer';
+        div.setAttribute('data-author', 'filler@system');
+        div.innerHTML = `
+            <div class="blog-card" style="cursor: pointer;">
+                <h1 class="blog-title" data-text="${text}">${text}</h1>
             </div>
         `;
+        fragment.appendChild(div);
     }
+    blogSection.appendChild(fragment);
 
     // Get all cards including the newly created filler cards
     const allCards = document.querySelectorAll('.cardcontainer');
@@ -136,37 +140,18 @@ function positionCardsInGrid() {
     const realCardElements = Array.from(allCards).filter(card => !card.querySelector('[data-author="filler@system"]'));
     const fillerCardElements = Array.from(allCards).filter(card => card.querySelector('[data-author="filler@system"]'));
 
-    // Measure and process real cards first
+    // Measure and process real cards first - optimized to reduce reflows
     const realCardData = realCardElements.map(card => {
         const title = card.querySelector('.blog-title');
         
-        // Reset all spacing to eliminate gaps
-        title.style.margin = '0';
-        title.style.padding = '0';
-        title.style.lineHeight = '1.2'; // Consistent line height for multi-line entries
+        // Batch all style changes to minimize reflows
+        title.style.cssText = 'margin: 0; padding: 0; line-height: 1.2; width: auto; word-wrap: nowrap; overflow-wrap: nowrap; white-space: nowrap;';
         
-        // First measure the title at its natural width (no width constraint)
-        title.style.width = 'auto';
-        title.style.wordWrap = 'normal';
-        title.style.overflowWrap = 'normal';
-        title.style.whiteSpace = 'nowrap';
-        title.offsetHeight; // Force reflow
+        // Single reflow to get natural width
         const naturalWidth = title.getBoundingClientRect().width;
+        title.style.width = `${naturalWidth}px`;
         
-        // If natural width exceeds max, then apply wrapping
-        if (naturalWidth > maxTitleWidth) {
-            title.style.width = `${maxTitleWidth}px`;
-            title.style.wordWrap = 'break-word';
-            title.style.overflowWrap = 'break-word';
-            title.style.whiteSpace = 'normal';
-            title.style.lineHeight = '1.2'; // Consistent line height for multi-line entries
-        } else {
-            // Keep natural width
-            title.style.width = `${naturalWidth}px`;
-        }
-        
-        // Force reflow to get final dimensions
-        title.offsetHeight;
+        // Single reflow to get final dimensions
         const titleRect = title.getBoundingClientRect();
         
         // Calculate card dimensions with minimal padding
@@ -179,37 +164,18 @@ function positionCardsInGrid() {
     // Sort real cards by height descending (tallest first for better packing)
     realCardData.sort((a, b) => b.height - a.height);
 
-    // Measure filler cards separately (no sorting needed for filler cards)
+    // Measure filler cards separately - optimized to reduce reflows
     const fillerCardData = fillerCardElements.map(card => {
         const title = card.querySelector('.blog-title');
         
-        // Reset all spacing to eliminate gaps
-        title.style.margin = '0';
-        title.style.padding = '0';
-        title.style.lineHeight = '1.2'; // Consistent line height for multi-line entries
+        // Batch all style changes to minimize reflows
+        title.style.cssText = 'margin: 0; padding: 0; line-height: 1.2; width: auto; word-wrap: nowrap; overflow-wrap: nowrap; white-space: nowrap;';
         
-        // First measure the title at its natural width (no width constraint)
-        title.style.width = 'auto';
-        title.style.wordWrap = 'normal';
-        title.style.overflowWrap = 'normal';
-        title.style.whiteSpace = 'nowrap';
-        title.offsetHeight; // Force reflow
+        // Single reflow to get natural width
         const naturalWidth = title.getBoundingClientRect().width;
+        title.style.width = `${naturalWidth}px`;
         
-        // If natural width exceeds max, then apply wrapping
-        if (naturalWidth > maxTitleWidth) {
-            title.style.width = `${maxTitleWidth}px`;
-            title.style.wordWrap = 'break-word';
-            title.style.overflowWrap = 'break-word';
-            title.style.whiteSpace = 'normal';
-            title.style.lineHeight = '1.2'; // Consistent line height for multi-line entries
-        } else {
-            // Keep natural width
-            title.style.width = `${naturalWidth}px`;
-        }
-        
-        // Force reflow to get final dimensions
-        title.offsetHeight;
+        // Single reflow to get final dimensions
         const titleRect = title.getBoundingClientRect();
         
         // Calculate card dimensions with minimal padding
