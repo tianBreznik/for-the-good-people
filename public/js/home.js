@@ -6,25 +6,73 @@ let topfaded = false;
 let uniqueAuthors = new Set(); // Track unique authors
 
 db.collection("blogs").get().then((blogs) => {
+    // Create separate containers for titles and authors
+    const titleSection = document.createElement('div');
+    titleSection.className = 'blogs-section title-section';
+    titleSection.style.cssText = `
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        right: 20px;
+        height: 45%;
+        overflow: hidden;
+    `;
+    document.body.appendChild(titleSection);
+    
+    const authorSection = document.createElement('div');
+    authorSection.className = 'blogs-section author-section';
+    authorSection.style.cssText = `
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        height: 28.25%;
+        overflow: hidden;
+    `;
+    document.body.appendChild(authorSection);
+    
+    // Create title cards in the title section
     blogs.forEach(blog => {
         if(blog.id != decodeURI(location.pathname.split("/").pop())){
-            createBlog(blog);
+            createBlogCard(blog, titleSection);
         }
     });
     
-    // Position cards in a tight grid after all blogs are created
-    positionCardsInGrid();
+    // Create author cards in the author section
+    const uniqueAuthors = new Set();
+    blogs.forEach(blog => {
+        if(blog.id != decodeURI(location.pathname.split("/").pop())){
+            const authorName = blog.data().author ? blog.data().author.split('@')[0] : 'Anonymous';
+            if (!uniqueAuthors.has(authorName)) {
+                uniqueAuthors.add(authorName);
+                createAuthorCard(authorName, authorSection);
+            }
+        }
+    });
+    
+    // Ensure Anonymous is always included
+    if (!uniqueAuthors.has('Anonymous')) {
+        createAuthorCard('Anonymous', authorSection);
+    }
+    
+    console.log('Created author cards for:', Array.from(uniqueAuthors));
+    
+    // Position title cards in their section
+    positionCardsInSection(titleSection);
+    
+    // Position author cards in their section
+    positionCardsInSection(authorSection);
     
     // Add hover interactions after positioning
     setupHoverInteractions();
 })
 
-const createBlog = (blog) => {
+function createBlogCard(blog, section) {
     let data = blog.data();
     let authorName = data.author ? data.author.split('@')[0] : 'Anonymous';
 
     if(data.bannerImage != ''){
-        blogSection.innerHTML += `
+        section.innerHTML += `
             <div class="cardcontainer" data-author="${authorName}">
                 <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;"">
                     <!--<img src="${data.bannerImage}" class="blog-image" alt="">-->
@@ -35,7 +83,7 @@ const createBlog = (blog) => {
         `;
     }
     else{
-        blogSection.innerHTML += `
+        section.innerHTML += `
             <div class="cardcontainer" data-author="${authorName}">
                 <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;">
                     <h1 class="blog-title" data-text="${data.title.substring(0,100)}">${data.title.substring(0, 100) + '...'}</h1>
@@ -44,18 +92,16 @@ const createBlog = (blog) => {
             </div>
         `;
     }
-    
-    // Only create author card if this author hasn't been seen before
-    if (!uniqueAuthors.has(authorName)) {
-        uniqueAuthors.add(authorName);
-        blogSection.innerHTML += `
-            <div class="cardcontainer">
-                <div class="blog-card author-card" data-author="${authorName}" style="cursor: pointer;">
-                    <h1 class="blog-title" id="${authorName}" data-text="@${authorName}">@${authorName}</h1>
-                </div>
+}
+
+function createAuthorCard(authorName, section) {
+    section.innerHTML += `
+        <div class="cardcontainer">
+            <div class="blog-card author-card" data-author="${authorName}" style="cursor: pointer;">
+                <h1 class="blog-title" id="${authorName}" data-text="@${authorName}">@${authorName}</h1>
             </div>
-        `;
-    }
+        </div>
+    `;
 }
 
 function getRandomColor() {
@@ -108,13 +154,13 @@ function randomizeTitles() {
     });
 }
 
-function positionCardsInGrid() {
-    const cards = document.querySelectorAll('.cardcontainer');
-    const container = document.querySelector('.blogs-section');
-    const containerWidth = container.offsetWidth;
-    const containerHeight = container.offsetHeight;
-    const spacing = 0;
-    const maxTitleWidth = 400; // Maximum width before text wrapping
+function positionCardsInSection(section) {
+    const cards = section.querySelectorAll('.cardcontainer');
+    const containerWidth = section.offsetWidth;
+    const containerHeight = section.offsetHeight;
+    const spacing = -2; // Negative spacing to allow slight overlap for tighter packing
+    const maxTitleWidth = 400;
+    const isTitleSection = section.classList.contains('title-section');
 
     // First, measure all cards and sort by height (tallest first for better packing)
     const cardData = Array.from(cards).map(card => {
@@ -125,25 +171,17 @@ function positionCardsInGrid() {
         title.style.padding = '0';
         title.style.lineHeight = '1';
         
-        // First measure the title at its natural width (no width constraint)
+        // Force single line for all titles - no wrapping, keep full text
         title.style.width = 'auto';
-        title.style.wordWrap = 'normal';
-        title.style.overflowWrap = 'normal';
+        title.style.wordWrap = 'nowrap';
+        title.style.overflowWrap = 'nowrap';
         title.style.whiteSpace = 'nowrap';
+        title.style.lineHeight = '1';
         title.offsetHeight; // Force reflow
         const naturalWidth = title.getBoundingClientRect().width;
         
-        // If natural width exceeds max, then apply wrapping
-        if (naturalWidth > maxTitleWidth) {
-            title.style.width = `${maxTitleWidth}px`;
-            title.style.wordWrap = 'break-word';
-            title.style.overflowWrap = 'break-word';
-            title.style.whiteSpace = 'normal';
-            title.style.lineHeight = '1';
-        } else {
-            // Keep natural width
-            title.style.width = `${naturalWidth}px`;
-        }
+        // Keep the full title width - let the card container adjust
+        title.style.width = `${naturalWidth}px`;
         
         // Force reflow to get final dimensions
         title.offsetHeight;
@@ -156,23 +194,41 @@ function positionCardsInGrid() {
         return { card, width: cardWidth, height: cardHeight };
     });
 
-    // Sort by height descending (tallest first for better packing)
-    cardData.sort((a, b) => b.height - a.height);
+    if (isTitleSection) {
+        // For title section: sort by area (largest first) for better packing
+        cardData.sort((a, b) => (b.width * b.height) - (a.width * a.height)); // Largest area first
+        console.log('Title sorting by area:', cardData.map(card => ({
+            text: card.card.querySelector('.blog-title').textContent,
+            width: card.width,
+            height: card.height,
+            area: card.width * card.height
+        })));
+    } else {
+        // For author section: sort by text length (longest first) for better packing
+        cardData.sort((a, b) => {
+            const aText = a.card.querySelector('.blog-title').textContent.length;
+            const bText = b.card.querySelector('.blog-title').textContent.length;
+            return bText - aText; // Longest first (will be placed at bottom)
+        });
+        console.log('Author sorting by length:', cardData.map(card => ({
+            text: card.card.querySelector('.blog-title').textContent,
+            length: card.card.querySelector('.blog-title').textContent.length
+        })));
+    }
 
     // Packing algorithm: place each card in the best available position
     const placedCards = [];
-    const containerPadding = 10; // Reduced container padding from 20 to 10
+    const containerPadding = 10;
 
-    cardData.forEach(({ card, width, height }) => {
+    cardData.forEach(({ card, width, height }, index) => {
         let bestX = containerPadding;
         let bestY = containerPadding;
         let minOverlap = Infinity;
 
-        // Try placing the card at different positions
-        for (let x = containerPadding; x <= containerWidth - width - containerPadding; x += 5) { // Reduced step from 10 to 5
-            for (let y = containerPadding; y <= containerHeight - height - containerPadding; y += 5) { // Reduced step from 10 to 5
+        // Try placing the card at different positions with smaller steps for better precision
+        for (let x = containerPadding; x <= containerWidth - width - containerPadding; x += 1) { // Even smaller step for precision
+            for (let y = containerPadding; y <= containerHeight - height - containerPadding; y += 1) { // Even smaller step for precision
                 // Check if this position overlaps with any placed card
-                let overlap = 0;
                 let canPlace = true;
                 
                 for (const placed of placedCards) {
@@ -186,16 +242,32 @@ function positionCardsInGrid() {
                 }
                 
                 if (canPlace) {
-                    // Calculate distance from center (prefer center placement)
+                    // Calculate weighted distance from center based on section type
                     const centerX = containerWidth / 2;
                     const centerY = containerHeight / 2;
-                    const distanceFromCenter = Math.sqrt(
+                    const baseDistance = Math.sqrt(
                         Math.pow(x + width/2 - centerX, 2) + 
                         Math.pow(y + height/2 - centerY, 2)
                     );
                     
-                    if (distanceFromCenter < minOverlap) {
-                        minOverlap = distanceFromCenter;
+                    let weightedDistance = baseDistance;
+                    
+                    if (isTitleSection) {
+                        // For titles: horizontal center preference, vertical top preference
+                        const normalizedY = y / containerHeight;
+                        const centerX = containerWidth / 2;
+                        const horizontalDistance = Math.abs(x + width/2 - centerX);
+                        const horizontalPenalty = horizontalDistance * 0.5; // Tighter penalty for being away from center horizontally
+                        const verticalPenalty = normalizedY * 1000; // Massive penalty for being away from top vertically
+                        weightedDistance = horizontalPenalty + verticalPenalty;
+                    } else {
+                        // For authors: prefer bottom, avoid top (tallest at bottom)
+                        const normalizedY = y / containerHeight;
+                        weightedDistance = baseDistance * (1 + (1 - normalizedY) * 10); // Much stronger penalty as we go up
+                    }
+                    
+                    if (weightedDistance < minOverlap) {
+                        minOverlap = weightedDistance;
                         bestX = x;
                         bestY = y;
                     }

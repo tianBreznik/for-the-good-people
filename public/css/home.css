@@ -511,8 +511,8 @@ body{
 .blog-title::before {
     content: attr(data-text);
     position: absolute;
-    top: 0.5px;  /* Slight upward offset */
-    left: 0.5px; /* Slght left offset */
+    top: 0px;  /* Slight downward offset for shadow */
+    left: 0px; /* Slight right offset for shadow */
     width: 100%;
     height: 100%;
     font-weight: bold;
@@ -650,6 +650,11 @@ body{
 /* Subtle highlight for connected cards when author is hovered */
 .blog-card.hover .blog-title {
     filter: brightness(1.2) !important;
+}
+
+/* Hide shadow when .hover class is present */
+.blog-card.hover .blog-title::before {
+    display: none;
 }
 
 /* Override hover when .hover class is present */
