@@ -511,8 +511,8 @@ body{
 .blog-title::before {
     content: attr(data-text);
     position: absolute;
-    top: 0px;  /* Slight downward offset for shadow */
-    left: 0px; /* Slight right offset for shadow */
+    top: 1px;  /* Perfect shadow offset */
+    left: 1px; /* Perfect shadow offset */
     width: 100%;
     height: 100%;
     font-weight: bold;
@@ -652,7 +652,7 @@ body{
     filter: brightness(1.2) !important;
 }
 
-/* Hide shadow when .hover class is present */
+/* Hide shadow when .hover class is present (same as regular hover) */
 .blog-card.hover .blog-title::before {
     display: none;
 }

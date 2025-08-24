@@ -304,24 +304,21 @@ function setupHoverInteractions() {
         
         card.addEventListener('mouseenter', () => {
             console.log('Blog hover:', authorName);
-            // Find and highlight the corresponding author card by adding hover class
-            const authorCard = document.querySelector(`.blog-card.author-card[data-author="${authorName}"]`);
-            if (authorCard) {
-                authorCard.classList.add('hover');
-                console.log('Added hover to author card');
-            } else {
-                console.log('Author card not found for:', authorName);
-            }
+            // Dim all authors that are NOT associated with this blog
+            authorCards.forEach(authorCard => {
+                const authorCardName = authorCard.getAttribute('data-author');
+                if (authorCardName !== authorName) {
+                    authorCard.classList.add('hover');
+                }
+            });
         });
         
         card.addEventListener('mouseleave', () => {
             console.log('Blog leave:', authorName);
-            // Remove highlight from author card
-            const authorCard = document.querySelector(`.blog-card.author-card[data-author="${authorName}"]`);
-            if (authorCard) {
+            // Remove dimming from all authors
+            authorCards.forEach(authorCard => {
                 authorCard.classList.remove('hover');
-                console.log('Removed hover from author card');
-            }
+            });
         });
     });
     
@@ -332,23 +329,20 @@ function setupHoverInteractions() {
         
         authorCard.addEventListener('mouseenter', () => {
             console.log('Author hover:', authorName);
-            // Find and highlight all blog cards by this author by adding hover class
-            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card:not(.author-card)`);
-            console.log('Found blog cards:', blogCardsByAuthor.length);
-            blogCardsByAuthor.forEach(card => {
-                card.classList.add('hover');
-                console.log('Added hover class to:', card);
-                console.log('Card classes after adding hover:', card.className);
+            // Dim all blog cards that are NOT by this author
+            blogCards.forEach(card => {
+                const cardAuthorName = card.closest('.cardcontainer').getAttribute('data-author');
+                if (cardAuthorName !== authorName) {
+                    card.classList.add('hover');
+                }
             });
         });
         
         authorCard.addEventListener('mouseleave', () => {
             console.log('Author leave:', authorName);
-            // Remove highlight from all blog cards by this author
-            const blogCardsByAuthor = document.querySelectorAll(`.cardcontainer[data-author="${authorName}"] .blog-card:not(.author-card)`);
-            blogCardsByAuthor.forEach(card => {
+            // Remove dimming from all blog cards
+            blogCards.forEach(card => {
                 card.classList.remove('hover');
-                console.log('Removed hover class from:', card);
             });
         });
     });
