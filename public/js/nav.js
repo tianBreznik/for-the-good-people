@@ -31,9 +31,12 @@ auth.onAuthStateChanged((user) => {
 
 function goHome() {
     console.log('goHome');
-    let stateObj = { id: "100" };
-    window.history.pushState(stateObj,
-        "Editor", "/editor.html");
+    // Navigate to home; avoid pushing editor into history
+    try {
+        window.location.href = '/';
+    } catch (e) {
+        window.location.assign('/');
+    }
 }
 
 

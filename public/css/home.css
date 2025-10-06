@@ -6,6 +6,9 @@
 
 :root {
     --bg-image: url(https://textures.neocities.org/textures/stone-and-brick/GRYCON7.JPG);
+    --aboutWidth: clamp(220px, 15vw, 360px);
+    --aboutDuration: 800ms;
+    --bioHeight: clamp(36px, 6vh, 78px);
 }
 
 body{
@@ -18,6 +21,92 @@ body{
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    transition: background-position var(--aboutDuration) ease-in-out;
+}
+/* Author bio panel (top) */
+.bio-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--bioHeight);
+    transform: translateY(-100%);
+    background: #ffffff;
+    color: #222;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    transition: transform var(--aboutDuration) ease-in-out;
+    z-index: 2;
+    padding: 8px 12px; /* keep inside var(--bioHeight) */
+    box-sizing: border-box;
+    overflow: hidden; /* ensure content doesn't increase visual height */
+    display: flex;
+    align-items: center;
+}
+
+body.bio-open .bio-panel {
+    transform: translateY(0);
+}
+
+/* Push everything down when bio opens */
+body.bio-open .title-section,
+body.bio-open .author-section {
+    transform: translateY(var(--bioHeight));
+}
+
+/* Shift stone background vertically as well when bio opens */
+body.bio-open {
+    background-position-y: var(--bioHeight);
+}
+
+.title-section,
+.author-section {
+    transition: transform var(--aboutDuration) ease-in-out;
+}
+
+/* Bio panel grain and ink effects (same as About) */
+.bio-panel::after,
+.bio-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+}
+
+.bio-panel::after {
+    opacity: 0.26;
+    background-size: 120px 120px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.bio-panel::before {
+    opacity: 0.14;
+    background-image: repeating-radial-gradient(
+        rgba(0,0,0,0.14) 0 0.7px,
+        transparent 0.7px 2px
+    );
+    background-size: 3.2px 3.2px;
+}
+
+/* Ink effect inside bio text */
+.bio-panel p {
+    font-family: Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 16px;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    /* Match/boost About ink grain */
+    background-image:
+        linear-gradient(#171717, #171717),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.8' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.25 -0.12'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 40px 40px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.3px rgba(0,0,0,0.55);
+    text-shadow: 0 0 0.6px rgba(0,0,0,0.36);
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: auto;
 }
 
 ::selection{
@@ -102,6 +191,100 @@ body{
     padding: 20px;
     position: relative;
     box-sizing: border-box;
+}
+
+/* About panel and slide animation */
+/* sections slide to reveal about */
+body.about-open .title-section,
+body.about-open .author-section {
+    transform: translateX(calc(-1 * var(--aboutWidth)));
+}
+
+/* Smoothly animate the sections so titles move in sync with background */
+.title-section,
+.author-section {
+    transition: transform var(--aboutDuration) ease-in-out;
+}
+
+/* shift the stone background with the sections */
+body.about-open {
+    background-position-x: calc(-1 * var(--aboutWidth));
+}
+
+.about-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--aboutWidth);
+    max-width: none;
+    min-width: 0;
+    background: #ffffff;
+    color: #222;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.15);
+    z-index: 500; /* below sections so it's revealed when they shift */
+    display: flex;
+    align-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+    transform: translateX(100%);
+    transition: transform var(--aboutDuration) ease-in-out;
+    pointer-events: none; /* prevent accidental hover when closed */
+    position: fixed;
+    overflow: hidden; /* keep grain overlay inside */
+}
+
+body.about-open .about-panel {
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+.about-panel p {
+    font-family: Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 16px;
+    /* Ink-on-paper: visible grain inside glyphs */
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-image:
+        linear-gradient(#171717, #171717),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 48px 48px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    /* Slight edge bleed for printed look */
+    -webkit-text-stroke: 0.25px rgba(0,0,0,0.45);
+    text-shadow: 0 0 0.45px rgba(0,0,0,0.32);
+    /* Reduce subpixel smoothing so grain is visible */
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: auto;
+}
+
+/* Subtle paper grain overlay to imitate e-ink/paper texture */
+/* Layered grain for higher visibility (still subtle) */
+.about-panel::after,
+.about-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+}
+
+.about-panel::after {
+    opacity: 0.26; /* stronger paper grain */
+    background-size: 120px 120px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.about-panel::before {
+    opacity: 0.14; /* more visible dot layer */
+    background-image: repeating-radial-gradient(
+        rgba(0,0,0,0.14) 0 0.7px,
+        transparent 0.7px 2px
+    );
+    background-size: 3.2px 3.2px;
 }
 
 .blog-image{
@@ -518,7 +701,7 @@ body{
     font-weight: bold;
     /*font-size: 11vw;*/
     font-family: 'Impact', sans-serif;
-    text-align: center;
+    text-align: inherit; /* match parent alignment (left/right) */
     background-image: var(--bg-image);
     /*background-size: cover;*/
     background-position: center;
@@ -660,5 +843,100 @@ body{
 /* Override hover when .hover class is present */
 .blog-card.hover:hover .blog-title {
     filter: brightness(1.2) !important;
+}
+
+/* Blog Popup Styles */
+.blog-popup {
+    position: absolute;
+    background: white;
+    color: black;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    z-index: 1000;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.popup-content {
+    padding: 30px;
+    max-width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+}
+
+.popup-title {
+    font-size: 2.5em;
+    margin-bottom: 20px;
+    color: black;
+    font-weight: bold;
+}
+
+.popup-preview {
+    font-size: 1.2em;
+    line-height: 1.6;
+    color: #333;
+}
+
+/* Hide scrollbar in the titles column while keeping it scrollable */
+.title-section {
+    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none; /* Firefox */
+}
+.title-section::-webkit-scrollbar { /* Chrome/Safari */
+    width: 0;
+    height: 0;
+}
+
+/* Auth controls use plain text without the pseudo shadow/glow to avoid white bleed */
+/* Auth controls: allow pseudo-text to render fully without clipping */
+.auth-plain {
+    overflow: visible;
+}
+
+/* About button hover glow - same intensity as other cards but blue */
+.blog-card[data-author="about"]:hover .blog-title {
+    color: #375197;
+    -webkit-text-fill-color: #375197;
+    text-shadow:
+        0 0 1px #375197,
+        0 0 1px #375197,
+        0 0 1px #375197,
+        0 0 1.5px #375197,
+        0 0 1px #375197;
+    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
+}
+
+.blog-card[data-author="about"]:hover .blog-title::before {
+    display: none;
+}
+
+/* Auth button hover glows */
+#auth-login-card:hover .blog-title {
+    color: rgb(0, 255, 0);
+    -webkit-text-fill-color: rgb(0, 255, 0);
+    text-shadow:
+        0 0 1px rgb(0, 255, 0),
+        0 0 1px rgb(0, 255, 0),
+        0 0 1px rgb(0, 255, 0),
+        0 0 1.5px rgb(0, 255, 0),
+        0 0 1px rgb(0, 255, 0);
+    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
+}
+
+#auth-login-card:hover .blog-title::before {
+    display: none;
+}
+
+/* Logout button cherry red glow */
+#auth-login-card[data-logout="true"]:hover .blog-title {
+    color: #ff1744;
+    -webkit-text-fill-color: #ff1744;
+    text-shadow:
+        0 0 1px #ff1744,
+        0 0 1px #ff1744,
+        0 0 1px #ff1744,
+        0 0 1.5px #ff1744,
+        0 0 1px #ff1744;
+    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
