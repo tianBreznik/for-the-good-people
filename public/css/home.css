@@ -893,21 +893,42 @@ body.about-open .about-panel {
     overflow: visible;
 }
 
-/* About button hover glow - same intensity as other cards but blue */
+/* About button hover: use same neutral behavior as others (no blue glow) */
 .blog-card[data-author="about"]:hover .blog-title {
-    color: #375197;
-    -webkit-text-fill-color: #375197;
-    text-shadow:
-        0 0 1px #375197,
-        0 0 1px #375197,
-        0 0 1px #375197,
-        0 0 1.5px #375197,
-        0 0 1px #375197;
-    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
+    /* inherit default hover behavior, no color override */
+    color: inherit;
+    -webkit-text-fill-color: inherit;
+    text-shadow: inherit;
+    filter: inherit;
 }
 
-.blog-card[data-author="about"]:hover .blog-title::before {
-    display: none;
+/* ABOUT title: classic meme Impact look (white fill, black outline) */
+.blog-card[data-author="about"] .blog-title {
+    font-family: 'Impact', sans-serif;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    /* slight black outline */
+    -webkit-text-stroke: 1px #000000;
+    /* drop shadow handled on ::before to avoid glyph rendering artifacts */
+    text-shadow: none;
+    background-image: none; /* disable texture fill */
+    position: relative;
+    z-index: 1;
+}
+
+.blog-card[data-author="about"] .blog-title::before {
+    content: attr(data-text);
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    /* classic meme drop shadow: soft, slightly downward + faint ambient */
+    text-shadow:
+        0 4px 5px rgba(0,0,0,0.7),
+        0 0 3px rgba(0,0,0,0.45);
+    pointer-events: none;
+    z-index: -1; /* render behind the primary text */
 }
 
 /* Auth button hover glows */
