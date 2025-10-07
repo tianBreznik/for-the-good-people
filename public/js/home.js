@@ -492,7 +492,14 @@ db.collection("blogs").get().then((blogs) => {
     // Create title cards in the title section
     blogs.forEach(blog => {
         if(blog.id != decodeURI(location.pathname.split("/").pop())){
-            createBlogCard(blog, titleSection);
+            // stash article body on the card for preview derivation
+            const doc = blog.data();
+            const card = createBlogCard(blog, titleSection);
+            if (card && typeof doc.article === 'string') {
+                // store raw article on the clickable .blog-card element
+                const blogCardEl = card.querySelector('.blog-card');
+                if (blogCardEl) blogCardEl.dataset.article = doc.article;
+            }
         }
     });
     
@@ -532,6 +539,16 @@ db.collection("blogs").get().then((blogs) => {
     bioPanel.className = 'bio-panel';
     bioPanel.innerHTML = `<p id="bio-content">Author bio</p>`;
     document.body.appendChild(bioPanel);
+
+    // Create centered article preview panel (initially hidden)
+    const articlePanel = document.createElement('section');
+    articlePanel.className = 'article-panel';
+    articlePanel.innerHTML = `
+        <h2 id="article-title"></h2>
+        <p id="article-preview"></p>
+        <p id="article-author"></p>
+    `;
+    document.body.appendChild(articlePanel);
 
     console.log('Created author cards for:', Array.from(uniqueAuthors));
     
@@ -635,31 +652,34 @@ function formatTitleForCard(rawTitle) {
 }
 
 function createBlogCard(blog, section) {
-    let data = blog.data();
-    let authorName = data.author ? data.author.split('@')[0] : 'Anonymous';
+    const data = blog.data();
+    const authorName = data.author ? data.author.split('@')[0] : 'Anonymous';
     const titleText = formatTitleForCard(data.title || '');
 
-    if(data.bannerImage != ''){
-        section.innerHTML += `
-            <div class="cardcontainer" data-author="${authorName}">
-                <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;"">
-                    <!--<img src="${data.bannerImage}" class="blog-image" alt="">-->
-                    <h1 class="blog-title" data-text="${titleText}">${titleText}</h1>
-                    <!--<p class="blog-author">@${authorName}</p>-->
-                </div>
-            </div>
-        `;
+    const container = document.createElement('div');
+    container.className = 'cardcontainer';
+    container.setAttribute('data-author', authorName);
+
+    const card = document.createElement('div');
+    card.className = 'blog-card';
+    card.style.cursor = 'pointer';
+    card.onclick = () => { location.href = `/${blog.id}`; };
+    // Persist preview data for the hover preview panel
+    if (typeof data.preview === 'string' && data.preview.length) {
+        card.dataset.preview = data.preview;
     }
-    else{
-        section.innerHTML += `
-            <div class="cardcontainer" data-author="${authorName}">
-                <div class="blog-card" onclick="location.href='/${blog.id}'" style="cursor: pointer;">
-                    <h1 class="blog-title" data-text="${titleText}">${titleText}</h1>
-                    <!--<p class="blog-author">@${authorName}</p>-->
-                </div>
-            </div>
-        `;
-    }
+    card.dataset.title = data.title || '';
+
+    // optional banner kept commented in markup previously
+    const titleEl = document.createElement('h1');
+    titleEl.className = 'blog-title';
+    titleEl.setAttribute('data-text', titleText);
+    titleEl.textContent = titleText;
+
+    card.appendChild(titleEl);
+    container.appendChild(card);
+    section.appendChild(container);
+    return container;
 }
 
 function createAuthorCard(authorName, section) {
@@ -985,7 +1005,33 @@ function setupHoverInteractions() {
                     authorCard.classList.add('hover');
                 }
             });
-            // New layout: no popup/physics
+            // Start dwell to open article preview
+            const articleEl = document.querySelector('.article-panel');
+            if (!articleEl) return;
+            hoverTimer = setTimeout(() => {
+                // set preview content from Firestore preview field + title + author
+                const titleEl = document.getElementById('article-title');
+                const previewEl = document.getElementById('article-preview');
+                const authorEl = document.getElementById('article-author');
+                const title = card.dataset.title || '';
+                // Derive preview from article text if present on dataset; fall back to title
+                // We expect article body stored on each card as dataset.article (first N chars/sentences extracted at fetch time)
+                const rawArticle = card.dataset.article || '';
+                const preview = derivePreviewFromArticle(rawArticle) || '';
+                const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
+                if (titleEl) titleEl.textContent = title;
+                if (previewEl) previewEl.textContent = preview;
+                if (authorEl) authorEl.textContent = `@${author}`;
+                document.body.classList.add('article-open');
+                // arm close on first mousemove after short delay
+                setTimeout(() => {
+                    const closer = () => {
+                        document.body.classList.remove('article-open');
+                        document.removeEventListener('mousemove', closer, true);
+                    };
+                    document.addEventListener('mousemove', closer, true);
+                }, 150);
+            }, 1200);
         });
         
         card.addEventListener('mouseleave', () => {
@@ -1001,7 +1047,7 @@ function setupHoverInteractions() {
                 authorCard.classList.remove('hover');
             });
 
-            // New layout: nothing else to do on leave
+            // nothing else to do on leave
         });
     });
     
@@ -1029,6 +1075,33 @@ function setupHoverInteractions() {
             });
         });
     });
+}
+
+// Create a short preview from a full article string (markdown-like)
+function derivePreviewFromArticle(articleText) {
+    if (!articleText) return '';
+    // Split into lines, drop images and headings, keep first 2-3 paragraphs
+    const lines = articleText.split('\n').filter(Boolean);
+    const paragraphs = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith('![')) continue; // image
+        if (trimmed.startsWith('#')) continue; // heading
+        paragraphs.push(trimmed);
+        if (paragraphs.length >= 3) break;
+    }
+    let text = paragraphs.join(' ');
+    // Collapse whitespace
+    text = text.replace(/\s+/g, ' ').trim();
+    // Truncate to ~260 chars at sentence boundary
+    const limit = 260;
+    if (text.length > limit) {
+        const cut = text.slice(0, limit);
+        const lastStop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+        text = (lastStop > 120 ? cut.slice(0, lastStop + 1) : cut) + (text.length > cut.length ? '…' : '');
+    }
+    return text;
 }
 
 function updateLoginButton(user) {
