@@ -601,6 +601,8 @@ db.collection("blogs").get().then((blogs) => {
         });
     }
 
+    // (Reverted) remove title hover article preview behavior
+
     // Helper: fade out entry overlay if logged in
     const ensureFirstContainerFaded = () => {
         if (!topdiv) return;

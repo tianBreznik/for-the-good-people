@@ -9,6 +9,7 @@
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
     --bioHeight: clamp(36px, 6vh, 78px);
+    --articleWidth: clamp(320px, 48vw, 860px);
 }
 
 body{
@@ -959,5 +960,20 @@ body.about-open .about-panel {
         0 0 1.5px #ff1744,
         0 0 1px #ff1744;
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
+}
+
+/* Each section gets its own 50% background for article preview split */
+.title-section {
+    background-image: var(--bg-image);
+    background-size: 100% 100%; /* Same scale as original - 100% of section width */
+    background-position: 0% 0%; /* Show left half of image */
+    background-repeat: no-repeat;
+}
+
+.author-section {
+    background-image: var(--bg-image);
+    background-size: 100% 100%; /* Same scale as original - 100% of section width */
+    background-position: 100% 0%; /* Show right half of image */
+    background-repeat: no-repeat;
 }
 
