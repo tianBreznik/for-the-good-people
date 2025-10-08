@@ -9,7 +9,7 @@
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
     --bioHeight: clamp(36px, 6vh, 78px);
-    --articleWidth: clamp(320px, 48vw, 860px);
+    --articleWidth: clamp(300px, 38vw, 640px);
 }
 
 body{
@@ -965,16 +965,16 @@ body.about-open .about-panel {
 /* Each section gets its own 50% background for article preview split */
 .title-section {
     background-image: var(--bg-image);
-    background-size: 100% 100%; /* Same scale as original - 100% of section width */
+    background-size: 100% auto; /* match landing: scale by width, preserve aspect */
     background-position: 0% 0%; /* Show left half of image */
-    background-repeat: no-repeat;
+    background-repeat: repeat-y; /* tile vertically to cover full page height */
 }
 
 .author-section {
     background-image: var(--bg-image);
-    background-size: 100% 100%; /* Same scale as original - 100% of section width */
+    background-size: 100% auto; /* match landing: scale by width, preserve aspect */
     background-position: 100% 0%; /* Show right half of image */
-    background-repeat: no-repeat;
+    background-repeat: repeat-y; /* tile vertically to cover full page height */
 }
 
 /* Article preview panel and push-apart motion */
@@ -1009,7 +1009,30 @@ body.about-open .about-panel {
 
 /* Push sections apart when article is open */
 body.article-open .article-panel { transform: translateX(-50%) scaleX(1); }
-body.article-open .title-section { transform: translateX(calc(-1 * var(--articleWidth) / 2)); }
-body.article-open .author-section { transform: translateX(calc(var(--articleWidth) / 2)); }
-.title-section, .author-section { transition: transform var(--aboutDuration) ease-in-out; }
+
+/* For article preview: move background but keep text fixed */
+body.article-open .title-section { 
+    transform: none; 
+    background-position-x: calc(0px - (var(--articleWidth) / 2)); 
+}
+body.article-open .author-section { 
+    transform: none; 
+    background-position-x: calc(100% + (var(--articleWidth) / 2)); 
+}
+
+/* Normal section movement for about/bio panels (text moves with sections) */
+body.about-open .title-section,
+body.about-open .author-section {
+    transform: translateX(calc(-1 * var(--aboutWidth)));
+}
+
+body.bio-open .title-section,
+body.bio-open .author-section {
+    transform: translateY(var(--bioHeight));
+}
+
+/* Transitions */
+.title-section, .author-section { 
+    transition: transform var(--aboutDuration) ease-in-out, background-position var(--aboutDuration) ease-in-out; 
+}
 
