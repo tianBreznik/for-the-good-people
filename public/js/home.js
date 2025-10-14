@@ -663,7 +663,12 @@ function createBlogCard(blog, section) {
     const card = document.createElement('div');
     card.className = 'blog-card';
     card.style.cursor = 'pointer';
-    card.onclick = () => { location.href = `/${blog.id}`; };
+    // Store blog ID for navigation
+    card.dataset.blogId = blog.id;
+    card.onclick = (e) => {
+        e.stopPropagation();
+        expandArticlePanelAndNavigate(blog.id, card);
+    };
     // Persist preview data for the hover preview panel
     if (typeof data.preview === 'string' && data.preview.length) {
         card.dataset.preview = data.preview;
@@ -1102,6 +1107,43 @@ function derivePreviewFromArticle(articleText) {
         text = (lastStop > 120 ? cut.slice(0, lastStop + 1) : cut) + (text.length > cut.length ? '…' : '');
     }
     return text;
+}
+
+function expandArticlePanelAndNavigate(blogId, card) {
+    const articlePanel = document.querySelector('.article-panel');
+    if (!articlePanel) {
+        // Fallback: navigate immediately if panel doesn't exist
+        location.href = `/${blogId}`;
+        return;
+    }
+    
+    // First, populate the article panel with content from the card
+    const titleEl = document.getElementById('article-title');
+    const previewEl = document.getElementById('article-preview');
+    const authorEl = document.getElementById('article-author');
+    const title = card.dataset.title || '';
+    const rawArticle = card.dataset.article || '';
+    const preview = derivePreviewFromArticle(rawArticle) || '';
+    const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
+    
+    if (titleEl) titleEl.textContent = title;
+    if (previewEl) previewEl.textContent = preview;
+    if (authorEl) authorEl.textContent = `@${author}`;
+    
+    // Open the article panel to its normal size first
+    document.body.classList.add('article-open');
+    
+    // Wait a frame for the initial panel open, then trigger fullscreen expansion
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            articlePanel.classList.add('expanding-fullscreen');
+            
+            // Wait for the expansion animation to complete, then navigate
+            setTimeout(() => {
+                location.href = `/${blogId}`;
+            }, 800); // Match --aboutDuration
+        });
+    });
 }
 
 function updateLoginButton(user) {

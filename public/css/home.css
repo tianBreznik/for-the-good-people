@@ -9,7 +9,6 @@
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
     --bioHeight: clamp(36px, 6vh, 78px);
-    --articleWidth: clamp(300px, 38vw, 640px);
 }
 
 body{
@@ -978,7 +977,7 @@ body.about-open .about-panel {
 }
 
 /* Article preview panel and push-apart motion */
-:root { --articleWidth: clamp(320px, 48vw, 860px); }
+:root { --articleWidth: clamp(320px, 39vw, 860px); }
 .article-panel {
     position: fixed;
     top: 0;
@@ -1009,6 +1008,20 @@ body.about-open .about-panel {
 
 /* Push sections apart when article is open */
 body.article-open .article-panel { transform: translateX(-50%) scaleX(1); }
+
+/* Fullscreen expansion animation for article panel on click */
+.article-panel.expanding-fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    top: 0 !important;
+    left: 50% !important;
+    transform: translateX(-50%) scaleX(1) !important;
+    /* Only animate transform and width for smoother performance */
+    transition: width var(--aboutDuration) ease-in-out, 
+                transform var(--aboutDuration) ease-in-out !important;
+    z-index: 9999 !important;
+    will-change: transform, width; /* GPU acceleration hint */
+}
 
 /* For article preview: move background but keep text fixed */
 body.article-open .title-section { 
