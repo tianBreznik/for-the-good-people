@@ -133,32 +133,20 @@ const createComment = (comment, commentid) => {
 }
 
 const setupBlog = (data) => {
-    const banner = document.querySelector('.banner');
     const blogTitle = document.querySelector('.title');
     const titleTag = document.querySelector('title');
     const publish = document.querySelector('.published');
     
-    banner.style.backgroundImage = `url(${data.bannerImage})`;
-
     titleTag.innerHTML += blogTitle.innerHTML = data.title;
     publish.innerHTML += data.publishedAt;
     publish.innerHTML += ` -- ${data.author}`;
 
     numberofcomments = data.numberofcomments;
 
-    try{
-        if(data.author == auth.currentUser.email.split('@')[0]){
-            let editBtn = document.getElementById('edit-blog-btn');
-            editBtn.style.display = "inline";
-            editBtn.href = `${blogId}/editor`;
-        }
-    }
-    catch(err){
-        console.log(err);
-    }
+    // No editor button or banner on reader now
 
-    const article = document.querySelector('.article');
-    addArticle(article, data.article);
+    const articleContent = document.querySelector('.article-content');
+    addArticle(articleContent, data.article);
 }
 
 const addArticle = (ele, data) => {

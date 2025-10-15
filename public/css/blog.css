@@ -4,25 +4,41 @@
     padding-bottom: 0;
 }
 
-.article, .title{
+/* Two-column container */
+.article {
+    max-width: 1200px;
+    margin: 0 auto 60px auto;
+    padding: 20px;
+    column-count: 2;
+    column-gap: 40px;
+}
+
+.title{
     min-height: auto;
     height: fit-content;
-    padding: 0 10px;
     white-space: normal;
+    margin: 0 0 20px 0;
+    break-after: avoid;
 }
 
 .published{
-    margin: 20px 0 60px;
-    padding: 0 10px;
+    margin: 0 0 40px 0;
+    padding: 0;
     text-transform: capitalize;
     font-style: italic;
     color: rgba(0, 0, 0, 0.5);
+    break-after: avoid;
 }
 
+/* Article content flows naturally into columns */
+.article-content {
+    break-inside: auto;
+}
+
+/* Comment section flows at end of article content */
 .comment-section {
-    display: grid;
-    justify-content: center;
-    align-items: center;
+    margin-top: 60px;
+    break-inside: auto;
 }
 
 input[type=text] {
@@ -38,18 +54,21 @@ input[type=text] {
     font-style: normal;
 }
 
-.article *{
+/* Avoid awkward splits across columns for block-level elements */
+.article-content * {
     word-break: break-word;
-    margin: 30px 0;
+    margin: 20px 0;
     color: #2d2d2d;
+    break-inside: avoid;
 }
 
 .article-image{
-    max-width: 100%;
-    max-height: 400px;
+    width: 100%;
+    height: auto;
     display: block;
-    margin: 30px auto;
+    margin: 10px 0 20px 0;
     object-fit: contain;
+    break-inside: avoid;
 }
 
 .sub-heading{
