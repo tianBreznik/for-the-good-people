@@ -54,7 +54,7 @@ Ta fajl definira metapodatke projekta, odvisnosti in skripte.
 - `express-fileupload`: express server vmesnik za posredovanje fajlov na server,`^1.2.1`
 - `nodemon`: `^2.0.12`
 
-## `public/` Directory Structure
+## `public/` Struktura Direktorija
 
 This directory contains static assets served by the Express server.
 
