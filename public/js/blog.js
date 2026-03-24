@@ -9,6 +9,13 @@ let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oc
 let numberofcomments = 0;
 let commenttracker = [];
 
+// Scroll fade system variables
+let currentScreen = 0;
+let screens = [];
+let isTransitioning = false;
+let scrollAccumulator = 0;
+const SCROLL_THRESHOLD = 50; // How much scroll to trigger transition
+
 docRef.get().then((doc) => {
     if(doc.exists){
         setupBlog(doc.data());
@@ -17,10 +24,17 @@ docRef.get().then((doc) => {
     }
 })
 
+// Store comment loading state
+let commentsReady = false;
+let screensReady = false;
+
 commentRef.get().then((comms) => {
     console.log(numberofcomments);
+    commentsReady = true;
     if(comms.exists){
-        setupCommentSection();
+        if(screensReady) {
+            setupCommentSection();
+        }
     } else{
         console.log("no comments yet");
     }
@@ -143,11 +157,173 @@ const setupBlog = (data) => {
 
     numberofcomments = data.numberofcomments;
 
-    // No editor button or banner on reader now
-
-    const articleContent = document.querySelector('.article-content');
-    addArticle(articleContent, data.article);
+    // Create screen-based content system
+    createContentScreens(data.article);
+    
+    // Initialize scroll fade system
+    initializeScrollFade();
 }
+
+const createContentScreens = (articleData) => {
+    const contentScreens = document.getElementById('content-screens');
+    const commentScreen = document.getElementById('comment-screen');
+    
+    // Parse article content and create chunks
+    const chunks = parseArticleIntoChunks(articleData);
+    
+    // Create screens for content chunks
+    chunks.forEach((chunk, index) => {
+        const screen = document.createElement('div');
+        screen.className = 'content-screen';
+        screen.id = `screen-${index}`;
+        screen.innerHTML = chunk;
+        contentScreens.appendChild(screen);
+        screens.push(screen);
+    });
+    
+    // Make sure comment screen is properly set up
+    commentScreen.classList.add('content-screen');
+    commentScreen.style.display = 'block'; // Remove the hidden style from HTML
+    contentScreens.appendChild(commentScreen);
+    screens.push(commentScreen);
+    
+    // Show first screen
+    if (screens.length > 0) {
+        screens[0].classList.add('active');
+    }
+    
+    // Mark screens as ready and trigger comment loading if ready
+    screensReady = true;
+    if (commentsReady) {
+        setupCommentSection();
+    }
+}
+
+const parseArticleIntoChunks = (articleData) => {
+    const lines = articleData.split("\n").filter(item => item.length);
+    const chunks = [];
+    let currentChunk = '';
+    let lineCount = 0;
+    const maxLinesPerScreen = 15; // Adjust based on viewport height
+    
+    lines.forEach(line => {
+        currentChunk += formatLine(line);
+        lineCount++;
+        
+        // Create new chunk when reaching max lines or encountering major break
+        if (lineCount >= maxLinesPerScreen || line.startsWith('#') && lineCount > 5) {
+            chunks.push(currentChunk);
+            currentChunk = '';
+            lineCount = 0;
+        }
+    });
+    
+    // Add remaining content as final chunk
+    if (currentChunk.trim()) {
+        chunks.push(currentChunk);
+    }
+    
+    return chunks;
+}
+
+const formatLine = (line) => {
+    // Handle headings
+    if (line[0] == '#') {
+        let hCount = 0;
+        let i = 0;
+        while (line[i] == '#') {
+            hCount++;
+            i++;
+        }
+        let tag = `h${hCount}`;
+        return `<${tag}>${line.slice(hCount, line.length)}</${tag}>`;
+    }
+    // Handle images
+    else if (line[0] == "!" && line[1] == "[") {
+        let seperator;
+        for (let i = 0; i <= line.length; i++) {
+            if (line[i] == "]" && line[i + 1] == "(" && line[line.length - 1] == ")") {
+                seperator = i;
+            }
+        }
+        let alt = line.slice(2, seperator);
+        let src = line.slice(seperator + 2, line.length - 1);
+        return `<img src="${src}" alt="${alt}" class="article-image">`;
+    }
+    // Handle regular text
+    else {
+        return `<p>${line}</p>`;
+    }
+}
+
+const initializeScrollFade = () => {
+    let wheelTimeout;
+    
+    const handleWheel = (e) => {
+        if (isTransitioning) return;
+        
+        const activeScreen = screens[currentScreen];
+        if (!activeScreen) return;
+        
+        // Check if the active screen is scrollable and has content overflow
+        const isScrollable = activeScreen.scrollHeight > activeScreen.clientHeight;
+        const isAtTop = activeScreen.scrollTop <= 0;
+        const isAtBottom = activeScreen.scrollTop >= activeScreen.scrollHeight - activeScreen.clientHeight;
+        
+        // Allow normal scrolling within the active screen if it's scrollable
+        if (isScrollable && !isAtTop && !isAtBottom) {
+            // Let the screen handle its own scrolling
+            return;
+        }
+        
+        // Only prevent default and handle screen transitions at boundaries
+        if ((e.deltaY > 0 && isAtBottom) || (e.deltaY < 0 && isAtTop)) {
+            e.preventDefault();
+            
+            scrollAccumulator += e.deltaY;
+            
+            clearTimeout(wheelTimeout);
+            wheelTimeout = setTimeout(() => {
+                if (Math.abs(scrollAccumulator) >= SCROLL_THRESHOLD) {
+                    if (scrollAccumulator > 0 && isAtBottom) {
+                        nextScreen();
+                    } else if (scrollAccumulator < 0 && isAtTop) {
+                        previousScreen();
+                    }
+                    scrollAccumulator = 0;
+                }
+            }, 50);
+        }
+    };
+    
+    document.addEventListener('wheel', handleWheel, { passive: false });
+};
+
+const nextScreen = () => {
+    if (currentScreen < screens.length - 1 && !isTransitioning) {
+        isTransitioning = true;
+        screens[currentScreen].classList.remove('active');
+        currentScreen++;
+        screens[currentScreen].classList.add('active');
+        
+        setTimeout(() => {
+            isTransitioning = false;
+        }, 600);
+    }
+};
+
+const previousScreen = () => {
+    if (currentScreen > 0 && !isTransitioning) {
+        isTransitioning = true;
+        screens[currentScreen].classList.remove('active');
+        currentScreen--;
+        screens[currentScreen].classList.add('active');
+        
+        setTimeout(() => {
+            isTransitioning = false;
+        }, 600);
+    }
+};
 
 const addArticle = (ele, data) => {
     data = data.split("\n").filter(item => item.length);

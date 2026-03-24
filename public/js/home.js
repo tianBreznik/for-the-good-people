@@ -24,6 +24,15 @@ let physicsActive = false; // Whether physics simulation is running
 let animationFrameId = null; // For the physics animation loop
 let hoverTimer = null; // Timer for 2-second hover delay
 
+const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
+const SEAM_BY_SECTION = { 1: 1, 2: 2, 3: 2, 4: 3 };
+const SECTION_LABELS = {
+    1: '#SCENE',
+    2: 'interview',
+    3: 'opinion',
+    4: 'ideas'
+};
+
 // Physics object class for cards and popup
 class PhysicsObject {
     constructor(element, x, y, width, height, mass = 1) {
@@ -462,41 +471,39 @@ function dismissPopup() {
 }
 
 db.collection("blogs").get().then((blogs) => {
-    // Create separate containers for titles and authors
-    const titleSection = document.createElement('div');
-    titleSection.className = 'blogs-section title-section';
-    titleSection.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        width: 50%;
-        overflow-y: auto;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-    `;
-    document.body.appendChild(titleSection);
+    const existingSection = document.querySelector('.blogs-section');
+    if (existingSection) existingSection.remove();
+
+    const sections = {};
+    for (let i = 1; i <= 5; i++) {
+        const section = document.createElement('div');
+        section.className = `blogs-section column-section ${i === 5 ? 'author-section' : 'title-section'}`;
+        section.dataset.col = String(i);
+        section.style.cssText = `
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: ${(i - 1) * 20}%;
+            width: 20%;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+        `;
+        document.body.appendChild(section);
+        sections[i] = section;
+    }
+    const authorSection = sections[5];
+    for (let i = 1; i <= 4; i++) {
+        createSectionTitleCard(sections[i], SECTION_LABELS[i]);
+    }
     
-    const authorSection = document.createElement('div');
-    authorSection.className = 'blogs-section author-section';
-    authorSection.style.cssText = `
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: 50%;
-        overflow: hidden;
-    `;
-    document.body.appendChild(authorSection);
-    
-    // Create title cards in the title section
     blogs.forEach(blog => {
         if(blog.id != decodeURI(location.pathname.split("/").pop())){
-            // stash article body on the card for preview derivation
             const doc = blog.data();
-            const card = createBlogCard(blog, titleSection);
+            const contentType = getContentTypeForDoc(blog.id, doc);
+            const sectionIndex = contentTypeToSection(contentType);
+            const card = createBlogCard(blog, sections[sectionIndex], sectionIndex);
             if (card && typeof doc.article === 'string') {
-                // store raw article on the clickable .blog-card element
                 const blogCardEl = card.querySelector('.blog-card');
                 if (blogCardEl) blogCardEl.dataset.article = doc.article;
             }
@@ -552,9 +559,12 @@ db.collection("blogs").get().then((blogs) => {
 
     console.log('Created author cards for:', Array.from(uniqueAuthors));
     
-    // Position title and author cards
-    positionCardsInSection(titleSection);
-    positionCardsInSection(authorSection);
+    // Position cards in all columns
+    for (let i = 1; i <= 4; i++) {
+        positionCardsInSection(sections[i]);
+    }
+    const alignedAuthorStartY = getFirstContentRowTop(sections);
+    positionCardsInSection(authorSection, { startY: alignedAuthorStartY });
     
     // Add hover interactions after positioning (disable popup/physics in new design)
     setupHoverInteractions();
@@ -651,7 +661,35 @@ function formatTitleForCard(rawTitle) {
     return rawTitle.length > maxLen ? trimmed + '...' : trimmed;
 }
 
-function createBlogCard(blog, section) {
+function getContentTypeForDoc(blogId, data) {
+    if (data && typeof data.contentType === 'string' && CONTENT_TYPES.includes(data.contentType)) {
+        return data.contentType;
+    }
+    const seeded = Array.from(blogId).reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    return CONTENT_TYPES[seeded % CONTENT_TYPES.length];
+}
+
+function contentTypeToSection(contentType) {
+    switch (contentType) {
+        case 'scene_report': return 1;
+        case 'interview': return 2;
+        case 'opinion': return 3;
+        case 'ideas': return 4;
+        default: return 1;
+    }
+}
+
+function setActivePreviewSeam(seamIndex) {
+    const seamX = `${seamIndex * 20}vw`;
+    document.documentElement.style.setProperty('--seamX', seamX);
+    document.body.setAttribute('data-open-seam', String(seamIndex));
+}
+
+function clearActivePreviewSeam() {
+    document.body.removeAttribute('data-open-seam');
+}
+
+function createBlogCard(blog, section, sectionIndex) {
     const data = blog.data();
     const authorName = data.author ? data.author.split('@')[0] : 'Anonymous';
     const titleText = formatTitleForCard(data.title || '');
@@ -665,6 +703,7 @@ function createBlogCard(blog, section) {
     card.style.cursor = 'pointer';
     // Store blog ID for navigation
     card.dataset.blogId = blog.id;
+    card.dataset.sectionIndex = String(sectionIndex);
     card.onclick = (e) => {
         e.stopPropagation();
         expandArticlePanelAndNavigate(blog.id, card);
@@ -685,6 +724,24 @@ function createBlogCard(blog, section) {
     container.appendChild(card);
     section.appendChild(container);
     return container;
+}
+
+function createSectionTitleCard(section, titleText) {
+    const container = document.createElement('div');
+    container.className = 'cardcontainer section-title-container';
+
+    const card = document.createElement('div');
+    card.className = 'blog-card section-heading-card';
+    card.style.cursor = 'default';
+
+    const titleEl = document.createElement('h1');
+    titleEl.className = 'blog-title';
+    titleEl.setAttribute('data-text', titleText);
+    titleEl.textContent = titleText;
+
+    card.appendChild(titleEl);
+    container.appendChild(card);
+    section.appendChild(container);
 }
 
 function createAuthorCard(authorName, section) {
@@ -920,11 +977,23 @@ function randomizeTitles() {
     });
 }
 
-function positionCardsInSection(section) {
+function getFirstContentRowTop(sections) {
+    const tops = [];
+    for (let i = 1; i <= 4; i++) {
+        const firstContentCard = sections[i]?.querySelector('.cardcontainer:not(.section-title-container)');
+        if (firstContentCard && firstContentCard.style.top) {
+            tops.push(parseFloat(firstContentCard.style.top));
+        }
+    }
+    return tops.length ? Math.min(...tops) : 12;
+}
+
+function positionCardsInSection(section, options = {}) {
     const cards = section.querySelectorAll('.cardcontainer');
     const isTitleSection = section.classList.contains('title-section');
     const columnPadding = 12; // tight but readable
-    let y = columnPadding;
+    const startY = typeof options.startY === 'number' ? options.startY : columnPadding;
+    let y = startY;
 
     cards.forEach(card => {
         const title = card.querySelector('.blog-title');
@@ -999,6 +1068,8 @@ function setupHoverInteractions() {
     // Add hover listeners to blog cards
     blogCards.forEach(card => {
         const authorName = card.closest('.cardcontainer').getAttribute('data-author');
+        const sectionIndex = Number(card.dataset.sectionIndex || 1);
+        const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
         console.log('Blog card author:', authorName);
         
         card.addEventListener('mouseenter', () => {
@@ -1027,11 +1098,13 @@ function setupHoverInteractions() {
                 if (titleEl) titleEl.textContent = title;
                 if (previewEl) previewEl.textContent = preview;
                 if (authorEl) authorEl.textContent = `@${author}`;
+                setActivePreviewSeam(seamIndex);
                 document.body.classList.add('article-open');
                 // arm close on first mousemove after short delay
                 setTimeout(() => {
                     const closer = () => {
                         document.body.classList.remove('article-open');
+                        clearActivePreviewSeam();
                         document.removeEventListener('mousemove', closer, true);
                     };
                     document.addEventListener('mousemove', closer, true);
@@ -1046,7 +1119,7 @@ function setupHoverInteractions() {
                 clearTimeout(hoverTimer);
                 hoverTimer = null;
             }
-            
+
             // Remove dimming from all authors
             authorCards.forEach(authorCard => {
                 authorCard.classList.remove('hover');
@@ -1122,6 +1195,8 @@ function expandArticlePanelAndNavigate(blogId, card) {
     const previewEl = document.getElementById('article-preview');
     const authorEl = document.getElementById('article-author');
     const title = card.dataset.title || '';
+    const sectionIndex = Number(card.dataset.sectionIndex || 1);
+    const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
     const rawArticle = card.dataset.article || '';
     const preview = derivePreviewFromArticle(rawArticle) || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
@@ -1130,6 +1205,7 @@ function expandArticlePanelAndNavigate(blogId, card) {
     if (previewEl) previewEl.textContent = preview;
     if (authorEl) authorEl.textContent = `@${author}`;
     
+    setActivePreviewSeam(seamIndex);
     // Open the article panel to its normal size first
     document.body.classList.add('article-open');
     

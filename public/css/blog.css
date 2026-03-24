@@ -1,16 +1,77 @@
-.blog, .article{
-    position: relative;
-    height: fit-content;
-    padding-bottom: 0;
+/* Prevent scrolling and set up fixed viewport */
+body {
+    height: 100vh;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
 }
 
-/* Two-column container */
-.article {
-    max-width: 1200px;
-    margin: 0 auto 60px auto;
+.blog {
+    position: relative;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Header section with title and metadata */
+.blog > .article:first-child {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: white;
     padding: 20px;
     column-count: 2;
     column-gap: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Content screens system */
+#content-screens {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.content-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 120px 20px 20px 20px; /* Top padding to account for fixed header */
+    column-count: 2;
+    column-gap: 40px;
+    /* Fill columns sequentially (left fully, then right) rather than balancing */
+    column-fill: auto;
+    -webkit-column-fill: auto;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 600ms ease-in-out, visibility 600ms ease-in-out;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.content-screen.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.content-screen * {
+    word-break: break-word;
+    margin: 20px 0;
+    color: #2d2d2d;
+    break-inside: avoid;
+}
+
+/* Comment screen */
+#comment-screen {
+    padding-top: 120px;
 }
 
 .title{
@@ -39,6 +100,54 @@
 .comment-section {
     margin-top: 60px;
     break-inside: auto;
+    /* Footnote-like typography */
+    font-size: 12px;
+    line-height: 1.35;
+    color: #444;
+    counter-reset: footnote;
+}
+
+/* Footnote-like, very condensed comments */
+.comment-card {
+    display: block; /* stack vertically within each column */
+    margin: 6px 0; /* tighter vertical rhythm */
+    padding: 2px 0;
+    max-width: 360px; /* keep a comfortable measure */
+    margin-left: auto; /* offset to the right side within the column */
+    text-align: left; /* keep text readable */
+    position: relative;
+}
+
+.comment-card::before {
+    counter-increment: footnote;
+    content: counter(footnote);
+    display: inline-block;
+    vertical-align: super; /* superscript-style placement */
+    font-size: 10px; /* smaller like footnote marker */
+    line-height: 1;
+    color: #666;
+    margin-right: 2px; /* tighter gap to comment text */
+}
+
+.comment-card .user {
+    display: inline;
+    margin: 0 6px 0 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+}
+
+.comment-card .comment-meat { display: inline; }
+.comment-card .comment-content {
+    display: inline;
+    margin: 0;
+}
+
+.comment-card .reply {
+    display: inline-block;
+    margin: 2px 0 0 0; /* closer under the content */
+    padding: 2px 6px;
+    font-size: 11px;
 }
 
 input[type=text] {

@@ -16,8 +16,8 @@ body{
     position: relative;
     font-family: 'poppins', sans-serif;
     /*background-color: #8c8c8c;*/
-    background: var(--bg-image);/* 0 0 fixed;*/
-    background-size: 50%;
+    background: none;
+    background-size: auto;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
@@ -605,8 +605,6 @@ body.about-open .about-panel {
     -webkit-font-smoothing: none;
     -moz-osx-font-smoothing: grayscale;
     z-index: 2; */
-}
-
 .blog-card:hover .blog-overview {
     /*position: absolute;*/
     /*width: 100%;*/
@@ -845,6 +843,105 @@ body.about-open .about-panel {
     filter: brightness(1.2) !important;
 }
 
+.section-heading-card {
+    pointer-events: auto;
+    border-bottom: none;
+    padding-bottom: 0;
+    overflow: visible;
+}
+
+.section-heading-card .blog-title {
+    text-decoration: none;
+    display: inline-block;
+    line-height: 1.1;
+    overflow: visible;
+}
+
+/* Column 1 heading style */
+.column-section[data-col="1"] .section-heading-card .blog-title {
+    font-family: 'Impact', sans-serif;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    background-image: none;
+    text-shadow: none;
+}
+
+.column-section[data-col="1"] .section-heading-card .blog-title::before {
+    display: none;
+}
+
+/* Column 2 heading style */
+.column-section[data-col="2"] .section-heading-card .blog-title {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 700;
+    text-transform: none;
+    color: #0F28BE;
+    -webkit-text-fill-color: #0F28BE;
+    background-image: none;
+    text-shadow: none;
+}
+
+.column-section[data-col="2"] .section-heading-card .blog-title::before {
+    display: none;
+}
+
+/* Column 3 heading style */
+.column-section[data-col="3"] .section-heading-card .blog-title {
+    font-family: "Didot", "Bodoni 72", "Baskerville", serif;
+    font-weight: 700;
+    text-transform: none;
+    color: #B1123A;
+    -webkit-text-fill-color: #B1123A;
+    background-image: none;
+    text-shadow: none;
+}
+
+.column-section[data-col="3"] .section-heading-card .blog-title::before {
+    display: none;
+}
+
+/* Column 4 heading style */
+.column-section[data-col="4"] .section-heading-card .blog-title {
+    font-family: "Gill Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 600;
+    font-style: normal;
+    letter-spacing: normal;
+    text-transform: none;
+    color: #3D9E4A;
+    -webkit-text-fill-color: #3D9E4A;
+    background-image: none;
+    text-shadow: none;
+}
+
+.column-section[data-col="4"] .section-heading-card .blog-title::before {
+    display: none;
+}
+
+.column-section[data-col="1"] { --section-accent: #ffffff; }
+.column-section[data-col="2"] { --section-accent: #0F28BE; }
+.column-section[data-col="3"] { --section-accent: #B1123A; }
+.column-section[data-col="4"] { --section-accent: #3D9E4A; }
+
+.section-title-container:hover .blog-title,
+.section-heading-card:hover .blog-title {
+    text-decoration: underline;
+    text-decoration-color: var(--section-accent, currentColor);
+    text-underline-offset: 1px;
+    text-decoration-thickness: 1.5px;
+    color: var(--section-accent, currentColor);
+    -webkit-text-fill-color: var(--section-accent, currentColor);
+    text-shadow: none !important;
+    filter: none !important;
+}
+
+.section-heading-card:hover .blog-title::before {
+    display: none;
+}
+
+.column-section:has(.section-title-container:hover) {
+    box-shadow: inset 2px 0 0 var(--section-accent, currentColor), inset -2px 0 0 var(--section-accent, currentColor);
+}
+
 /* Blog Popup Styles */
 .blog-popup {
     position: absolute;
@@ -961,20 +1058,20 @@ body.about-open .about-panel {
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
-/* Each section gets its own 50% background for article preview split */
-.title-section {
+/* Each column gets a perfectly aligned texture slice */
+.column-section {
     background-image: var(--bg-image);
-    background-size: 100% auto; /* match landing: scale by width, preserve aspect */
-    background-position: 0% 0%; /* Show left half of image */
-    background-repeat: repeat-y; /* tile vertically to cover full page height */
+    background-size: 50vw auto;
+    background-position-x: calc(-1 * var(--col-start, 0vw));
+    background-position-y: 0;
+    background-repeat: repeat;
 }
 
-.author-section {
-    background-image: var(--bg-image);
-    background-size: 100% auto; /* match landing: scale by width, preserve aspect */
-    background-position: 100% 0%; /* Show right half of image */
-    background-repeat: repeat-y; /* tile vertically to cover full page height */
-}
+.column-section[data-col="1"] { --col-start: 0vw; }
+.column-section[data-col="2"] { --col-start: 20vw; }
+.column-section[data-col="3"] { --col-start: 40vw; }
+.column-section[data-col="4"] { --col-start: 60vw; }
+.column-section[data-col="5"] { --col-start: 80vw; }
 
 /* Article preview panel and push-apart motion */
 :root { --articleWidth: clamp(320px, 39vw, 860px); }
@@ -982,7 +1079,7 @@ body.about-open .about-panel {
     position: fixed;
     top: 0;
     bottom: 0; /* full viewport height */
-    left: 50%;
+    left: var(--seamX, 50%);
     transform: translateX(-50%) scaleX(0); /* grow from center */
     transform-origin: center center;
     opacity: 1;
@@ -1023,15 +1120,24 @@ body.article-open .article-panel { transform: translateX(-50%) scaleX(1); }
     will-change: transform, width; /* GPU acceleration hint */
 }
 
-/* For article preview: move background but keep text fixed */
-body.article-open .title-section { 
-    transform: none; 
-    background-position-x: calc(0px - (var(--articleWidth) / 2)); 
-}
-body.article-open .author-section { 
-    transform: none; 
-    background-position-x: calc(100% + (var(--articleWidth) / 2)); 
-}
+/* For article preview: columns move away from active seam as rigid slabs */
+body.article-open[data-open-seam="1"] .column-section[data-col="1"] { transform: translateX(calc(var(--articleWidth) * -0.50)); }
+body.article-open[data-open-seam="1"] .column-section[data-col="2"],
+body.article-open[data-open-seam="1"] .column-section[data-col="3"],
+body.article-open[data-open-seam="1"] .column-section[data-col="4"],
+body.article-open[data-open-seam="1"] .column-section[data-col="5"] { transform: translateX(calc(var(--articleWidth) * 0.50)); }
+
+body.article-open[data-open-seam="2"] .column-section[data-col="1"],
+body.article-open[data-open-seam="2"] .column-section[data-col="2"] { transform: translateX(calc(var(--articleWidth) * -0.50)); }
+body.article-open[data-open-seam="2"] .column-section[data-col="3"],
+body.article-open[data-open-seam="2"] .column-section[data-col="4"],
+body.article-open[data-open-seam="2"] .column-section[data-col="5"] { transform: translateX(calc(var(--articleWidth) * 0.50)); }
+
+body.article-open[data-open-seam="3"] .column-section[data-col="1"],
+body.article-open[data-open-seam="3"] .column-section[data-col="2"],
+body.article-open[data-open-seam="3"] .column-section[data-col="3"] { transform: translateX(calc(var(--articleWidth) * -0.50)); }
+body.article-open[data-open-seam="3"] .column-section[data-col="4"],
+body.article-open[data-open-seam="3"] .column-section[data-col="5"] { transform: translateX(calc(var(--articleWidth) * 0.50)); }
 
 /* Normal section movement for about/bio panels (text moves with sections) */
 body.about-open .title-section,
@@ -1045,7 +1151,27 @@ body.bio-open .author-section {
 }
 
 /* Transitions */
-.title-section, .author-section { 
+.column-section, .title-section, .author-section { 
     transition: transform var(--aboutDuration) ease-in-out, background-position var(--aboutDuration) ease-in-out; 
+}
+
+/* Five-column layout */
+.column-heading {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    margin: 0;
+    padding: 12px 10px 10px;
+    text-align: left;
+    font-family: 'Impact', sans-serif;
+    letter-spacing: 1px;
+    font-size: 20px;
+    color: rgba(0, 0, 0, 0.75);
+    background: linear-gradient(to bottom, rgba(255,255,255,0.55), rgba(255,255,255,0.05));
+    backdrop-filter: blur(1px);
+}
+
+.author-section .column-heading {
+    text-align: right;
 }
 
