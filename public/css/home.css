@@ -873,10 +873,11 @@ body.about-open .about-panel {
 /* Column 2 heading style */
 .column-section[data-col="2"] .section-heading-card .blog-title {
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    font-weight: 700;
+    font-weight: 1200;
     text-transform: none;
-    color: #0F28BE;
-    -webkit-text-fill-color: #0F28BE;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    -webkit-text-stroke: 2px #0F28BE;
     background-image: none;
     text-shadow: none;
 }
@@ -890,8 +891,9 @@ body.about-open .about-panel {
     font-family: "Didot", "Bodoni 72", "Baskerville", serif;
     font-weight: 700;
     text-transform: none;
-    color: #B1123A;
-    -webkit-text-fill-color: #B1123A;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    -webkit-text-stroke: 0.8px #B1123A;
     background-image: none;
     text-shadow: none;
 }
@@ -907,8 +909,9 @@ body.about-open .about-panel {
     font-style: normal;
     letter-spacing: normal;
     text-transform: none;
-    color: #3D9E4A;
-    -webkit-text-fill-color: #3D9E4A;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    -webkit-text-stroke: 0.8px #3D9E4A;
     background-image: none;
     text-shadow: none;
 }
