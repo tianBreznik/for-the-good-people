@@ -1009,26 +1009,44 @@ function positionCardsInSection(section, options = {}) {
         // measure single-line width
         let rect = title.getBoundingClientRect();
         const siteWidth = window.innerWidth;
-        const maxLeftColumnWidth = siteWidth * 0.3; // 30% of website width
+        const isMultiColumn = section.classList.contains('column-section');
+        // Old 2-column home: titles lived in ~50% width; 30vw cap made sense.
+        // Five-column grid: each column is ~20% — cap must be column width or long lines clip.
+        const maxWrapWidth = isMultiColumn
+            ? Math.max(64, section.clientWidth - 20)
+            : siteWidth * 0.3;
+        const stripW = Math.floor(maxWrapWidth);
 
-        // For left titles only: wrap to 2 lines if longer than 30% width
-        if (isTitleSection && rect.width > maxLeftColumnWidth) {
+        if (isTitleSection && rect.width > maxWrapWidth) {
             title.style.whiteSpace = 'normal';
-            title.style.display = 'inline-block';
-            title.style.maxWidth = `${Math.floor(maxLeftColumnWidth)}px`;
             title.style.wordBreak = 'break-word';
             title.style.overflowWrap = 'anywhere';
-            title.style.lineHeight = '1.05';
-            // clamp to 2 lines visually
-            title.style.webkitLineClamp = '2';
-            title.style.webkitBoxOrient = 'vertical';
-            title.style.display = '-webkit-box';
-            // re-measure after wrapping
+            title.style.lineHeight = '1.1';
+            title.style.maxWidth = `${stripW}px`;
+            if (isMultiColumn) {
+                title.style.display = 'block';
+                title.style.boxSizing = 'border-box';
+                title.style.width = `${stripW}px`;
+                title.style.removeProperty('-webkit-line-clamp');
+                title.style.removeProperty('-webkit-box-orient');
+            } else {
+                title.style.display = '-webkit-box';
+                title.style.webkitBoxOrient = 'vertical';
+                title.style.webkitLineClamp = '2';
+            }
+            title.offsetHeight;
+            rect = title.getBoundingClientRect();
+        } else if (isTitleSection && isMultiColumn) {
+            // Same full strip width as wrapped titles so centered cards share one text origin (left edge).
+            title.style.boxSizing = 'border-box';
+            title.style.display = 'block';
+            title.style.maxWidth = `${stripW}px`;
+            title.style.width = `${stripW}px`;
             title.offsetHeight;
             rect = title.getBoundingClientRect();
         }
 
-        const width = rect.width + 4;
+        const width = isTitleSection && isMultiColumn ? stripW + 4 : rect.width + 4;
         const height = rect.height + 2;
 
         card.style.position = 'absolute';

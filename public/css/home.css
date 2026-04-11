@@ -1068,6 +1068,8 @@ body.about-open .about-panel {
     background-position-x: calc(-1 * var(--col-start, 0vw));
     background-position-y: 0;
     background-repeat: repeat;
+    /* Keep slab motion on a stable layer; reduces post-transition text snap with clip-text inside */
+    will-change: transform;
 }
 
 .column-section[data-col="1"] { --col-start: 0vw; }
@@ -1153,9 +1155,10 @@ body.bio-open .author-section {
     transform: translateY(var(--bioHeight));
 }
 
-/* Transitions */
+/* Transitions: transform only — animating background-position in tandem can make
+   background-clip:text inside columns “crawl” or snap at the end even when bg pos is constant */
 .column-section, .title-section, .author-section { 
-    transition: transform var(--aboutDuration) ease-in-out, background-position var(--aboutDuration) ease-in-out; 
+    transition: transform var(--aboutDuration) ease-in-out;
 }
 
 /* Five-column layout */
