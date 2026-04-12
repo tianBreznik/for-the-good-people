@@ -8,6 +8,8 @@ try {
         topdiv.classList.add('fade');
         // clear the flag so subsequent visits behave normally
         sessionStorage.removeItem('justLoggedIn');
+        document.body.classList.add('home-titles-visible');
+        topdiv.style.display = 'none';
         // allow transitions again for future interactions
         requestAnimationFrame(() => { if (topdiv) topdiv.style.transition = ''; });
     }
@@ -1415,14 +1417,19 @@ function handleActionCard(cardId) {
     }
 }
 
-topdiv.onclick = () => {
-    topdiv.classList.toggle('fade');
-    navbar.style.position = 'relative';
-}
+if (topdiv) {
+    topdiv.addEventListener('transitionend', (e) => {
+        if (e.target !== topdiv || e.propertyName !== 'opacity') return;
+        if (!topdiv.classList.contains('fade')) return;
+        topdiv.style.display = 'none';
+        document.body.classList.add('home-titles-visible');
+    });
 
-topdiv.addEventListener("transitionend", () => {
-    topdiv.style.display = 'none';
-});
+    topdiv.onclick = () => {
+        topdiv.classList.toggle('fade');
+        if (navbar) navbar.style.position = 'relative';
+    };
+}
 
 
 
