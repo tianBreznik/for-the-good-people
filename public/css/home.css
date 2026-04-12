@@ -1109,20 +1109,22 @@ body.about-open .about-panel {
 .article-panel h2 { font-size: 22px; margin: 6px 0 10px; }
 
 /* Push sections apart when article is open */
-body.article-open .article-panel { transform: translateX(-50%) scaleX(1); }
+body.article-open .article-panel {
+    transform: translateX(-50%) scaleX(1);
+    cursor: pointer; /* click panel to open full post in reader */
+}
 
-/* Fullscreen expansion animation for article panel on click */
+/* Fullscreen expansion: same panel, same seam anchor; width > 100vw when seam is off-center so
+   translateX(-50%) still covers the full viewport (set via --articleExpandWidth in JS). */
 .article-panel.expanding-fullscreen {
-    width: 100vw !important;
-    height: 100vh !important;
-    top: 0 !important;
-    left: 50% !important;
-    transform: translateX(-50%) scaleX(1) !important;
-    /* Only animate transform and width for smoother performance */
-    transition: width var(--aboutDuration) ease-in-out, 
-                transform var(--aboutDuration) ease-in-out !important;
+    width: var(--articleExpandWidth, 100vw) !important;
+    transition: width var(--aboutDuration) ease-in-out !important;
     z-index: 9999 !important;
-    will-change: transform, width; /* GPU acceleration hint */
+    will-change: width;
+}
+
+body.article-open:has(.article-panel.expanding-fullscreen) {
+    overflow-x: hidden;
 }
 
 /* For article preview: columns move away from active seam as rigid slabs */

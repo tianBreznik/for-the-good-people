@@ -23,6 +23,7 @@ let popup = null; // The growing popup object
 let physicsActive = false; // Whether physics simulation is running
 let animationFrameId = null; // For the physics animation loop
 let hoverTimer = null; // Timer for 2-second hover delay
+let articlePreviewUiBound = false;
 
 const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
 const SEAM_BY_SECTION = { 1: 1, 2: 2, 3: 2, 4: 3 };
@@ -683,10 +684,15 @@ function setActivePreviewSeam(seamIndex) {
     const seamX = `${seamIndex * 20}vw`;
     document.documentElement.style.setProperty('--seamX', seamX);
     document.body.setAttribute('data-open-seam', String(seamIndex));
+    // Preview is centered on the seam; full-bleed grow needs width > 100vw when seam ≠ 50%
+    const c = (seamIndex * 20) / 100;
+    const expandVw = 200 * Math.max(c, 1 - c);
+    document.documentElement.style.setProperty('--articleExpandWidth', `${expandVw}vw`);
 }
 
 function clearActivePreviewSeam() {
     document.body.removeAttribute('data-open-seam');
+    document.documentElement.style.removeProperty('--articleExpandWidth');
 }
 
 function createBlogCard(blog, section, sectionIndex) {
@@ -1073,6 +1079,38 @@ function positionCardsInSection(section, options = {}) {
     });
 }
 
+function closeArticlePreview() {
+    document.body.classList.remove('article-open');
+    clearActivePreviewSeam();
+    const panel = document.querySelector('.article-panel');
+    if (panel) delete panel.dataset.blogId;
+}
+
+/** Click preview panel → reader; click outside panel (not on a title card) → close preview. */
+function ensureArticlePreviewUi() {
+    if (articlePreviewUiBound) return;
+    const articlePanel = document.querySelector('.article-panel');
+    if (!articlePanel) return;
+    articlePreviewUiBound = true;
+
+    articlePanel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = articlePanel.dataset.blogId;
+        if (id) playExpandFullscreenThenNavigate(id);
+    });
+
+    document.addEventListener(
+        'click',
+        (e) => {
+            if (!document.body.classList.contains('article-open')) return;
+            if (e.target.closest('.article-panel')) return;
+            if (e.target.closest('.blog-card')) return;
+            closeArticlePreview();
+        },
+        true
+    );
+}
+
 function setupHoverInteractions() {
     console.log('Setting up hover interactions...');
     
@@ -1116,17 +1154,9 @@ function setupHoverInteractions() {
                 if (titleEl) titleEl.textContent = title;
                 if (previewEl) previewEl.textContent = preview;
                 if (authorEl) authorEl.textContent = `@${author}`;
+                articleEl.dataset.blogId = card.dataset.blogId || '';
                 setActivePreviewSeam(seamIndex);
                 document.body.classList.add('article-open');
-                // arm close on first mousemove after short delay
-                setTimeout(() => {
-                    const closer = () => {
-                        document.body.classList.remove('article-open');
-                        clearActivePreviewSeam();
-                        document.removeEventListener('mousemove', closer, true);
-                    };
-                    document.addEventListener('mousemove', closer, true);
-                }, 150);
             }, 1200);
         });
         
@@ -1146,6 +1176,8 @@ function setupHoverInteractions() {
             // nothing else to do on leave
         });
     });
+
+    ensureArticlePreviewUi();
     
     // Add hover listeners to author cards
     authorCards.forEach(authorCard => {
@@ -1200,6 +1232,24 @@ function derivePreviewFromArticle(articleText) {
     return text;
 }
 
+/** Full-width grow animation, then navigate to blog reader (matches --aboutDuration). */
+function playExpandFullscreenThenNavigate(blogId) {
+    const articlePanel = document.querySelector('.article-panel');
+    if (!articlePanel) {
+        location.href = `/${blogId}`;
+        return;
+    }
+    articlePanel.classList.remove('expanding-fullscreen');
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            articlePanel.classList.add('expanding-fullscreen');
+            setTimeout(() => {
+                location.href = `/${blogId}`;
+            }, 800);
+        });
+    });
+}
+
 function expandArticlePanelAndNavigate(blogId, card) {
     const articlePanel = document.querySelector('.article-panel');
     if (!articlePanel) {
@@ -1207,7 +1257,8 @@ function expandArticlePanelAndNavigate(blogId, card) {
         location.href = `/${blogId}`;
         return;
     }
-    
+    articlePanel.dataset.blogId = blogId;
+
     // First, populate the article panel with content from the card
     const titleEl = document.getElementById('article-title');
     const previewEl = document.getElementById('article-preview');
@@ -1224,20 +1275,8 @@ function expandArticlePanelAndNavigate(blogId, card) {
     if (authorEl) authorEl.textContent = `@${author}`;
     
     setActivePreviewSeam(seamIndex);
-    // Open the article panel to its normal size first
     document.body.classList.add('article-open');
-    
-    // Wait a frame for the initial panel open, then trigger fullscreen expansion
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            articlePanel.classList.add('expanding-fullscreen');
-            
-            // Wait for the expansion animation to complete, then navigate
-            setTimeout(() => {
-                location.href = `/${blogId}`;
-            }, 800); // Match --aboutDuration
-        });
-    });
+    playExpandFullscreenThenNavigate(blogId);
 }
 
 function updateLoginButton(user) {
