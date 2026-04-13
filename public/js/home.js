@@ -1,6 +1,34 @@
 const blogSection = document.querySelector('.blogs-section');
 const topdiv = document.querySelector('#first-container');
 
+let titleEmergeClearTimer = null;
+
+function parseCssDurationMs(value) {
+    const v = String(value || '').trim();
+    if (!v) return 680;
+    const n = parseFloat(v);
+    if (Number.isNaN(n)) return 680;
+    if (v.endsWith('ms')) return Math.round(n);
+    if (v.endsWith('s')) return Math.round(n * 1000);
+    return Math.round(n);
+}
+
+/** After first-container is gone: show titles + one-shot filter emerge (class removed after animation). */
+function revealHomeTitlesWithEmerge() {
+    document.body.classList.add('home-titles-visible');
+    document.body.classList.add('home-titles-emerging');
+    if (titleEmergeClearTimer) clearTimeout(titleEmergeClearTimer);
+    const raw =
+        typeof getComputedStyle !== 'undefined'
+            ? getComputedStyle(document.documentElement).getPropertyValue('--homeTitleFadeDuration')
+            : '';
+    const ms = parseCssDurationMs(raw);
+    titleEmergeClearTimer = setTimeout(() => {
+        titleEmergeClearTimer = null;
+        document.body.classList.remove('home-titles-emerging');
+    }, ms + 80);
+}
+
 // If we just returned from login, skip showing the entry overlay transition entirely
 try {
     if (sessionStorage.getItem('justLoggedIn') === '1' && topdiv) {
@@ -8,7 +36,7 @@ try {
         topdiv.classList.add('fade');
         // clear the flag so subsequent visits behave normally
         sessionStorage.removeItem('justLoggedIn');
-        document.body.classList.add('home-titles-visible');
+        revealHomeTitlesWithEmerge();
         topdiv.style.display = 'none';
         // allow transitions again for future interactions
         requestAnimationFrame(() => { if (topdiv) topdiv.style.transition = ''; });
@@ -26,6 +54,7 @@ let physicsActive = false; // Whether physics simulation is running
 let animationFrameId = null; // For the physics animation loop
 let hoverTimer = null; // Timer for 2-second hover delay
 let articlePreviewUiBound = false;
+let previewAutoCloseTimer = null;
 
 const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
 const SEAM_BY_SECTION = { 1: 1, 2: 2, 3: 2, 4: 3 };
@@ -1082,6 +1111,10 @@ function positionCardsInSection(section, options = {}) {
 }
 
 function closeArticlePreview() {
+    if (previewAutoCloseTimer) {
+        clearTimeout(previewAutoCloseTimer);
+        previewAutoCloseTimer = null;
+    }
     document.body.classList.remove('article-open');
     clearActivePreviewSeam();
     const panel = document.querySelector('.article-panel');
@@ -1108,6 +1141,39 @@ function ensureArticlePreviewUi() {
             if (e.target.closest('.article-panel')) return;
             if (e.target.closest('.blog-card')) return;
             closeArticlePreview();
+        },
+        true
+    );
+
+    // Close preview when pointer leaves the panel (no outside click required).
+    document.addEventListener(
+        'mousemove',
+        (e) => {
+            if (!document.body.classList.contains('article-open')) return;
+            if (!articlePanel || articlePanel.classList.contains('expanding-fullscreen')) return;
+            const rect = articlePanel.getBoundingClientRect();
+            const insidePanel =
+                e.clientX >= rect.left &&
+                e.clientX <= rect.right &&
+                e.clientY >= rect.top &&
+                e.clientY <= rect.bottom;
+
+            if (insidePanel) {
+                if (previewAutoCloseTimer) {
+                    clearTimeout(previewAutoCloseTimer);
+                    previewAutoCloseTimer = null;
+                }
+                return;
+            }
+
+            if (!previewAutoCloseTimer) {
+                previewAutoCloseTimer = setTimeout(() => {
+                    previewAutoCloseTimer = null;
+                    if (document.body.classList.contains('article-open')) {
+                        closeArticlePreview();
+                    }
+                }, 90);
+            }
         },
         true
     );
@@ -1422,7 +1488,7 @@ if (topdiv) {
         if (e.target !== topdiv || e.propertyName !== 'opacity') return;
         if (!topdiv.classList.contains('fade')) return;
         topdiv.style.display = 'none';
-        document.body.classList.add('home-titles-visible');
+        revealHomeTitlesWithEmerge();
     });
 
     topdiv.onclick = () => {

@@ -9,7 +9,8 @@
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
     --bioHeight: clamp(36px, 6vh, 78px);
-    --homeOverlayFadeDuration: 1550ms;
+    --homeTextSubmergeDuration: 1300ms;
+    --homeOverlayClearDuration: 220ms;
     --homeTitleFadeDuration: 680ms;
     --homeTitleFadeDelay: 0ms;
 }
@@ -315,12 +316,34 @@ body.about-open .about-panel {
     width: 100%;
     height: 100%;
     opacity: 1;
-    transition: opacity var(--homeOverlayFadeDuration) ease-out;
+    transition: opacity var(--homeOverlayClearDuration) ease-out calc(var(--homeTextSubmergeDuration) - var(--homeOverlayClearDuration));
     z-index:100;
 }
 
 #first-container.fade{
     opacity: 0;
+}
+
+/* Keep resting style untouched; animate only when .fade toggles on. */
+#top-text,
+#bottom-text,
+#top-text::before,
+#bottom-text::before {
+    transition:
+        filter var(--homeTextSubmergeDuration) ease-out,
+        opacity var(--homeTextSubmergeDuration) ease-out;
+}
+
+#first-container.fade #top-text,
+#first-container.fade #bottom-text {
+    filter: blur(1.9px) saturate(0.82) brightness(0.92) contrast(0.9);
+    opacity: 0.24;
+}
+
+#first-container.fade #top-text::before,
+#first-container.fade #bottom-text::before {
+    filter: brightness(0.73) contrast(1.2) blur(2.8px);
+    opacity: 0.08;
 }
 
 /* Entry overlay: keep column titles invisible until overlay opacity hits 0 (see home.js). */
@@ -338,6 +361,20 @@ body:not(.home-titles-visible) .column-section .blog-title {
 body.home-titles-visible .column-section .blog-title {
     opacity: 1;
     transition-delay: var(--homeTitleFadeDelay);
+}
+
+/* One-shot “de-submerge” on titles: only while `home-titles-emerging` is set (see home.js). */
+@keyframes home-title-emerge-filter {
+    from {
+        filter: blur(1.9px) saturate(0.82) brightness(0.92) contrast(0.9);
+    }
+    to {
+        filter: none;
+    }
+}
+
+body.home-titles-visible.home-titles-emerging .column-section .blog-title {
+    animation: home-title-emerge-filter var(--homeTitleFadeDuration) ease-out forwards;
 }
 
 #first-container-hold {
