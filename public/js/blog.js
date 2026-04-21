@@ -9,12 +9,13 @@ let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oc
 let numberofcomments = 0;
 let commenttracker = [];
 
-// Scroll fade system variables
-let currentScreen = 0;
-let screens = [];
-let isTransitioning = false;
-let scrollAccumulator = 0;
-const SCROLL_THRESHOLD = 50; // How much scroll to trigger transition
+let commentsReady = false;
+let readerReady = false;
+let commentsListenerAttached = false;
+let articleLinesCache = [];
+let spreadResizeBound = false;
+let spreadReflowTimer = null;
+let currentBlogMeta = null;
 
 docRef.get().then((doc) => {
     if(doc.exists){
@@ -24,19 +25,14 @@ docRef.get().then((doc) => {
     }
 })
 
-// Store comment loading state
-let commentsReady = false;
-let screensReady = false;
-
 commentRef.get().then((comms) => {
     console.log(numberofcomments);
     commentsReady = true;
-    if(comms.exists){
-        if(screensReady) {
-            setupCommentSection();
-        }
-    } else{
+    if (!comms.exists) {
         console.log("no comments yet");
+    }
+    if (readerReady) {
+        setupCommentSection();
     }
 })
 
@@ -92,6 +88,8 @@ function submitComment(commentindex) {
 }
 
 const setupCommentSection = () => {
+    if (commentsListenerAttached) return;
+    commentsListenerAttached = true;
     db.collection("comments").onSnapshot((comments) => {
         comments.forEach(comment => {
             console.log("before: " + comment.id);
@@ -147,83 +145,171 @@ const createComment = (comment, commentid) => {
 }
 
 const setupBlog = (data) => {
-    const blogTitle = document.querySelector('.title');
     const titleTag = document.querySelector('title');
-    const publish = document.querySelector('.published');
-    
-    titleTag.innerHTML += blogTitle.innerHTML = data.title;
-    publish.innerHTML += data.publishedAt;
-    publish.innerHTML += ` -- ${data.author}`;
+    const title = data.title || '';
+    const publishedAt = data.publishedAt || '';
+    const author = data.author || 'Anonymous';
+
+    titleTag.textContent = title ? `Blog : ${title}` : 'Blog';
+    currentBlogMeta = { title, publishedAt, author };
 
     numberofcomments = data.numberofcomments;
 
-    // Create screen-based content system
-    createContentScreens(data.article);
-    
-    // Initialize scroll fade system
-    initializeScrollFade();
+    renderArticleBody(data.article);
 }
 
-const createContentScreens = (articleData) => {
-    const contentScreens = document.getElementById('content-screens');
-    const commentScreen = document.getElementById('comment-screen');
-    
-    // Parse article content and create chunks
-    const chunks = parseArticleIntoChunks(articleData);
-    
-    // Create screens for content chunks
-    chunks.forEach((chunk, index) => {
-        const screen = document.createElement('div');
-        screen.className = 'content-screen';
-        screen.id = `screen-${index}`;
-        screen.innerHTML = chunk;
-        contentScreens.appendChild(screen);
-        screens.push(screen);
-    });
-    
-    // Make sure comment screen is properly set up
-    commentScreen.classList.add('content-screen');
-    commentScreen.style.display = 'block'; // Remove the hidden style from HTML
-    contentScreens.appendChild(commentScreen);
-    screens.push(commentScreen);
-    
-    // Show first screen
-    if (screens.length > 0) {
-        screens[0].classList.add('active');
+
+function createInlineMasthead(meta) {
+    const wrap = document.createElement('section');
+    wrap.className = 'article-inline-masthead';
+
+    const titleEl = document.createElement('h1');
+    titleEl.className = 'title';
+    titleEl.textContent = meta?.title || '';
+
+    const publishedEl = document.createElement('p');
+    publishedEl.className = 'published';
+    publishedEl.innerHTML = `<span>published at - </span>${meta?.publishedAt || ''} -- ${meta?.author || 'Anonymous'}`;
+
+    wrap.appendChild(titleEl);
+    wrap.appendChild(publishedEl);
+    return wrap;
+}
+
+function getSpreadTargetHeight() {
+    return Math.max(Math.floor(window.innerHeight * 0.89), 590);
+}
+
+function createSpread() {
+    const spread = document.createElement('section');
+    spread.className = 'article-spread';
+
+    const leftPage = document.createElement('div');
+    leftPage.className = 'article-page article-page-left';
+
+    const rightPage = document.createElement('div');
+    rightPage.className = 'article-page article-page-right';
+
+    spread.appendChild(leftPage);
+    spread.appendChild(rightPage);
+
+    return { spread, leftPage, rightPage };
+}
+
+function createArticleNode(line) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = formatLine(line).trim();
+    return wrapper.firstElementChild || document.createElement('p');
+}
+
+function splitParagraphToFit(pageEl, paragraphEl, spreadHeight) {
+    if (!paragraphEl || paragraphEl.tagName !== 'P') return null;
+    const text = (paragraphEl.textContent || '').trim();
+    if (!text) return null;
+    const words = text.split(/\s+/);
+    if (words.length < 12) return null;
+
+    let low = 1;
+    let high = words.length - 1;
+    let best = 0;
+
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const probe = document.createElement('p');
+        probe.textContent = words.slice(0, mid).join(' ');
+        pageEl.appendChild(probe);
+        const fits = pageEl.scrollHeight <= spreadHeight;
+        pageEl.removeChild(probe);
+
+        if (fits) {
+            best = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
     }
-    
-    // Mark screens as ready and trigger comment loading if ready
-    screensReady = true;
+
+    if (best <= 3 || best >= words.length - 3) return null;
+
+    const leftPart = document.createElement('p');
+    leftPart.textContent = words.slice(0, best).join(' ');
+
+    const rightPart = document.createElement('p');
+    rightPart.textContent = words.slice(best).join(' ');
+
+    return { leftPart, rightPart };
+}
+
+function renderArticleSpread(lines) {
+    const articleBody = document.getElementById('article-body');
+    if (!articleBody) return;
+
+    articleBody.innerHTML = '';
+
+    const spreadHeight = getSpreadTargetHeight();
+    let currentSpread = createSpread();
+    articleBody.appendChild(currentSpread.spread);
+
+    let currentPage = currentSpread.leftPage;
+    currentPage.appendChild(createInlineMasthead(currentBlogMeta));
+
+    const moveToNextPage = () => {
+        if (currentPage === currentSpread.leftPage) {
+            currentPage = currentSpread.rightPage;
+            return;
+        }
+        currentSpread = createSpread();
+        articleBody.appendChild(currentSpread.spread);
+        currentPage = currentSpread.leftPage;
+    };
+
+    lines.forEach((line) => {
+        const node = createArticleNode(line);
+        currentPage.appendChild(node);
+
+        const minChildren = currentPage.querySelector('.article-inline-masthead') ? 2 : 1;
+        if (currentPage.scrollHeight > spreadHeight && currentPage.childElementCount > minChildren) {
+            currentPage.removeChild(node);
+            const split = splitParagraphToFit(currentPage, node, spreadHeight);
+            if (split) {
+                currentPage.appendChild(split.leftPart);
+                moveToNextPage();
+                currentPage.appendChild(split.rightPart);
+            } else {
+                moveToNextPage();
+                currentPage.appendChild(node);
+            }
+        }
+    });
+
+    const commentBlock = document.getElementById('comment-screen');
+    if (commentBlock) {
+        currentPage.appendChild(commentBlock);
+    }
+
+    articleBody.dataset.lastPage = (currentPage === currentSpread.rightPage) ? 'right' : 'left';
+}
+
+const renderArticleBody = (articleData) => {
+    articleLinesCache = (articleData || '').split("\n").filter(item => item.length);
+    renderArticleSpread(articleLinesCache);
+
+    if (!spreadResizeBound) {
+        spreadResizeBound = true;
+        window.addEventListener('resize', () => {
+            clearTimeout(spreadReflowTimer);
+            spreadReflowTimer = setTimeout(() => {
+                if (articleLinesCache.length) {
+                    renderArticleSpread(articleLinesCache);
+                }
+            }, 140);
+        });
+    }
+
+    readerReady = true;
     if (commentsReady) {
         setupCommentSection();
     }
-}
-
-const parseArticleIntoChunks = (articleData) => {
-    const lines = articleData.split("\n").filter(item => item.length);
-    const chunks = [];
-    let currentChunk = '';
-    let lineCount = 0;
-    const maxLinesPerScreen = 15; // Adjust based on viewport height
-    
-    lines.forEach(line => {
-        currentChunk += formatLine(line);
-        lineCount++;
-        
-        // Create new chunk when reaching max lines or encountering major break
-        if (lineCount >= maxLinesPerScreen || line.startsWith('#') && lineCount > 5) {
-            chunks.push(currentChunk);
-            currentChunk = '';
-            lineCount = 0;
-        }
-    });
-    
-    // Add remaining content as final chunk
-    if (currentChunk.trim()) {
-        chunks.push(currentChunk);
-    }
-    
-    return chunks;
 }
 
 const formatLine = (line) => {
@@ -255,75 +341,6 @@ const formatLine = (line) => {
         return `<p>${line}</p>`;
     }
 }
-
-const initializeScrollFade = () => {
-    let wheelTimeout;
-    
-    const handleWheel = (e) => {
-        if (isTransitioning) return;
-        
-        const activeScreen = screens[currentScreen];
-        if (!activeScreen) return;
-        
-        // Check if the active screen is scrollable and has content overflow
-        const isScrollable = activeScreen.scrollHeight > activeScreen.clientHeight;
-        const isAtTop = activeScreen.scrollTop <= 0;
-        const isAtBottom = activeScreen.scrollTop >= activeScreen.scrollHeight - activeScreen.clientHeight;
-        
-        // Allow normal scrolling within the active screen if it's scrollable
-        if (isScrollable && !isAtTop && !isAtBottom) {
-            // Let the screen handle its own scrolling
-            return;
-        }
-        
-        // Only prevent default and handle screen transitions at boundaries
-        if ((e.deltaY > 0 && isAtBottom) || (e.deltaY < 0 && isAtTop)) {
-            e.preventDefault();
-            
-            scrollAccumulator += e.deltaY;
-            
-            clearTimeout(wheelTimeout);
-            wheelTimeout = setTimeout(() => {
-                if (Math.abs(scrollAccumulator) >= SCROLL_THRESHOLD) {
-                    if (scrollAccumulator > 0 && isAtBottom) {
-                        nextScreen();
-                    } else if (scrollAccumulator < 0 && isAtTop) {
-                        previousScreen();
-                    }
-                    scrollAccumulator = 0;
-                }
-            }, 50);
-        }
-    };
-    
-    document.addEventListener('wheel', handleWheel, { passive: false });
-};
-
-const nextScreen = () => {
-    if (currentScreen < screens.length - 1 && !isTransitioning) {
-        isTransitioning = true;
-        screens[currentScreen].classList.remove('active');
-        currentScreen++;
-        screens[currentScreen].classList.add('active');
-        
-        setTimeout(() => {
-            isTransitioning = false;
-        }, 600);
-    }
-};
-
-const previousScreen = () => {
-    if (currentScreen > 0 && !isTransitioning) {
-        isTransitioning = true;
-        screens[currentScreen].classList.remove('active');
-        currentScreen--;
-        screens[currentScreen].classList.add('active');
-        
-        setTimeout(() => {
-            isTransitioning = false;
-        }, 600);
-    }
-};
 
 const addArticle = (ele, data) => {
     data = data.split("\n").filter(item => item.length);

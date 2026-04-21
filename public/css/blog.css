@@ -1,120 +1,223 @@
-/* Prevent scrolling and set up fixed viewport */
+/* Vertical scroll reader; two-column article body */
+
+html {
+    background: #fff;
+}
+
+/* Full-viewport paper + speckle (same as home preview) so gutters, title, and comments match */
 body {
-    height: 100vh;
-    overflow: hidden;
     margin: 0;
     padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 100vh;
+    position: relative;
+    background: #fff;
+    color: #222;
+    isolation: isolate;
+}
+
+body::before,
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 0;
+}
+
+body::after {
+    opacity: 0.18;
+    background-size: 120px 120px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+body::before {
+    opacity: 0.1;
+    background-image: repeating-radial-gradient(rgba(0, 0, 0, 0.14) 0 0.7px, transparent 0.7px 2px);
+    background-size: 3.2px 3.2px;
 }
 
 .blog {
     position: relative;
-    height: 100vh;
-    overflow: hidden;
-}
-
-/* Header section with title and metadata */
-.blog > .article:first-child {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: white;
-    padding: 20px;
-    column-count: 2;
-    column-gap: 40px;
-    max-width: 1200px;
+    z-index: 1;
+    max-width: min(1340px, calc(100vw - 40px));
     margin: 0 auto;
-}
-
-/* Content screens system */
-#content-screens {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-}
-
-.content-screen {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 120px 20px 20px 20px; /* Top padding to account for fixed header */
-    column-count: 2;
-    column-gap: 40px;
-    /* Fill columns sequentially (left fully, then right) rather than balancing */
-    column-fill: auto;
-    -webkit-column-fill: auto;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 600ms ease-in-out, visibility 600ms ease-in-out;
-    overflow-y: auto;
+    padding: 52px 20px 56px;
     box-sizing: border-box;
+    background: transparent;
 }
 
-.content-screen.active {
-    opacity: 1;
-    visibility: visible;
-}
-
-.content-screen * {
-    word-break: break-word;
-    margin: 20px 0;
-    color: #2d2d2d;
-    break-inside: avoid;
-}
-
-/* Comment screen */
-#comment-screen {
-    padding-top: 120px;
+/* Hide legacy top masthead; title now renders in first content page */
+.blog > .article:first-child {
+    display: none;
 }
 
 .title{
     min-height: auto;
     height: fit-content;
     white-space: normal;
-    margin: 0 0 20px 0;
-    break-after: avoid;
+    margin: 0 0 12px 0;
+    font-size: clamp(1.5rem, 2.8vw, 2.1rem);
+    line-height: 1.18;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #1a1a1a;
 }
 
 .published{
-    margin: 0 0 40px 0;
+    margin: 0;
     padding: 0;
+    font-size: clamp(0.88rem, 1.02vw, 1rem);
     text-transform: capitalize;
     font-style: italic;
     color: rgba(0, 0, 0, 0.5);
-    break-after: avoid;
 }
 
-/* Article content flows naturally into columns */
-.article-content {
-    break-inside: auto;
+.published span{
+    font-weight: 700;
+    font-style: normal;
 }
 
-/* Comment section flows at end of article content */
+/* Article spread: explicit left/right pages (left fills first, overflow goes right) */
+:root {
+    --spread-gap: clamp(46px, 6vw, 78px);
+}
+
+#article-body.article-columns {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 1.2vw, 16px);
+    padding: clamp(8px, 1vw, 14px) clamp(24px, 3vw, 36px) 0;
+    box-sizing: border-box;
+    background: transparent;
+    margin: 0;
+}
+
+#article-body .article-spread {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--spread-gap);
+    align-items: start;
+}
+
+#article-body .article-page {
+    min-width: 0;
+}
+
+.article-inline-masthead {
+    margin: 0 0 clamp(14px, 1.8vw, 26px);
+}
+
+.article-inline-masthead .title {
+    margin: 0 0 10px;
+}
+
+.article-inline-masthead .published {
+    margin: 0;
+}
+
+/* Ink type: match .article-panel p / h2 (larger sizes for full reader) */
+#article-body .article-page p,
+#article-body .article-page h1,
+#article-body .article-page h2,
+#article-body .article-page h3,
+#article-body .article-page h4,
+#article-body .article-page h5,
+#article-body .article-page h6 {
+    position: relative;
+    z-index: 1;
+    word-break: break-word;
+    margin: clamp(12px, 1.25vw, 18px) 0;
+    break-inside: avoid;
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.48;
+    font-size: clamp(16px, 1.05vw, 18px);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-image:
+        linear-gradient(#171717, #171717),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 48px 48px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.45);
+    text-shadow: 0 0 0.45px rgba(0, 0, 0, 0.32);
+    -webkit-font-smoothing: none;
+}
+
+#article-body .article-page h1 {
+    font-size: clamp(1.2rem, 1.55vw, 1.6rem);
+    line-height: 1.2;
+    margin-top: 0.35em;
+}
+
+#article-body .article-page h2 {
+    font-size: clamp(1.08rem, 1.3vw, 1.35rem);
+    line-height: 1.25;
+}
+
+#article-body .article-page h3 {
+    font-size: clamp(1rem, 1.08vw, 1.18rem);
+}
+
+#article-body .article-page h4,
+#article-body .article-page h5,
+#article-body .article-page h6 {
+    font-size: clamp(0.92rem, 0.92vw, 1rem);
+}
+
+#article-body .article-page .article-image {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: auto;
+    display: block;
+    margin: clamp(12px, 1.5vw, 20px) 0 clamp(18px, 2vw, 28px);
+    object-fit: contain;
+    break-inside: avoid;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+/* Comments: same continuous sheet — no rule above */
+.comment-block {
+    clear: none;
+    padding: clamp(8px, 1vw, 14px) 0 0;
+    margin: 0;
+    background: transparent;
+    max-width: 100%;
+}
+
 .comment-section {
-    margin-top: 60px;
+    margin-top: 0;
     break-inside: auto;
-    /* Footnote-like typography */
     font-size: 12px;
     line-height: 1.35;
     color: #444;
     counter-reset: footnote;
+    background: transparent;
 }
 
-/* Footnote-like, very condensed comments */
+
+#commentForm {
+    background: transparent;
+}
+
 .comment-card {
-    display: block; /* stack vertically within each column */
-    margin: 6px 0; /* tighter vertical rhythm */
+    display: block;
+    margin: 6px 0;
     padding: 2px 0;
-    max-width: 360px; /* keep a comfortable measure */
-    margin-left: auto; /* offset to the right side within the column */
-    text-align: left; /* keep text readable */
+    max-width: 360px;
+    margin-left: auto;
+    text-align: left;
     position: relative;
 }
 
@@ -122,11 +225,11 @@ body {
     counter-increment: footnote;
     content: counter(footnote);
     display: inline-block;
-    vertical-align: super; /* superscript-style placement */
-    font-size: 10px; /* smaller like footnote marker */
+    vertical-align: super;
+    font-size: 10px;
     line-height: 1;
     color: #666;
-    margin-right: 2px; /* tighter gap to comment text */
+    margin-right: 2px;
 }
 
 .comment-card .user {
@@ -145,25 +248,40 @@ body {
 
 .comment-card .reply {
     display: inline-block;
-    margin: 2px 0 0 0; /* closer under the content */
+    margin: 2px 0 0 0;
     padding: 2px 6px;
     font-size: 11px;
 }
 
 input[type=text] {
     width: 100%;
-    padding: 12px 20px;
+    max-width: 520px;
+    padding: 12px 16px;
     margin: 8px 0;
     box-sizing: border-box;
-    border: none;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.22);
+    -webkit-appearance: none;
+    appearance: none;
+    font: inherit;
+    color: #222;
 }
 
-.published span{
-    font-weight: 700;
-    font-style: normal;
+input[type=text]::placeholder {
+    color: rgba(0, 0, 0, 0.45);
 }
 
-/* Avoid awkward splits across columns for block-level elements */
+input[type=text]:focus {
+    outline: none;
+    border-color: rgba(0, 0, 0, 0.28);
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.article-content {
+    break-inside: auto;
+}
+
 .article-content * {
     word-break: break-word;
     margin: 20px 0;
@@ -171,13 +289,15 @@ input[type=text] {
     break-inside: avoid;
 }
 
-.article-image{
-    width: 100%;
-    height: auto;
-    display: block;
-    margin: 10px 0 20px 0;
-    object-fit: contain;
-    break-inside: avoid;
+@media (max-width: 768px) {
+    #article-body.article-columns {
+        grid-template-columns: 1fr;
+        gap: clamp(18px, 3vw, 28px);
+    }
+
+    #article-body .article-column-left {
+        min-height: 0;
+    }
 }
 
 .sub-heading{
