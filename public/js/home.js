@@ -79,6 +79,248 @@ const SECTION_LABELS = {
     4: 'ideas'
 };
 
+function englishOrdinalDay(n) {
+    const j = n % 10;
+    const k = n % 100;
+    if (k >= 11 && k <= 13) return `${n}th`;
+    if (j === 1) return `${n}st`;
+    if (j === 2) return `${n}nd`;
+    if (j === 3) return `${n}rd`;
+    return `${n}th`;
+}
+
+function formatPublishedReadable(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    const month = d.toLocaleDateString('en-US', { month: 'long' });
+    return `${englishOrdinalDay(d.getDate())} of ${month} ${d.getFullYear()}`;
+}
+
+function mastheadAuthorColor(name) {
+    const s = String(name || '');
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    const hue = (h >>> 0) % 360;
+    return `hsl(${hue}, 66%, 42%)`;
+}
+
+function createPreviewNodeFromLine(line) {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('#')) {
+        const marks = (trimmed.match(/^#+/) || [''])[0].length;
+        const level = Math.min(6, Math.max(1, marks));
+        const h = document.createElement(`h${level}`);
+        h.textContent = trimmed.slice(marks).trim();
+        return h;
+    }
+    if (trimmed.startsWith('![')) return null;
+    const p = document.createElement('p');
+    p.textContent = trimmed;
+    return p;
+}
+
+function articleBlocksFromRaw(rawArticle) {
+    const source = String(rawArticle || '').trim();
+    if (!source) return [];
+
+    if (source.includes('<') && source.includes('>')) {
+        const container = document.createElement('div');
+        container.innerHTML = source;
+        const blocks = [];
+        container.childNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node;
+                if (el.matches('p[data-variant="footnote"]')) return;
+                blocks.push(el.cloneNode(true));
+            } else if (node.nodeType === Node.TEXT_NODE && node.textContent && node.textContent.trim()) {
+                const p = document.createElement('p');
+                p.textContent = node.textContent.trim();
+                blocks.push(p);
+            }
+        });
+        return blocks;
+    }
+
+    return source
+        .split('\n')
+        .map(createPreviewNodeFromLine)
+        .filter(Boolean);
+}
+
+function copyPreviewElementShell(from, to) {
+    if (!from || !to) return;
+    if (from.className) to.className = from.className;
+    for (let i = 0; i < from.attributes.length; i++) {
+        const attr = from.attributes[i];
+        if (attr.name === 'class' || attr.name === 'id') continue;
+        to.setAttribute(attr.name, attr.value);
+    }
+}
+
+function wrapSplitParagraphForPreview(p, sourceBlock) {
+    if (!p) return null;
+    if (!sourceBlock) return p;
+    if (sourceBlock.tagName === 'BLOCKQUOTE') {
+        const shell = sourceBlock.cloneNode(false);
+        const modelP =
+            sourceBlock.querySelector('p:not([data-variant="attribution"])') ||
+            sourceBlock.querySelector('p');
+        if (modelP) copyPreviewElementShell(modelP, p);
+        shell.appendChild(p);
+        return shell;
+    }
+    if (sourceBlock.tagName === 'P') {
+        copyPreviewElementShell(sourceBlock, p);
+    }
+    return p;
+}
+
+function makePreviewSplitProbe(mid, words, sourceBlock) {
+    const p = document.createElement('p');
+    p.textContent = `${words.slice(0, mid).join(' ')}…`;
+    return wrapSplitParagraphForPreview(p, sourceBlock);
+}
+
+function splitPreviewTextToFit(bodyEl, rawText, sourceBlock) {
+    if (!bodyEl || !rawText) return null;
+    const text = String(rawText).trim().replace(/\s+/g, ' ');
+    if (!text) return null;
+    const words = text.split(/\s+/);
+    if (words.length < 8) return null;
+
+    void bodyEl.offsetHeight;
+    const budget = bodyEl.clientHeight;
+    if (budget < 32) return null;
+
+    let low = 1;
+    let high = words.length - 1;
+    let best = 0;
+
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const probe = makePreviewSplitProbe(mid, words, sourceBlock);
+        bodyEl.appendChild(probe);
+        void bodyEl.offsetHeight;
+        const fits = bodyEl.scrollHeight <= budget;
+        bodyEl.removeChild(probe);
+        if (fits) {
+            best = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    if (best < 4) return null;
+    const p = document.createElement('p');
+    p.textContent = `${words.slice(0, best).join(' ')}…`;
+    return wrapSplitParagraphForPreview(p, sourceBlock);
+}
+
+function textForPreviewSplit(node) {
+    if (!node) return '';
+    if (node.tagName === 'P') return (node.textContent || '').trim();
+    if (node.tagName === 'BLOCKQUOTE') {
+        const mainP = node.querySelector('p:not([data-variant="attribution"])');
+        if (mainP) return (mainP.textContent || '').trim();
+    }
+    const innerP = node.querySelector && node.querySelector('p:not([data-variant="attribution"])');
+    if (innerP) return (innerP.textContent || '').trim();
+    const anyP = node.querySelector && node.querySelector('p');
+    if (anyP) return (anyP.textContent || '').trim();
+    return (node.textContent || '').trim();
+}
+
+function fitPreviewBlocksToPage(bodyEl, blocks) {
+    if (!bodyEl) return;
+    bodyEl.innerHTML = '';
+    void bodyEl.offsetHeight;
+    const budget = bodyEl.clientHeight;
+    if (budget < 32) return;
+
+    for (let i = 0; i < blocks.length; i++) {
+        const node = blocks[i].cloneNode(true);
+        bodyEl.appendChild(node);
+        void bodyEl.offsetHeight;
+        if (bodyEl.scrollHeight <= budget) continue;
+
+        bodyEl.removeChild(node);
+        const split = splitPreviewTextToFit(bodyEl, textForPreviewSplit(blocks[i]), blocks[i]);
+        if (split) bodyEl.appendChild(split);
+        break;
+    }
+}
+
+function renderFirstPagePreview(panelEl, payload) {
+    if (!panelEl) return;
+    const mount = panelEl.querySelector('#article-first-page');
+    if (!mount) return;
+
+    const title = payload.title || '';
+    const author = payload.author || 'Anonymous';
+    const published = formatPublishedReadable(payload.publishedAt);
+    const blocks = articleBlocksFromRaw(payload.article);
+
+    mount.innerHTML = '';
+
+    const page = document.createElement('article');
+    page.className = 'home-preview-page';
+
+    const masthead = document.createElement('section');
+    masthead.className = 'home-preview-masthead';
+
+    const h1 = document.createElement('h1');
+    h1.className = 'home-preview-title';
+    h1.textContent = title;
+    masthead.appendChild(h1);
+
+    const byline = document.createElement('div');
+    byline.className = 'home-preview-byline';
+
+    const byWord = document.createElement('span');
+    byWord.className = 'home-preview-byline-by';
+    byWord.textContent = 'by';
+    byline.appendChild(byWord);
+
+    const authorEl = document.createElement('span');
+    authorEl.className = 'home-preview-byline-author';
+    authorEl.textContent = `@${author}`;
+    authorEl.style.color = mastheadAuthorColor(author);
+    byline.appendChild(authorEl);
+
+    if (published) {
+        const onThe = document.createElement('span');
+        onThe.className = 'home-preview-byline-onthe';
+        onThe.textContent = 'on the';
+        byline.appendChild(onThe);
+
+        const dateEl = document.createElement('span');
+        dateEl.className = 'home-preview-byline-date';
+        dateEl.textContent = published;
+        byline.appendChild(dateEl);
+    }
+
+    masthead.appendChild(byline);
+    page.appendChild(masthead);
+
+    const body = document.createElement('div');
+    body.className = 'home-preview-body';
+    page.appendChild(body);
+
+    mount.appendChild(page);
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            fitPreviewBlocksToPage(body, blocks);
+        });
+    });
+}
+
 // Physics object class for cards and popup
 class PhysicsObject {
     constructor(element, x, y, width, height, mass = 1) {
@@ -597,9 +839,7 @@ db.collection("blogs").get().then((blogs) => {
     const articlePanel = document.createElement('section');
     articlePanel.className = 'article-panel';
     articlePanel.innerHTML = `
-        <h2 id="article-title"></h2>
-        <p id="article-preview"></p>
-        <p id="article-author"></p>
+        <div id="article-first-page"></div>
     `;
     document.body.appendChild(articlePanel);
 
@@ -792,6 +1032,7 @@ function createBlogCard(blog, section, sectionIndex) {
         card.dataset.preview = data.preview;
     }
     card.dataset.title = data.title || '';
+    card.dataset.publishedAt = data.publishedAt || '';
 
     // optional banner kept commented in markup previously
     const titleEl = document.createElement('h1');
@@ -1245,16 +1486,11 @@ function clearAboutHoverTimer() {
 function applyArticlePreviewFromBlogCard(card, seamIndex) {
     const articleEl = document.querySelector('.article-panel');
     if (!articleEl) return;
-    const titleEl = document.getElementById('article-title');
-    const previewEl = document.getElementById('article-preview');
-    const authorEl = document.getElementById('article-author');
     const title = card.dataset.title || '';
     const rawArticle = card.dataset.article || '';
-    const preview = derivePreviewFromArticle(rawArticle) || '';
+    const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
-    if (titleEl) titleEl.textContent = title;
-    if (previewEl) previewEl.textContent = preview;
-    if (authorEl) authorEl.textContent = `@${author}`;
+    renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt });
     articleEl.dataset.blogId = card.dataset.blogId || '';
     setActivePreviewSeam(seamIndex);
     document.body.classList.add('article-open');
@@ -1391,19 +1627,14 @@ function expandArticlePanelAndNavigate(blogId, card) {
     articlePanel.dataset.blogId = blogId;
 
     // First, populate the article panel with content from the card
-    const titleEl = document.getElementById('article-title');
-    const previewEl = document.getElementById('article-preview');
-    const authorEl = document.getElementById('article-author');
     const title = card.dataset.title || '';
     const sectionIndex = Number(card.dataset.sectionIndex || 1);
     const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
     const rawArticle = card.dataset.article || '';
-    const preview = derivePreviewFromArticle(rawArticle) || '';
+    const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
-    
-    if (titleEl) titleEl.textContent = title;
-    if (previewEl) previewEl.textContent = preview;
-    if (authorEl) authorEl.textContent = `@${author}`;
+
+    renderFirstPagePreview(articlePanel, { title, article: rawArticle, author, publishedAt });
     
     setActivePreviewSeam(seamIndex);
     document.body.classList.add('article-open');
