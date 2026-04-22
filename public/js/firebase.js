@@ -11,6 +11,8 @@ firebase.initializeApp(firebaseConfig);
 
 let db = firebase.firestore();
 let auth = firebase.auth();
+window.db = db;
+window.auth = auth;
 
 const logoutUser = () => {
     // console.log("logout")

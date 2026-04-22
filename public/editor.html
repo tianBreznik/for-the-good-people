@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blog Editor</title>
 
-    <link rel="stylesheet" href="css/home.css">
-    <link rel="stylesheet" href="css/editor.css">
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/editor.css">
 
 </head>
 <body>
@@ -18,19 +18,77 @@
         <div class="editor-header">
             <input type="text" class="title-input" placeholder="Blog title...">
             <div class="editor-toolbar">
-                <button class="toolbar-btn" data-action="bold" title="Bold">B</button>
-                <button class="toolbar-btn" data-action="italic" title="Italic">I</button>
-                <button class="toolbar-btn" data-action="strikethrough" title="Strikethrough">S</button>
-                <button class="toolbar-btn" data-action="underline" title="Underline">U</button>
-                <button class="toolbar-btn" data-action="heading" title="Heading">H</button>
-                <input type="file" accept="image/*" id="image-upload" hidden>
-                <button class="toolbar-btn" data-action="image" title="Insert Image">📷</button>
-                <span class="autosave-status" id="autosave-status">Ready</span>
+                <div class="toolbar-buttons">
+                    <button class="toolbar-btn" data-action="title-toggle" title="Title toggle (T/p)">T/p</button>
+                    <button class="toolbar-btn" data-action="line-break" title="Line break (↵)">↵</button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button class="toolbar-btn" data-action="bold" title="Bold"><strong>B</strong></button>
+                    <button class="toolbar-btn" data-action="italic" title="Italic"><em>I</em></button>
+                    <button class="toolbar-btn" data-action="strikethrough" title="Strikethrough"><s>S</s></button>
+                    <button class="toolbar-btn" data-action="underline" title="Underline"><u>U</u></button>
+                    <button class="toolbar-btn" data-action="subscript" title="Subscript (x₂)">x₂</button>
+                    <button class="toolbar-btn" data-action="superscript" title="Superscript (x²)">x²</button>
+                    <button class="toolbar-btn" data-action="clear-format" title="Clear formatting">⟲</button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <select class="toolbar-select toolbar-font-size" data-action="font-size" title="Font size">
+                        <option value="default">A</option>
+                        <option value="10">10</option>
+                        <option value="12">12</option>
+                        <option value="14">14</option>
+                        <option value="16">16</option>
+                        <option value="18">18</option>
+                        <option value="20">20</option>
+                        <option value="24">24</option>
+                        <option value="28">28</option>
+                        <option value="32">32</option>
+                        <option value="36">36</option>
+                        <option value="48">48</option>
+                    </select>
+                    <input class="toolbar-color" type="color" data-action="text-color" title="Text color">
+                    <span class="toolbar-color-wrap" title="Highlight color">
+                        <input class="toolbar-color" type="color" data-action="highlight-color">
+                        <span class="toolbar-color-label">H</span>
+                    </span>
+                    <button class="toolbar-btn" data-action="align-left" title="Text align left (⬑)">←</button>
+                    <button class="toolbar-btn" data-action="align-center" title="Text align center (≡)">↔</button>
+                    <button class="toolbar-btn" data-action="align-right" title="Text align right (⬏)">→</button>
+                    <button class="toolbar-btn" data-action="align-justify" title="Text align justify">≡</button>
+                    <button class="toolbar-btn" data-action="image-align-left" title="Image align left (⬅️)">⬅️</button>
+                    <button class="toolbar-btn" data-action="image-align-center" title="Image align center (⬆️)">⬆️</button>
+                    <button class="toolbar-btn" data-action="image-align-right" title="Image align right (➡️)">➡️</button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button class="toolbar-btn" data-action="bullet-list" title="Bullet list">•</button>
+                    <button class="toolbar-btn" data-action="ordered-list" title="Numbered list">1.</button>
+                    <button class="toolbar-btn" data-action="indent" title="Indent (→)">⇥</button>
+                    <button class="toolbar-btn" data-action="outdent" title="Outdent (←)">⇤</button>
+                    <button class="toolbar-btn" data-action="blockquote" title="Blockquote — insert quoted passage (\")">"</button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button class="toolbar-btn wide" data-action="intro-paragraph" title="Intro paragraph (¶ italic)">✍️</button>
+                    <button class="toolbar-btn wide" data-action="whisper-paragraph" title="Whisper paragraph (¶ gray)">🤫</button>
+                    <button class="toolbar-btn wide" data-action="paragraph-epigraph" title="Paragraph epigraph (\")">"</button>
+                    <button class="toolbar-btn wide" data-action="poetry" title="Poetry block — insert poem (📜)">📜</button>
+                    <button class="toolbar-btn wide" data-action="quote" title="Styled quote — insert pull quote (💬)">💬</button>
+                    <button class="toolbar-btn wide" data-action="dinkus" title="Dinkus (* * *)">✶</button>
+                    <button class="toolbar-btn wide" data-action="dropcap" title="Drop cap (A)">🅰️</button>
+                    <button class="toolbar-btn wide" data-action="footnote" title="Footnote — insert reference and note (¹)">¹</button>
+                    <button class="toolbar-btn wide" data-action="smallcaps" title="Small caps paragraph">🔠</button>
+                    <input type="file" accept="image/*" id="image-upload" hidden>
+                    <button class="toolbar-btn" data-action="image-block" title="Block image (🖼)">🖼</button>
+                    <button class="toolbar-btn" data-action="image-inline" title="Inline image (📎)">📎</button>
+                </div>
+                <div class="toolbar-actions">
+                    <button class="toolbar-btn" data-action="chapter-epigraph" title="Chapter epigraph (✶)">✶</button>
+                    <button class="toolbar-btn" data-action="link" title="Link dialog (🔗)">🔗</button>
+                    <button class="toolbar-btn" data-action="undo" title="Undo">↩️</button>
+                    <button class="toolbar-btn" data-action="redo" title="Redo">↪️</button>
+                    <button class="toolbar-btn toolbar-close-btn" data-action="close" title="Close (✕)">✕</button>
+                    <span class="autosave-status" id="autosave-status">Ready</span>
+                </div>
             </div>
         </div>
         
         <div class="editor-content">
-            <textarea class="article-editor" placeholder="#IKFLY"></textarea>
+            <div id="tiptap-editor" class="tiptap-editor"></div>
         </div>
 
         <div class="editor-footer">
@@ -45,12 +103,77 @@
         </div>
     </div>
 
+    <div id="poetry-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="poetry-dialog-title">
+            <h2 id="poetry-dialog-title" class="editor-dialog-title">Poetry</h2>
+            <label class="editor-dialog-label" for="poetry-dialog-body">Poem</label>
+            <textarea id="poetry-dialog-body" class="editor-dialog-textarea" rows="10" placeholder="Lines (line breaks are kept)"></textarea>
+            <label class="editor-dialog-label" for="poetry-dialog-author">Author <span class="editor-dialog-optional">(optional)</span></label>
+            <input type="text" id="poetry-dialog-author" class="editor-dialog-input" placeholder="" autocomplete="off">
+            <label class="editor-dialog-check">
+                <input type="checkbox" id="poetry-dialog-italic">
+                Italic
+            </label>
+            <div class="editor-dialog-actions">
+                <button type="button" class="btn grey" data-poetry-cancel>Cancel</button>
+                <button type="button" class="btn dark" data-poetry-insert>Insert</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="blockquote-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="blockquote-dialog-title">
+            <h2 id="blockquote-dialog-title" class="editor-dialog-title">Blockquote</h2>
+            <p class="editor-dialog-hint">For excerpts and citations. Plain left border; body text stays normal.</p>
+            <label class="editor-dialog-label" for="blockquote-dialog-body">Quoted text</label>
+            <textarea id="blockquote-dialog-body" class="editor-dialog-textarea" rows="8" placeholder="Passage to quote"></textarea>
+            <label class="editor-dialog-label" for="blockquote-dialog-author">Source / author <span class="editor-dialog-optional">(optional)</span></label>
+            <input type="text" id="blockquote-dialog-author" class="editor-dialog-input" placeholder="" autocomplete="off">
+            <div class="editor-dialog-actions">
+                <button type="button" class="btn grey" data-bq-cancel>Cancel</button>
+                <button type="button" class="btn dark" data-bq-insert>Insert</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="quote-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="quote-dialog-title">
+            <h2 id="quote-dialog-title" class="editor-dialog-title">Styled quote</h2>
+            <p class="editor-dialog-hint">Pull-quote presentation: italic block, no side rule.</p>
+            <label class="editor-dialog-label" for="quote-dialog-body">Quote</label>
+            <textarea id="quote-dialog-body" class="editor-dialog-textarea" rows="8" placeholder="Quote text"></textarea>
+            <label class="editor-dialog-label" for="quote-dialog-author">Attribution <span class="editor-dialog-optional">(optional)</span></label>
+            <input type="text" id="quote-dialog-author" class="editor-dialog-input" placeholder="" autocomplete="off">
+            <div class="editor-dialog-actions">
+                <button type="button" class="btn grey" data-quote-cancel>Cancel</button>
+                <button type="button" class="btn dark" data-quote-insert>Insert</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="footnote-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="footnote-dialog-title">
+            <h2 id="footnote-dialog-title" class="editor-dialog-title">Footnote</h2>
+            <p class="editor-dialog-hint">The superscript is placed where the cursor was when you opened this dialog. The note is stored at the end of the article for layout in the reader. Numbers update automatically.</p>
+            <label class="editor-dialog-label" for="footnote-dialog-body">Note text</label>
+            <textarea id="footnote-dialog-body" class="editor-dialog-textarea" rows="5" maxlength="6000" placeholder="Footnote content (plain text)"></textarea>
+            <div class="editor-dialog-actions">
+                <button type="button" class="btn grey" data-footnote-cancel>Cancel</button>
+                <button type="button" class="btn dark" data-footnote-insert>Insert</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-auth.js"></script>
 
-    <script src="../js/firebase.js"></script>
-    <script src="../js/editor.js"></script>
+    <script src="/js/firebase.js"></script>
+    <script type="module" src="/js/editor.js"></script>
 
 
 </body>

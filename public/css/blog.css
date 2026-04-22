@@ -1,10 +1,10 @@
 /* Vertical scroll reader; two-column article body */
 
 html {
-    background: #fff;
+    background: #f6f6f6;
 }
 
-/* Full-viewport paper + speckle (same as home preview) so gutters, title, and comments match */
+/* Keep surrounding canvas plain white; paper texture is scoped to page cards. */
 body {
     margin: 0;
     padding: 0;
@@ -12,31 +12,9 @@ body {
     overflow-y: auto;
     min-height: 100vh;
     position: relative;
-    background: #fff;
+    background: #f6f6f6;
     color: #222;
     isolation: isolate;
-}
-
-body::before,
-body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    mix-blend-mode: multiply;
-    z-index: 0;
-}
-
-body::after {
-    opacity: 0.18;
-    background-size: 120px 120px;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-
-body::before {
-    opacity: 0.1;
-    background-image: repeating-radial-gradient(rgba(0, 0, 0, 0.14) 0 0.7px, transparent 0.7px 2px);
-    background-size: 3.2px 3.2px;
 }
 
 .blog {
@@ -44,7 +22,7 @@ body::before {
     z-index: 1;
     max-width: min(1340px, calc(100vw - 40px));
     margin: 0 auto;
-    padding: 52px 20px 56px;
+    padding: 18px 20px 56px;
     box-sizing: border-box;
     background: transparent;
 }
@@ -66,6 +44,7 @@ body::before {
     color: #1a1a1a;
 }
 
+/* Legacy masthead in blog.html (hidden); kept if referenced elsewhere */
 .published{
     margin: 0;
     padding: 0;
@@ -80,16 +59,18 @@ body::before {
     font-style: normal;
 }
 
-/* Article spread: explicit left/right pages (left fills first, overflow goes right) */
+/* Article spread: single-column reader layout */
 :root {
     --spread-gap: clamp(46px, 6vw, 78px);
+    --reader-page-height: calc(100dvh - clamp(30px, 4.8vh, 52px));
+    --reader-page-width: min(620px, calc(var(--reader-page-height) / 1.41));
 }
 
 #article-body.article-columns {
     display: flex;
     flex-direction: column;
-    gap: clamp(10px, 1.2vw, 16px);
-    padding: clamp(8px, 1vw, 14px) clamp(24px, 3vw, 36px) 0;
+    gap: clamp(24px, 3.2vh, 42px);
+    padding: 0 clamp(20px, 2.8vw, 30px);
     box-sizing: border-box;
     background: transparent;
     margin: 0;
@@ -97,25 +78,227 @@ body::before {
 
 #article-body .article-spread {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: var(--spread-gap);
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: min(var(--reader-page-width), 100%);
+    min-height: var(--reader-page-height);
+    margin-inline: auto;
+    gap: 0;
+    padding-bottom: clamp(18px, 2.2vh, 28px);
+    border-bottom: none;
     align-items: start;
+    box-sizing: border-box;
+}
+
+#article-body .article-spread:last-child {
+    padding-bottom: 0;
 }
 
 #article-body .article-page {
     min-width: 0;
+    min-height: var(--reader-page-height);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    position: relative;
+    isolation: isolate;
+    background: #fff;
+    overflow: hidden;
+    border: 1px solid rgba(20, 20, 20, 0.14);
+    box-shadow:
+        0 6px 18px rgba(0, 0, 0, 0.07),
+        0 1px 4px rgba(0, 0, 0, 0.045);
+    padding: clamp(24px, 2.9vh, 34px) clamp(28px, 3.3vw, 40px) clamp(24px, 3vh, 34px);
+}
+
+#article-body .article-page-right {
+    display: none;
+}
+
+#article-body .article-page::before,
+#article-body .article-page::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 0;
+}
+
+#article-body .article-page::after {
+    opacity: 0.18;
+    background-size: 120px 120px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+#article-body .article-page::before {
+    opacity: 0.1;
+    background-image: repeating-radial-gradient(rgba(0, 0, 0, 0.14) 0 0.7px, transparent 0.7px 2px);
+    background-size: 3.2px 3.2px;
+}
+
+#article-body .article-page > * {
+    position: relative;
+    z-index: 1;
+}
+
+#article-body .article-page-body {
+    min-width: 0;
+}
+
+/*
+ * Last block before the footnote strip: its margin-bottom collapses with .article-page-footnotes’
+ * margin-top, so the visible gap was ~max(12–18px, footnote margin). Pull the rule up by capping
+ * that bottom margin when the next sibling is the footnote area.
+ */
+#article-body .article-page-body > *:has(+ .article-page-footnotes) {
+    margin-bottom: 0 !important;
+}
+
+/* Footnotes: full column width rule; text aligns with body (no extra horizontal inset). */
+#article-body .article-page-footnotes {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: clamp(8px, 1.15vw, 16px);
+    margin-inline: 0;
+    padding-top: clamp(0.35rem, 0.55vw, 0.65rem);
+    padding-inline: 0;
+    border-top: 1px solid rgba(23, 23, 23, 0.78);
+}
+
+#article-body .article-page-footnotes > p[data-variant="footnote"]:first-child {
+    margin-top: 0;
+}
+
+#article-body .article-page-footnotes > p[data-variant="footnote"]:last-child {
+    margin-bottom: 0;
+}
+
+/*
+ * Reader footnote strip: extra .article-page in the selector so these beat
+ * `#article-body .article-page p[data-variant="footnote"] { font-size: 0.86em }` later in the file.
+ */
+#article-body .article-page .article-page-footnotes p[data-variant="footnote"] {
+    position: static;
+    font-size: clamp(10.5px, 1.12vw, 12.5px);
+    line-height: 1.26;
+    margin: 0.05em 0;
+    padding: 0;
+    text-align: start;
+    color: rgba(23, 23, 23, 0.94);
+    -webkit-text-fill-color: rgba(23, 23, 23, 0.94);
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Superscript numeral only (no period), like in-text markers. */
+#article-body .article-page .article-page-footnotes p[data-variant="footnote"][data-footnote-n]::before {
+    content: attr(data-footnote-n) "\00a0";
+    font-size: 0.8em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    vertical-align: super;
+    line-height: 0;
+    letter-spacing: 0.02em;
+    color: rgba(23, 23, 23, 0.88);
+    -webkit-text-fill-color: rgba(23, 23, 23, 0.88);
+    background: none;
+    background-image: none;
+}
+
+#article-body .article-page-footnotes:empty {
+    display: none;
+    padding: 0;
+    margin: 0;
+    border: none;
 }
 
 .article-inline-masthead {
-    margin: 0 0 clamp(14px, 1.8vw, 26px);
+    margin: 0 0 clamp(3px, 0.5vw, 8px);
+}
+
+#article-body .article-page.article-page-first {
+    padding-top: clamp(96px, 12.8vh, 146px);
+}
+
+#article-body .article-page .article-page-number {
+    position: absolute;
+    right: clamp(14px, 1.5vw, 20px);
+    bottom: clamp(8px, 1vh, 14px);
+    text-align: right;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(10px, 0.78vw, 11.5px);
+    line-height: 1;
+    color: rgba(0, 0, 0, 0.42);
+    -webkit-text-fill-color: rgba(0, 0, 0, 0.42);
+    background: none;
+    text-shadow: none;
+    pointer-events: none;
+    z-index: 2;
 }
 
 .article-inline-masthead .title {
-    margin: 0 0 10px;
+    margin: 0 0 clamp(2px, 0.35vw, 5px);
 }
 
-.article-inline-masthead .published {
+/* Masthead: no ink grain — title + byline stay clean vs body columns */
+#article-body .article-inline-masthead .title {
+    color: #141414;
+    -webkit-text-fill-color: #141414;
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+    font-family: Georgia, 'Times New Roman', serif;
+}
+
+.article-byline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    /* Flex item boundaries swallow adjacent spaces in some engines when gap was 0 */
+    gap: 0.4em;
     margin: 0;
+    padding: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(0.74rem, 0.82vw, 0.84rem);
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+}
+
+.article-byline-by {
+    color: rgba(0, 0, 0, 0.48);
+    font-weight: 400;
+    font-style: normal;
+}
+
+.article-byline-author {
+    font-weight: 600;
+    font-style: normal;
+}
+
+.article-byline-onthe {
+    color: rgba(0, 0, 0, 0.48);
+    font-weight: 400;
+    font-style: normal;
+}
+
+.article-byline-date {
+    font-weight: 400;
+    font-style: italic;
+    color: rgba(0, 0, 0, 0.48);
+}
+
+/* First body block after inline masthead: pull text up (margins collapse with masthead bottom). */
+#article-body .article-page:has(> .article-inline-masthead) .article-page-body > :first-child {
+    margin-top: clamp(2px, 0.35vw, 6px);
 }
 
 /* Ink type: match .article-panel p / h2 (larger sizes for full reader) */
@@ -129,11 +312,11 @@ body::before {
     position: relative;
     z-index: 1;
     word-break: break-word;
-    margin: clamp(12px, 1.25vw, 18px) 0;
+    margin: clamp(9px, 0.92vw, 12px) 0;
     break-inside: avoid;
     font-family: Georgia, "Times New Roman", serif;
-    line-height: 1.48;
-    font-size: clamp(16px, 1.05vw, 18px);
+    line-height: 1.42;
+    font-size: clamp(13.6px, 0.84vw, 15.2px);
     color: transparent;
     -webkit-text-fill-color: transparent;
     background-image:
@@ -149,18 +332,25 @@ body::before {
 }
 
 #article-body .article-page h1 {
-    font-size: clamp(1.2rem, 1.55vw, 1.6rem);
+    font-size: clamp(1rem, 1.15vw, 1.22rem);
     line-height: 1.2;
     margin-top: 0.35em;
 }
 
+/* Inline masthead h1: beat .article-page h1 bottom margin so title sits close to byline. */
+#article-body .article-page .article-inline-masthead h1.title {
+    font-size: clamp(1.14rem, 1.38vw, 1.42rem);
+    line-height: 1.16;
+    margin-bottom: clamp(2px, 0.35vw, 5px);
+}
+
 #article-body .article-page h2 {
-    font-size: clamp(1.08rem, 1.3vw, 1.35rem);
+    font-size: clamp(0.95rem, 0.98vw, 1.08rem);
     line-height: 1.25;
 }
 
 #article-body .article-page h3 {
-    font-size: clamp(1rem, 1.08vw, 1.18rem);
+    font-size: clamp(0.9rem, 0.88vw, 0.98rem);
 }
 
 #article-body .article-page h4,
@@ -186,6 +376,188 @@ body::before {
     -webkit-text-stroke: 0;
     text-shadow: none;
 }
+
+#article-body .article-page img[data-display="block"] {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: clamp(12px, 1.5vw, 20px) 0 clamp(18px, 2vw, 28px);
+}
+
+#article-body .article-page img[data-display="inline"] {
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 42%;
+    height: auto;
+    margin: 0 .35rem;
+}
+
+#article-body .article-page p[data-variant="poetry"] {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    text-align: center;
+    max-width: 28em;
+    margin-left: auto;
+    margin-right: auto;
+    white-space: pre-wrap;
+    line-height: 1.75;
+}
+
+#article-body .article-page p[data-variant="poetry"][data-poetry-italic="true"] {
+    font-style: italic;
+}
+
+#article-body .article-page p[data-variant="poetry-author"] {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    text-align: center;
+    max-width: 28em;
+    margin: 0.65rem auto 0;
+    font-size: 0.92em;
+    opacity: 0.88;
+}
+
+#article-body .article-page p[data-variant="epigraph"] {
+    font-style: italic;
+    max-width: 76%;
+    margin-left: auto;
+    margin-right: 0;
+    opacity: 0.92;
+}
+
+#article-body .article-page blockquote:not([data-variant]) {
+    margin: 1rem 0;
+    padding-left: 1rem;
+    border-left: 3px solid rgba(0, 0, 0, 0.22);
+}
+
+#article-body .article-page blockquote p:not([data-variant="attribution"]) {
+    white-space: pre-wrap;
+}
+
+#article-body .article-page blockquote[data-variant="quote"] {
+    border-left: none;
+    padding-left: 0;
+    margin: 1rem 0;
+    font-style: italic;
+}
+
+#article-body .article-page blockquote p[data-variant="attribution"] {
+    font-size: 0.92em;
+    opacity: 0.88;
+    margin-top: 0.65rem;
+    font-style: normal;
+}
+
+/* Lighter ink than body: quotes / poetry / linked footnotes */
+#article-body .article-page blockquote p,
+#article-body .article-page p[data-variant="poetry"],
+#article-body .article-page p[data-variant="poetry-author"],
+#article-body .article-page p[data-variant="footnote"][data-footnote-id] {
+    color: #1a1a1a;
+    -webkit-text-fill-color: #1a1a1a;
+    background-image: linear-gradient(#1a1a1a, #1a1a1a);
+    background-size: auto;
+    background-blend-mode: normal;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.06px rgba(0, 0, 0, 0.18);
+    text-shadow: 0 0 0.18px rgba(0, 0, 0, 0.1);
+    -webkit-font-smoothing: antialiased;
+}
+
+#article-body .article-page hr[data-variant="dinkus"] {
+    border: 0;
+    text-align: center;
+    margin: 1.5rem 0;
+}
+
+#article-body .article-page hr[data-variant="dinkus"]::after {
+    content: "✶ ✶ ✶";
+    color: rgba(0, 0, 0, 0.55);
+    letter-spacing: 0.4rem;
+    font-size: 0.9rem;
+}
+
+#article-body .article-page p[data-variant="dropcap"]::first-letter {
+    float: left;
+    font-size: 3.2em;
+    line-height: 0.85;
+    margin-right: 0.1em;
+    font-weight: 700;
+}
+
+#article-body .article-page p[data-variant="footnote"] {
+    font-size: 0.86em;
+    line-height: 1.45;
+    opacity: 0.92;
+}
+
+#article-body .article-page p[data-variant="footnote"][id^='fn-'] {
+    scroll-margin-top: 6rem;
+}
+
+#article-body .article-page .footnote-ref {
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
+    color: rgba(0, 50, 120, 0.92);
+    -webkit-text-fill-color: rgba(0, 50, 120, 0.92);
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+#article-body .article-page .footnote-ref-mark {
+    font-size: 0.72em;
+    font-weight: 700;
+    vertical-align: super;
+    line-height: 0;
+}
+
+#article-body .article-page p[data-variant="smallcaps"] {
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+}
+
+/* Preserve inline color/highlight marks from Tiptap output */
+#article-body .article-page span[style*="color"] {
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+}
+
+#article-body .article-page mark {
+    color: #171717;
+    -webkit-text-fill-color: #171717;
+    background-clip: border-box;
+    -webkit-background-clip: border-box;
+    padding: 0 .08em;
+    border-radius: 2px;
+}
+
+#article-body .article-page p[data-variant="intro"] {
+    font-style: italic;
+}
+
+#article-body .article-page p[data-variant="whisper"] {
+    color: rgba(0, 0, 0, 0.68);
+    font-style: italic;
+}
+
+#article-body .article-page p[data-variant="fieldnotes"] {
+    font-family: 'Courier New', monospace;
+    background: rgba(0, 0, 0, 0.04);
+    border-left: 3px solid rgba(0, 0, 0, 0.25);
+    padding: 8px 10px;
+}
+
+#article-body .article-page img[align="left"] { display: block; margin-right: auto; margin-left: 0; }
+#article-body .article-page img[align="center"] { display: block; margin-left: auto; margin-right: auto; }
+#article-body .article-page img[align="right"] { display: block; margin-left: auto; margin-right: 0; }
 
 /* Comments: same continuous sheet — no rule above */
 .comment-block {
