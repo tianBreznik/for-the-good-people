@@ -69,6 +69,8 @@ let aboutHoverTimer = null; // About card → about panel
 const PREVIEW_HOVER_DWELL_MS = 800;
 let articlePreviewUiBound = false;
 let previewAutoCloseTimer = null;
+/** Keeps preview visible until column slabs finish sliding shut (matches --articlePreviewRevealDuration). */
+let articlePreviewClosingTimer = null;
 
 const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
 const SEAM_BY_SECTION = { 1: 1, 2: 2, 3: 2, 4: 3 };
@@ -257,7 +259,7 @@ function fitPreviewBlocksToPage(bodyEl, blocks) {
     }
 }
 
-function renderFirstPagePreview(panelEl, payload) {
+function renderFirstPagePreview(panelEl, payload, onReady) {
     if (!panelEl) return;
     const mount = panelEl.querySelector('#article-first-page');
     if (!mount) return;
@@ -313,10 +315,25 @@ function renderFirstPagePreview(panelEl, payload) {
     body.className = 'home-preview-body';
     page.appendChild(body);
 
+    const pageNumber = document.createElement('div');
+    pageNumber.className = 'home-preview-page-number';
+    pageNumber.textContent = '1';
+    page.appendChild(pageNumber);
+
+    if (typeof onReady === 'function') {
+        panelEl.classList.add('article-preview-layout');
+    }
     mount.appendChild(page);
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             fitPreviewBlocksToPage(body, blocks);
+            if (typeof onReady === 'function') {
+                requestAnimationFrame(() => {
+                    void panelEl.offsetHeight;
+                    panelEl.classList.remove('article-preview-layout');
+                    onReady();
+                });
+            }
         });
     });
 }
@@ -835,12 +852,10 @@ db.collection("blogs").get().then((blogs) => {
     bioPanel.innerHTML = `<p id="bio-content">Author bio</p>`;
     document.body.appendChild(bioPanel);
 
-    // Create centered article preview panel (initially hidden)
+    // Article preview: real stone columns slide apart to reveal panel underneath (see home.css)
     const articlePanel = document.createElement('section');
     articlePanel.className = 'article-panel';
-    articlePanel.innerHTML = `
-        <div id="article-first-page"></div>
-    `;
+    articlePanel.innerHTML = `<div id="article-first-page"></div>`;
     document.body.appendChild(articlePanel);
 
     console.log('Created author cards for:', Array.from(uniqueAuthors));
@@ -1393,6 +1408,12 @@ function positionCardsInSection(section, options = {}) {
     });
 }
 
+function getArticlePreviewRevealMs() {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--articlePreviewRevealDuration').trim();
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 2200;
+}
+
 function closeArticlePreview() {
     if (previewAutoCloseTimer) {
         clearTimeout(previewAutoCloseTimer);
@@ -1401,7 +1422,16 @@ function closeArticlePreview() {
     document.body.classList.remove('article-open');
     clearActivePreviewSeam();
     const panel = document.querySelector('.article-panel');
-    if (panel) delete panel.dataset.blogId;
+    if (panel) {
+        delete panel.dataset.blogId;
+        panel.classList.remove('expanding-fullscreen');
+        panel.classList.add('article-preview-closing');
+        if (articlePreviewClosingTimer) clearTimeout(articlePreviewClosingTimer);
+        articlePreviewClosingTimer = setTimeout(() => {
+            articlePreviewClosingTimer = null;
+            panel.classList.remove('article-preview-closing');
+        }, getArticlePreviewRevealMs());
+    }
 }
 
 /** Click preview panel → reader; click outside panel (not on a title card) → close preview. */
@@ -1486,14 +1516,20 @@ function clearAboutHoverTimer() {
 function applyArticlePreviewFromBlogCard(card, seamIndex) {
     const articleEl = document.querySelector('.article-panel');
     if (!articleEl) return;
+    if (articlePreviewClosingTimer) {
+        clearTimeout(articlePreviewClosingTimer);
+        articlePreviewClosingTimer = null;
+    }
+    articleEl.classList.remove('article-preview-closing');
     const title = card.dataset.title || '';
     const rawArticle = card.dataset.article || '';
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
-    renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt });
     articleEl.dataset.blogId = card.dataset.blogId || '';
     setActivePreviewSeam(seamIndex);
-    document.body.classList.add('article-open');
+    renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
+        document.body.classList.add('article-open');
+    });
 }
 
 function setupHoverInteractions() {
@@ -1624,6 +1660,11 @@ function expandArticlePanelAndNavigate(blogId, card) {
         location.href = `/${blogId}`;
         return;
     }
+    if (articlePreviewClosingTimer) {
+        clearTimeout(articlePreviewClosingTimer);
+        articlePreviewClosingTimer = null;
+    }
+    articlePanel.classList.remove('article-preview-closing');
     articlePanel.dataset.blogId = blogId;
 
     // First, populate the article panel with content from the card
@@ -1634,11 +1675,11 @@ function expandArticlePanelAndNavigate(blogId, card) {
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
 
-    renderFirstPagePreview(articlePanel, { title, article: rawArticle, author, publishedAt });
-    
     setActivePreviewSeam(seamIndex);
-    document.body.classList.add('article-open');
-    playExpandFullscreenThenNavigate(blogId);
+    renderFirstPagePreview(articlePanel, { title, article: rawArticle, author, publishedAt }, () => {
+        document.body.classList.add('article-open');
+        playExpandFullscreenThenNavigate(blogId);
+    });
 }
 
 function updateLoginButton(user) {
