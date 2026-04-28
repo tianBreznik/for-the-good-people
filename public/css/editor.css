@@ -355,7 +355,8 @@ body {
 
 .tiptap-editor .ProseMirror .footnote-ref {
     cursor: pointer;
-    color: #1a5f9e;
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
     font-weight: 600;
     user-select: none;
 }
@@ -416,7 +417,12 @@ body {
     align-items: center;
     z-index: 100;
 }
-.editor-footer .footer-right { display: flex; gap: 8px; }
+.editor-footer .footer-left,
+.editor-footer .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 
 .btn {
     padding: 0;

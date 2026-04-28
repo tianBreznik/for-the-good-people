@@ -17,6 +17,10 @@ let spreadResizeBound = false;
 let spreadReflowTimer = null;
 let currentBlogMeta = null;
 let footnoteNavAttached = false;
+const READER_HANDOFF_KEY = 'readerHandoffPayload';
+const READER_HANDOFF_MAX_AGE_MS = 90 * 1000;
+
+document.body.classList.add('reader-loading');
 
 function setupFootnoteRefNavigation() {
     if (footnoteNavAttached) return;
@@ -33,6 +37,39 @@ function setupFootnoteRefNavigation() {
         }
         if (note) note.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
+}
+
+function readReaderHandoffPayload() {
+    try {
+        const raw = sessionStorage.getItem(READER_HANDOFF_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        if (String(parsed.blogId || '') !== String(blogId || '')) return null;
+        const ts = Number(parsed.ts || 0);
+        if (!Number.isFinite(ts) || Date.now() - ts > READER_HANDOFF_MAX_AGE_MS) return null;
+        return parsed;
+    } catch (_) {
+        return null;
+    }
+}
+
+function clearReaderHandoffPayload() {
+    try { sessionStorage.removeItem(READER_HANDOFF_KEY); } catch (_) {}
+}
+
+function renderReaderHandoffIfPresent() {
+    const payload = readReaderHandoffPayload();
+    if (!payload) return;
+    const titleTag = document.querySelector('title');
+    const title = payload.title || '';
+    const publishedAt = payload.publishedAt || '';
+    const author = payload.author || 'Anonymous';
+    titleTag.textContent = title ? `Blog : ${title}` : 'Blog';
+    currentBlogMeta = { title, publishedAt, author };
+    if (typeof payload.article === 'string' && payload.article.trim()) {
+        renderArticleBody(payload.article, { provisional: true });
+    }
 }
 
 docRef.get().then((doc) => {
@@ -175,6 +212,8 @@ const setupBlog = (data) => {
     numberofcomments = data.numberofcomments;
 
     renderArticleBody(data.article);
+    clearReaderHandoffPayload();
+    document.body.classList.remove('reader-loading');
 }
 
 
@@ -621,7 +660,7 @@ function renderArticleSpread(blocks, footnoteDefMap) {
     articleBody.dataset.lastPage = 'left';
 }
 
-const renderArticleBody = (articleData) => {
+const renderArticleBody = (articleData, options = {}) => {
     articleBlocksCache = parseArticleBlocks(articleData);
     renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
 
@@ -637,11 +676,15 @@ const renderArticleBody = (articleData) => {
         });
     }
 
+    if (options.provisional) return;
+
     readerReady = true;
     if (commentsReady) {
         setupCommentSection();
     }
 }
+
+renderReaderHandoffIfPresent();
 
 const formatLine = (line) => {
     // Handle headings

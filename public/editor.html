@@ -168,6 +168,18 @@
         </div>
     </div>
 
+    <div id="leave-confirm-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="leave-confirm-title">
+            <h2 id="leave-confirm-title" class="editor-dialog-title">You have unsaved changes</h2>
+            <p class="editor-dialog-hint">Leave this page and lose your latest edits?</p>
+            <div class="editor-dialog-actions">
+                <button type="button" class="btn grey" data-leave-cancel>Stay</button>
+                <button type="button" class="btn dark" data-leave-confirm>Leave page</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-auth.js"></script>

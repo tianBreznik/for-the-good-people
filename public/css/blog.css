@@ -17,6 +17,11 @@ body {
     isolation: isolate;
 }
 
+/* During handoff/bootstrap, never show floating comment UI before article render settles. */
+body.reader-loading #comment-screen {
+    display: none;
+}
+
 .blog {
     position: relative;
     z-index: 1;

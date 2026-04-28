@@ -27,6 +27,9 @@ let editor = null;
 let autoSaveTimeout;
 let isAutoSaving = false;
 let isHydratingEditor = false;
+let hasUnsavedChanges = false;
+let allowImmediateNavigation = false;
+let pendingNavigationAction = null;
 let pendingImageMode = 'block';
 const AUTO_SAVE_DELAY = 2000;
 
@@ -560,9 +563,80 @@ document.addEventListener('DOMContentLoaded', () => {
     setupBlockquoteAndQuoteDialogs();
     setupFootnoteDialog();
     setupInsertDialogEscape();
+    setupLeaveConfirmDialog();
     setupEventListeners();
     loadExistingBlog();
 });
+
+function closeLeaveConfirmDialog() {
+    const dialog = document.getElementById('leave-confirm-dialog');
+    if (!dialog) return;
+    dialog.hidden = true;
+    dialog.setAttribute('aria-hidden', 'true');
+}
+
+function openLeaveConfirmDialog(navigateAction) {
+    const dialog = document.getElementById('leave-confirm-dialog');
+    if (!dialog) return;
+    pendingNavigationAction = navigateAction;
+    dialog.hidden = false;
+    dialog.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => dialog.querySelector('[data-leave-confirm]')?.focus());
+}
+
+function proceedWithNavigation() {
+    const action = pendingNavigationAction;
+    pendingNavigationAction = null;
+    closeLeaveConfirmDialog();
+    if (typeof action !== 'function') return;
+    allowImmediateNavigation = true;
+    action();
+}
+
+function attemptEditorNavigation(navigateAction) {
+    if (!hasUnsavedChanges) {
+        navigateAction();
+        return;
+    }
+    openLeaveConfirmDialog(navigateAction);
+}
+
+function setupLeaveConfirmDialog() {
+    const dialog = document.getElementById('leave-confirm-dialog');
+    if (!dialog) return;
+
+    dialog.querySelector('[data-leave-cancel]')?.addEventListener('click', () => {
+        pendingNavigationAction = null;
+        closeLeaveConfirmDialog();
+    });
+    dialog.querySelector('[data-leave-confirm]')?.addEventListener('click', proceedWithNavigation);
+    dialog.querySelector('.editor-dialog-backdrop')?.addEventListener('click', () => {
+        pendingNavigationAction = null;
+        closeLeaveConfirmDialog();
+    });
+
+    // Intercept internal links (Dashboard/Home/etc.) so we can show custom copy.
+    document.addEventListener('click', (e) => {
+        const anchor = e.target.closest('a[href]');
+        if (!anchor) return;
+        const href = anchor.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        if (anchor.target === '_blank' || anchor.hasAttribute('download')) return;
+        const url = new URL(href, window.location.origin);
+        if (url.origin !== window.location.origin) return;
+        if (!hasUnsavedChanges) return;
+        e.preventDefault();
+        attemptEditorNavigation(() => { location.href = url.href; });
+    }, true);
+
+    // Intercept browser Back/gesture while staying on the same document.
+    history.pushState({ editorLeaveGuard: true }, '', location.href);
+    window.addEventListener('popstate', () => {
+        if (allowImmediateNavigation || !hasUnsavedChanges) return;
+        history.pushState({ editorLeaveGuard: true }, '', location.href);
+        attemptEditorNavigation(() => history.back());
+    });
+}
 
 function getEditorHTML() {
     return editor ? editor.getHTML().trim() : '';
@@ -570,6 +644,14 @@ function getEditorHTML() {
 
 function getEditorText() {
     return editor ? editor.getText().trim() : '';
+}
+
+function markUnsavedChanges() {
+    hasUnsavedChanges = true;
+}
+
+function markChangesSaved() {
+    hasUnsavedChanges = false;
 }
 
 function initializeEditor() {
@@ -620,6 +702,7 @@ function initializeEditor() {
         onUpdate: () => {
             if (isHydratingEditor) return;
             syncToolbarFromSelection();
+            markUnsavedChanges();
             triggerAutoSave();
         }
     });
@@ -638,6 +721,7 @@ function setupEventListeners() {
 
 function setupAutoSave() {
     titleInput.addEventListener('input', () => {
+        markUnsavedChanges();
         clearTimeout(autoSaveTimeout);
         autoSaveTimeout = setTimeout(saveDraft, AUTO_SAVE_DELAY);
     });
@@ -671,6 +755,7 @@ async function saveDraft() {
             await window.db.collection('drafts').doc(window.auth.currentUser.uid).set(draftData);
         }
         
+        markChangesSaved();
         updateAutosaveStatus('Saved', 'saved');
         setTimeout(() => updateAutosaveStatus('Ready', ''), 2000);
     } catch (error) {
@@ -866,7 +951,7 @@ function setupToolbar() {
                     chain.redo().run();
             break;
                 case 'close':
-                    history.back();
+                    attemptEditorNavigation(() => history.back());
             break;
     }
     
@@ -994,6 +1079,7 @@ async function publishBlog() {
         await window.db.collection("blogs").doc(docName).set(blogData);
         
         localStorage.removeItem('blog_draft');
+        markChangesSaved();
         if (window.auth?.currentUser) {
             await window.db.collection('drafts').doc(window.auth.currentUser.uid).delete();
         }
@@ -1034,6 +1120,7 @@ async function loadBlogData() {
             preserveWhitespace: 'full'
         });
         isHydratingEditor = false;
+        markChangesSaved();
     } catch (error) {
         console.error('Error loading blog:', error);
         location.replace("/");
@@ -1059,6 +1146,7 @@ function loadExistingBlog() {
                 });
                 isHydratingEditor = false;
             }
+            markChangesSaved();
             updateAutosaveStatus('Draft loaded', 'saved');
         } catch (error) {
             console.error('Error loading draft:', error);
@@ -1073,8 +1161,8 @@ window.auth.onAuthStateChanged((user) => {
 });
 
 window.addEventListener('beforeunload', (e) => {
-    if (titleInput.value.trim() || getEditorText()) {
-        e.preventDefault();
-        e.returnValue = '';
-    }
+    if (allowImmediateNavigation) return;
+    if (!hasUnsavedChanges) return;
+    e.preventDefault();
+    e.returnValue = '';
 });

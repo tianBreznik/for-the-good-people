@@ -71,6 +71,9 @@ let articlePreviewUiBound = false;
 let previewAutoCloseTimer = null;
 /** Keeps preview visible until column slabs finish sliding shut (matches --articlePreviewRevealDuration). */
 let articlePreviewClosingTimer = null;
+let articleExpandNavigateTimer = null;
+let articleExpandInFlight = false;
+const READER_HANDOFF_KEY = 'readerHandoffPayload';
 
 const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
 const SEAM_BY_SECTION = { 1: 1, 2: 2, 3: 2, 4: 3 };
@@ -272,38 +275,38 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
     mount.innerHTML = '';
 
     const page = document.createElement('article');
-    page.className = 'home-preview-page';
+    page.className = 'article-page article-page-left article-page-first home-preview-page';
 
     const masthead = document.createElement('section');
-    masthead.className = 'home-preview-masthead';
+    masthead.className = 'article-inline-masthead home-preview-masthead';
 
     const h1 = document.createElement('h1');
-    h1.className = 'home-preview-title';
+    h1.className = 'title home-preview-title';
     h1.textContent = title;
     masthead.appendChild(h1);
 
     const byline = document.createElement('div');
-    byline.className = 'home-preview-byline';
+    byline.className = 'article-byline home-preview-byline';
 
     const byWord = document.createElement('span');
-    byWord.className = 'home-preview-byline-by';
+    byWord.className = 'article-byline-by home-preview-byline-by';
     byWord.textContent = 'by';
     byline.appendChild(byWord);
 
     const authorEl = document.createElement('span');
-    authorEl.className = 'home-preview-byline-author';
+    authorEl.className = 'article-byline-author home-preview-byline-author';
     authorEl.textContent = `@${author}`;
     authorEl.style.color = mastheadAuthorColor(author);
     byline.appendChild(authorEl);
 
     if (published) {
         const onThe = document.createElement('span');
-        onThe.className = 'home-preview-byline-onthe';
+        onThe.className = 'article-byline-onthe home-preview-byline-onthe';
         onThe.textContent = 'on the';
         byline.appendChild(onThe);
 
         const dateEl = document.createElement('span');
-        dateEl.className = 'home-preview-byline-date';
+        dateEl.className = 'article-byline-date home-preview-byline-date';
         dateEl.textContent = published;
         byline.appendChild(dateEl);
     }
@@ -312,11 +315,11 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
     page.appendChild(masthead);
 
     const body = document.createElement('div');
-    body.className = 'home-preview-body';
+    body.className = 'article-page-body home-preview-body';
     page.appendChild(body);
 
     const pageNumber = document.createElement('div');
-    pageNumber.className = 'home-preview-page-number';
+    pageNumber.className = 'article-page-number home-preview-page-number';
     pageNumber.textContent = '1';
     page.appendChild(pageNumber);
 
@@ -1415,6 +1418,11 @@ function getArticlePreviewRevealMs() {
 }
 
 function closeArticlePreview() {
+    if (articleExpandNavigateTimer) {
+        clearTimeout(articleExpandNavigateTimer);
+        articleExpandNavigateTimer = null;
+    }
+    articleExpandInFlight = false;
     if (previewAutoCloseTimer) {
         clearTimeout(previewAutoCloseTimer);
         previewAutoCloseTimer = null;
@@ -1425,6 +1433,11 @@ function closeArticlePreview() {
     if (panel) {
         delete panel.dataset.blogId;
         panel.classList.remove('expanding-fullscreen');
+        panel.classList.remove('article-expand-run');
+        panel.style.removeProperty('--articlePreviewLockWidth');
+        panel.style.removeProperty('--articleExpandClipLeft');
+        panel.style.removeProperty('--articleExpandClipRight');
+        panel.style.removeProperty('--articleExpandPanelShiftX');
         panel.classList.add('article-preview-closing');
         if (articlePreviewClosingTimer) clearTimeout(articlePreviewClosingTimer);
         articlePreviewClosingTimer = setTimeout(() => {
@@ -1526,6 +1539,10 @@ function applyArticlePreviewFromBlogCard(card, seamIndex) {
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
     articleEl.dataset.blogId = card.dataset.blogId || '';
+    articleEl.dataset.handoffTitle = title;
+    articleEl.dataset.handoffAuthor = author;
+    articleEl.dataset.handoffPublishedAt = publishedAt;
+    articleEl.dataset.handoffArticle = rawArticle;
     setActivePreviewSeam(seamIndex);
     renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
         document.body.classList.add('article-open');
@@ -1636,19 +1653,108 @@ function derivePreviewFromArticle(articleText) {
 }
 
 /** Full-width grow animation, then navigate to blog reader (matches --aboutDuration). */
+function getCssMsVar(name, fallbackMs) {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return fallbackMs;
+    if (raw.endsWith('ms')) return n;
+    if (raw.endsWith('s')) return n * 1000;
+    return n;
+}
+
+function getExpandNavigateMs() {
+    const clipMs = getCssMsVar('--articleExpandDuration', 1100);
+    const shiftMs = getCssMsVar('--articleExpandShiftDuration', clipMs);
+    const shiftDelayMs = getCssMsVar('--articleExpandShiftDelay', 0);
+    return Math.max(clipMs, shiftMs + shiftDelayMs);
+}
+
+function getSeamXPx(viewportWidth) {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--seamX').trim();
+    if (!raw) return viewportWidth / 2;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return viewportWidth / 2;
+    if (raw.endsWith('vw') || raw.endsWith('%')) return (n / 100) * viewportWidth;
+    if (raw.endsWith('px')) return n;
+    return n;
+}
+
 function playExpandFullscreenThenNavigate(blogId) {
     const articlePanel = document.querySelector('.article-panel');
     if (!articlePanel) {
         location.href = `/${blogId}`;
         return;
     }
+    if (articleExpandInFlight) return;
+    articleExpandInFlight = true;
+    if (articleExpandNavigateTimer) {
+        clearTimeout(articleExpandNavigateTimer);
+        articleExpandNavigateTimer = null;
+    }
+    const previewPage = articlePanel.querySelector('.home-preview-page');
+    if (previewPage) {
+        const lockWidthPx = Math.round(previewPage.getBoundingClientRect().width);
+        articlePanel.style.setProperty('--articlePreviewLockWidth', `${lockWidthPx}px`);
+    }
+    const panelRect = articlePanel.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || panelRect.width;
+    const seamXPx = getSeamXPx(viewportWidth);
+    // In expanding-fullscreen, element becomes 100vw wide and remains centered on seamX first.
+    // Clip insets must therefore be computed in that element's own coordinate system.
+    const expandedLeft = seamXPx - (viewportWidth / 2);
+    const expandedRight = expandedLeft + viewportWidth;
+    const clipLeft = Math.max(0, panelRect.left - expandedLeft);
+    const clipRight = Math.max(0, expandedRight - panelRect.right);
+    const panelCenterX = panelRect.left + (panelRect.width / 2);
+    const viewportCenterX = viewportWidth / 2;
+    const panelShiftX = viewportCenterX - panelCenterX;
+
+    articlePanel.style.setProperty('--articleExpandClipLeft', `${clipLeft.toFixed(2)}px`);
+    articlePanel.style.setProperty('--articleExpandClipRight', `${clipRight.toFixed(2)}px`);
+    articlePanel.style.setProperty('--articleExpandPanelShiftX', `${panelShiftX.toFixed(2)}px`);
     articlePanel.classList.remove('expanding-fullscreen');
+    articlePanel.classList.remove('article-expand-run');
+    const navigateOnce = () => {
+        if (!articleExpandInFlight) return;
+        articleExpandInFlight = false;
+        if (articleExpandNavigateTimer) {
+            clearTimeout(articleExpandNavigateTimer);
+            articleExpandNavigateTimer = null;
+        }
+        try {
+            const payload = {
+                blogId,
+                title: articlePanel.dataset.handoffTitle || '',
+                author: articlePanel.dataset.handoffAuthor || 'Anonymous',
+                publishedAt: articlePanel.dataset.handoffPublishedAt || '',
+                article: articlePanel.dataset.handoffArticle || '',
+                ts: Date.now()
+            };
+            sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
+        } catch (_) {}
+        location.href = `/${blogId}`;
+    };
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             articlePanel.classList.add('expanding-fullscreen');
-            setTimeout(() => {
-                location.href = `/${blogId}`;
-            }, 800);
+            // Commit the start frame, then animate both motions together.
+            void articlePanel.offsetHeight;
+            requestAnimationFrame(() => {
+                articlePanel.classList.add('article-expand-run');
+            });
+            const expandMs = getExpandNavigateMs();
+            const onTransitionEnd = (e) => {
+                if (e.target !== articlePanel) return;
+                if (e.propertyName !== 'clip-path' && e.propertyName !== 'transform') return;
+                articlePanel.removeEventListener('transitionend', onTransitionEnd);
+                navigateOnce();
+            };
+            articlePanel.addEventListener('transitionend', onTransitionEnd);
+            // Fallback in case transitionend does not fire.
+            articleExpandNavigateTimer = setTimeout(() => {
+                articlePanel.removeEventListener('transitionend', onTransitionEnd);
+                navigateOnce();
+            }, expandMs + 80);
         });
     });
 }
@@ -1674,6 +1780,10 @@ function expandArticlePanelAndNavigate(blogId, card) {
     const rawArticle = card.dataset.article || '';
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
+    articlePanel.dataset.handoffTitle = title;
+    articlePanel.dataset.handoffAuthor = author;
+    articlePanel.dataset.handoffPublishedAt = publishedAt;
+    articlePanel.dataset.handoffArticle = rawArticle;
 
     setActivePreviewSeam(seamIndex);
     renderFirstPagePreview(articlePanel, { title, article: rawArticle, author, publishedAt }, () => {
