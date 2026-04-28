@@ -1,5 +1,6 @@
 let blogId = decodeURI(location.pathname.split("/").pop());
 const commentSection = document.querySelector('.comment-section');
+const commentScreenEl = document.getElementById('comment-screen');
 
 let docRef = db.collection("blogs").doc(blogId);
 let commentRef = db.collection("comments").doc(blogId+'_'+0);
@@ -17,6 +18,15 @@ let spreadResizeBound = false;
 let spreadReflowTimer = null;
 let currentBlogMeta = null;
 let footnoteNavAttached = false;
+let annotationsListenerAttached = false;
+let annotationSelectionBound = false;
+let annotationHighlightNavBound = false;
+let annotationsState = [];
+let pendingAnnotationRange = null;
+let annotationToolbar = null;
+let annotationToolbarHideTimer = null;
+let annotationOverlayRoot = null;
+const annotationColorSeed = Math.floor(Date.now() / 1000);
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
 const READER_HANDOFF_MAX_AGE_MS = 90 * 1000;
 
@@ -39,6 +49,355 @@ function setupFootnoteRefNavigation() {
     });
 }
 
+function getAnnotationToolbar() {
+    if (annotationToolbar) return annotationToolbar;
+    const toolbar = document.createElement('div');
+    toolbar.className = 'annotation-toolbar';
+    toolbar.hidden = true;
+    toolbar.innerHTML = `<button type="button" class="annotation-add-btn">Add annotation</button>`;
+    document.body.appendChild(toolbar);
+    toolbar.querySelector('.annotation-add-btn')?.addEventListener('click', createAnnotationFromSelection);
+    annotationToolbar = toolbar;
+    return toolbar;
+}
+
+function hideAnnotationToolbar() {
+    const toolbar = getAnnotationToolbar();
+    if (annotationToolbarHideTimer) {
+        clearTimeout(annotationToolbarHideTimer);
+        annotationToolbarHideTimer = null;
+    }
+    toolbar.hidden = true;
+}
+
+function scheduleHideAnnotationToolbar() {
+    if (annotationToolbarHideTimer) clearTimeout(annotationToolbarHideTimer);
+    annotationToolbarHideTimer = setTimeout(() => {
+        hideAnnotationToolbar();
+    }, 120);
+}
+
+function articleContentRoot() {
+    return document.getElementById('article-body');
+}
+
+function ensureAnnotationOverlayRoot() {
+    if (annotationOverlayRoot) return annotationOverlayRoot;
+    const root = document.createElement('div');
+    root.id = 'annotation-overlay-root';
+    document.body.appendChild(root);
+    annotationOverlayRoot = root;
+    return root;
+}
+
+function ensureAnnotationCommentsHost() {
+    if (!commentSection) return null;
+    let host = document.getElementById('annotation-comments');
+    if (host) return host;
+    host = document.createElement('div');
+    host.id = 'annotation-comments';
+    host.className = 'annotation-comments';
+    commentSection.prepend(host);
+    return host;
+}
+
+function hashString(value) {
+    const s = String(value || '');
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function annotationSoftColor(id, index = 0) {
+    const base = (hashString(id) + annotationColorSeed + (index * 97)) % 360;
+    const hue = base;
+    const sat = 58;
+    const light = 84;
+    return {
+        fill: `hsla(${hue}, ${sat}%, ${light}%, 0.42)`,
+        fillActive: `hsla(${hue}, ${sat}%, ${Math.max(74, light - 8)}%, 0.62)`,
+        border: `hsla(${hue}, 46%, ${Math.max(56, light - 22)}%, 0.33)`,
+        borderActive: `hsla(${hue}, 52%, ${Math.max(48, light - 30)}%, 0.52)`,
+        badge: `hsla(${hue}, 44%, ${Math.max(62, light - 14)}%, 0.28)`,
+        badgeText: `hsla(${hue}, 38%, 30%, 0.95)`
+    };
+}
+
+function isSelectionInArticle(selection) {
+    if (!selection || selection.rangeCount === 0) return false;
+    const root = articleContentRoot();
+    if (!root) return false;
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) return false;
+    const { startContainer, endContainer } = range;
+    return root.contains(startContainer) && root.contains(endContainer);
+}
+
+function textNodesUnder(root) {
+    const nodes = [];
+    if (!root) return nodes;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (!node.nodeValue || !node.nodeValue.length) return NodeFilter.FILTER_REJECT;
+            const parentEl = node.parentElement;
+            if (!parentEl) return NodeFilter.FILTER_REJECT;
+            if (parentEl.closest('#comment-screen')) return NodeFilter.FILTER_REJECT;
+            if (parentEl.closest('.annotation-highlight')) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
+    let cur = walker.nextNode();
+    while (cur) {
+        nodes.push(cur);
+        cur = walker.nextNode();
+    }
+    return nodes;
+}
+
+function computeTextOffset(root, container, localOffset) {
+    const nodes = textNodesUnder(root);
+    let offset = 0;
+    for (const node of nodes) {
+        if (node === container) return offset + localOffset;
+        offset += node.nodeValue.length;
+    }
+    return -1;
+}
+
+function serializeRangeOffsets(root, range) {
+    const start = computeTextOffset(root, range.startContainer, range.startOffset);
+    const end = computeTextOffset(root, range.endContainer, range.endOffset);
+    if (start < 0 || end < 0 || end <= start) return null;
+    return { startOffset: start, endOffset: end };
+}
+
+function rangeFromOffsets(root, startOffset, endOffset) {
+    const nodes = textNodesUnder(root);
+    const range = document.createRange();
+    let running = 0;
+    let startNode = null;
+    let endNode = null;
+    let startLocal = 0;
+    let endLocal = 0;
+
+    for (const node of nodes) {
+        const next = running + node.nodeValue.length;
+        if (!startNode && startOffset >= running && startOffset <= next) {
+            startNode = node;
+            startLocal = Math.max(0, Math.min(node.nodeValue.length, startOffset - running));
+        }
+        if (!endNode && endOffset >= running && endOffset <= next) {
+            endNode = node;
+            endLocal = Math.max(0, Math.min(node.nodeValue.length, endOffset - running));
+        }
+        running = next;
+        if (startNode && endNode) break;
+    }
+
+    if (!startNode || !endNode) return null;
+    range.setStart(startNode, startLocal);
+    range.setEnd(endNode, endLocal);
+    if (range.collapsed) return null;
+    return range;
+}
+
+function unwrapNode(el) {
+    if (!el || !el.parentNode) return;
+    const parent = el.parentNode;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+    parent.normalize();
+}
+
+function clearAnnotationHighlights() {
+    const overlay = ensureAnnotationOverlayRoot();
+    overlay.innerHTML = '';
+}
+
+function applyAnnotationHighlights() {
+    const root = articleContentRoot();
+    if (!root || !annotationsState.length) return;
+    clearAnnotationHighlights();
+    const overlay = ensureAnnotationOverlayRoot();
+    const sorted = [...annotationsState].sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+    sorted.forEach((item, idx) => {
+        const tone = annotationSoftColor(item.id, idx);
+        if (!Number.isFinite(item.startOffset) || !Number.isFinite(item.endOffset)) return;
+        const range = rangeFromOffsets(root, item.startOffset, item.endOffset);
+        if (!range) return;
+        const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+        rects.forEach((rect) => {
+            const box = document.createElement('button');
+            box.type = 'button';
+            box.className = 'annotation-highlight';
+            box.dataset.annotationId = item.id;
+            box.dataset.annotationIndex = String(idx + 1);
+            box.style.left = `${window.scrollX + rect.left}px`;
+            box.style.top = `${window.scrollY + rect.top}px`;
+            box.style.width = `${rect.width}px`;
+            box.style.height = `${rect.height}px`;
+            box.style.setProperty('--ann-fill', tone.fill);
+            box.style.setProperty('--ann-fill-active', tone.fillActive);
+            box.style.setProperty('--ann-border', tone.border);
+            box.style.setProperty('--ann-border-active', tone.borderActive);
+            overlay.appendChild(box);
+        });
+    });
+}
+
+function renderAnnotationList() {
+    const host = ensureAnnotationCommentsHost();
+    if (!host) return;
+    host.innerHTML = '';
+    const ordered = [...annotationsState].sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+    ordered.forEach((item, idx) => {
+        const tone = annotationSoftColor(item.id, idx);
+        const card = document.createElement('div');
+        card.className = 'comment-card annotation-card';
+        card.id = `annotation-item-${item.id}`;
+        card.dataset.annotationId = item.id;
+        card.style.setProperty('--ann-fill', tone.fill);
+        card.style.setProperty('--ann-fill-active', tone.fillActive);
+        card.style.setProperty('--ann-border', tone.border);
+        card.style.setProperty('--ann-border-active', tone.borderActive);
+        card.style.setProperty('--ann-badge', tone.badge);
+        card.style.setProperty('--ann-badge-text', tone.badgeText);
+        const userTag = String(item.user || 'anonymous').trim() || 'anonymous';
+        const content = (item.commentText || '').trim();
+        card.innerHTML = `
+            <h1 class="user annotation-user">@${userTag}</h1>
+            <div class="comment-meat">
+                <p class="comment-content annotation-comment">${content}</p>
+            </div>
+        `;
+        host.appendChild(card);
+    });
+}
+
+function scrollToAnnotationItem(annotationId) {
+    const el = document.getElementById(`annotation-item-${annotationId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    el.classList.add('annotation-item-active');
+    setTimeout(() => el.classList.remove('annotation-item-active'), 900);
+}
+
+function scrollToAnnotationHighlight(annotationId) {
+    const el = document.querySelector(`.annotation-highlight[data-annotation-id="${annotationId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('annotation-highlight-active');
+    setTimeout(() => el.classList.remove('annotation-highlight-active'), 900);
+}
+
+function bindAnnotationNavigation() {
+    if (annotationHighlightNavBound) return;
+    annotationHighlightNavBound = true;
+    document.body.addEventListener('click', (e) => {
+        const h = e.target.closest('#annotation-overlay-root .annotation-highlight');
+        if (h) {
+            e.preventDefault();
+            const id = h.dataset.annotationId;
+            if (id) scrollToAnnotationItem(id);
+            return;
+        }
+        const item = e.target.closest('.annotation-card');
+        if (item) {
+            const id = item.dataset.annotationId;
+            if (id) scrollToAnnotationHighlight(id);
+        }
+    });
+}
+
+function bindAnnotationSelectionUi() {
+    if (annotationSelectionBound) return;
+    annotationSelectionBound = true;
+    const root = articleContentRoot();
+    if (!root) return;
+    const toolbar = getAnnotationToolbar();
+
+    document.addEventListener('selectionchange', () => {
+        const sel = window.getSelection();
+        if (!isSelectionInArticle(sel)) {
+            pendingAnnotationRange = null;
+            scheduleHideAnnotationToolbar();
+            return;
+        }
+        const range = sel.getRangeAt(0).cloneRange();
+        const rect = range.getBoundingClientRect();
+        if (!rect || rect.width === 0 || rect.height === 0) return;
+        pendingAnnotationRange = range;
+        toolbar.hidden = false;
+        const top = Math.max(8, window.scrollY + rect.top - 40);
+        const left = Math.max(8, Math.min(window.scrollX + rect.left, window.scrollX + window.innerWidth - 150));
+        toolbar.style.top = `${top}px`;
+        toolbar.style.left = `${left}px`;
+    });
+
+    root.addEventListener('mousedown', () => {
+        scheduleHideAnnotationToolbar();
+    });
+}
+
+async function createAnnotationFromSelection() {
+    const root = articleContentRoot();
+    if (!root || !pendingAnnotationRange) return;
+    const offsets = serializeRangeOffsets(root, pendingAnnotationRange);
+    if (!offsets) return;
+    const selectedText = pendingAnnotationRange.toString().trim();
+    if (!selectedText) return;
+    const commentText = window.prompt('Add annotation comment');
+    if (!commentText || !commentText.trim()) return;
+
+    const user = auth.currentUser?.email?.split('@')[0] || 'anonymous';
+    const createdAtMs = Date.now();
+    const d = new Date(createdAtMs);
+    const postedAt = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    const docId = `${blogId}_ann_${createdAtMs}_${Math.random().toString(36).slice(2, 7)}`;
+    await db.collection('annotations').doc(docId).set({
+        blogId,
+        startOffset: offsets.startOffset,
+        endOffset: offsets.endOffset,
+        selectedText,
+        commentText: commentText.trim(),
+        user,
+        postedAt,
+        createdAtMs
+    });
+    pendingAnnotationRange = null;
+    const sel = window.getSelection();
+    if (sel) sel.removeAllRanges();
+    hideAnnotationToolbar();
+}
+
+function attachAnnotationsListener() {
+    if (annotationsListenerAttached) return;
+    annotationsListenerAttached = true;
+    db.collection('annotations')
+        .where('blogId', '==', blogId)
+        .onSnapshot((snapshot) => {
+            const next = [];
+            snapshot.forEach((doc) => {
+                const d = doc.data() || {};
+                next.push({
+                    id: doc.id,
+                    startOffset: Number(d.startOffset),
+                    endOffset: Number(d.endOffset),
+                    selectedText: String(d.selectedText || ''),
+                    commentText: String(d.commentText || ''),
+                    user: String(d.user || 'anonymous'),
+                    createdAtMs: Number(d.createdAtMs || 0)
+                });
+            });
+            annotationsState = next.filter((a) => Number.isFinite(a.startOffset) && Number.isFinite(a.endOffset) && a.endOffset > a.startOffset);
+            applyAnnotationHighlights();
+            renderAnnotationList();
+        });
+}
+
 function readReaderHandoffPayload() {
     try {
         const raw = sessionStorage.getItem(READER_HANDOFF_KEY);
@@ -56,6 +415,12 @@ function readReaderHandoffPayload() {
 
 function clearReaderHandoffPayload() {
     try { sessionStorage.removeItem(READER_HANDOFF_KEY); } catch (_) {}
+}
+
+function ensureCommentsVisible() {
+    document.body.classList.remove('reader-loading');
+    const commentScreen = document.getElementById('comment-screen');
+    if (commentScreen) commentScreen.style.display = 'block';
 }
 
 function renderReaderHandoffIfPresent() {
@@ -90,9 +455,8 @@ commentRef.get().then((comms) => {
     if (!comms.exists) {
         console.log("no comments yet");
     }
-    if (readerReady) {
-        setupCommentSection();
-    }
+    setupCommentSection();
+    ensureCommentsVisible();
 })
 
 
@@ -177,28 +541,32 @@ const createComment = (comment, commentid) => {
     let data = comment.data();
     const input = document.getElementById("commentInput");
     const replycommentid = input.getAttribute("name");
+    const commentList = document.getElementById("commentList");
+    if (!commentList) return;
     console.log(data.replyId);
     input.setAttribute("name", "");
+    const already = document.getElementById(commentid);
+    if (already) return;
     if(data.responseTo == ''){
-        commentSection.innerHTML += `
-        <div class="comment-card" id='${commentid}'>
+        commentList.insertAdjacentHTML('beforeend', `
+        <li class="comment-card" id='${commentid}'>
             <h1 class="user">@${data.user}</h1>
             <div class="comment-meat">
                 <p class="comment-content">${data.content}</p>
                 <button class="reply" onclick="makeAnchor('${data.user}','${commentid}')">reply</button>
             </div>
-        </div>
-    `;
+        </li>
+    `);
     }else{
-        commentSection.innerHTML += `
-        <div class="comment-card" id='${commentid}'>
+        commentList.insertAdjacentHTML('beforeend', `
+        <li class="comment-card" id='${commentid}'>
             <h1 class="user">@${data.user}</h1>
             <div class="comment-meat">
                 <p class="comment-content"><a class="reply-user" href="#'${replycommentid}'" onclick="scrollToAnchor('${data.replyId}')">${data.responseTo}</a> ${data.content}</p>
                 <button class="reply" onclick="makeAnchor('${data.user}','${commentid}')">reply</button>
             </div>
-        </div>
-    `;
+        </li>
+    `);
     }
 
 }
@@ -215,9 +583,16 @@ const setupBlog = (data) => {
 
     numberofcomments = data.numberofcomments;
 
-    renderArticleBody(data.article);
-    clearReaderHandoffPayload();
-    document.body.classList.remove('reader-loading');
+    try {
+        renderArticleBody(data.article);
+        setupCommentSection();
+        attachAnnotationsListener();
+        bindAnnotationSelectionUi();
+        bindAnnotationNavigation();
+        clearReaderHandoffPayload();
+    } finally {
+        ensureCommentsVisible();
+    }
 }
 
 
@@ -654,9 +1029,8 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     finalizePageFootnotes(currentPage, defMap, assignedFootnoteAnchors);
 
-    const commentBlock = document.getElementById('comment-screen');
-    if (commentBlock) {
-        currentPage.appendChild(commentBlock);
+    if (commentScreenEl) {
+        currentPage.appendChild(commentScreenEl);
     }
 
     applyPageNumbers(articleBody);
@@ -667,6 +1041,8 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 const renderArticleBody = (articleData, options = {}) => {
     articleBlocksCache = parseArticleBlocks(articleData);
     renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
+    applyAnnotationHighlights();
+    renderAnnotationList();
 
     if (!spreadResizeBound) {
         spreadResizeBound = true;
@@ -683,9 +1059,8 @@ const renderArticleBody = (articleData, options = {}) => {
     if (options.provisional) return;
 
     readerReady = true;
-    if (commentsReady) {
-        setupCommentSection();
-    }
+    setupCommentSection();
+    ensureCommentsVisible();
 }
 
 renderReaderHandoffIfPresent();

@@ -1310,7 +1310,7 @@ body.article-open {
 .home-preview-page-number {
     position: absolute;
     right: clamp(14px, 1.5vw, 20px);
-    bottom: clamp(8px, 1vh, 14px);
+    bottom: clamp(14px, 1.8vh, 20px);
     text-align: right;
     font-family: Georgia, 'Times New Roman', serif;
     font-size: clamp(10px, 0.78vw, 11.5px);
