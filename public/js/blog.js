@@ -61,6 +61,10 @@ function clearReaderHandoffPayload() {
 function renderReaderHandoffIfPresent() {
     const payload = readReaderHandoffPayload();
     if (!payload) return;
+    const handoffHeight = Number(payload.previewPageHeight);
+    if (Number.isFinite(handoffHeight) && handoffHeight > 100) {
+        document.documentElement.style.setProperty('--readerHandoffPageHeight', `${Math.round(handoffHeight)}px`);
+    }
     const titleTag = document.querySelector('title');
     const title = payload.title || '';
     const publishedAt = payload.publishedAt || '';

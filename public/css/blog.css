@@ -1,7 +1,7 @@
 /* Vertical scroll reader; two-column article body */
 
 html {
-    background: #f6f6f6;
+    background: #fff;
 }
 
 /* Keep surrounding canvas plain white; paper texture is scoped to page cards. */
@@ -12,7 +12,7 @@ body {
     overflow-y: auto;
     min-height: 100vh;
     position: relative;
-    background: #f6f6f6;
+    background: #fff;
     color: #222;
     isolation: isolate;
 }
@@ -27,7 +27,8 @@ body.reader-loading #comment-screen {
     z-index: 1;
     max-width: min(1340px, calc(100vw - 40px));
     margin: 0 auto;
-    padding: 18px 20px 56px;
+    /* Calibrated handoff offset to avoid visible vertical snap. */
+    padding: 9px 20px 56px;
     box-sizing: border-box;
     background: transparent;
 }
@@ -227,7 +228,10 @@ body.reader-loading #comment-screen {
 }
 
 #article-body .article-page.article-page-first {
+    height: var(--readerHandoffPageHeight, var(--reader-page-height));
     padding-top: clamp(96px, 12.8vh, 146px);
+    min-height: var(--readerHandoffPageHeight, var(--reader-page-height));
+    max-height: var(--readerHandoffPageHeight, var(--reader-page-height));
 }
 
 #article-body .article-page .article-page-number {

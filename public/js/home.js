@@ -1692,8 +1692,9 @@ function playExpandFullscreenThenNavigate(blogId) {
         articleExpandNavigateTimer = null;
     }
     const previewPage = articlePanel.querySelector('.home-preview-page');
+    const previewPageRect = previewPage ? previewPage.getBoundingClientRect() : null;
     if (previewPage) {
-        const lockWidthPx = Math.round(previewPage.getBoundingClientRect().width);
+        const lockWidthPx = Math.round(previewPageRect.width);
         articlePanel.style.setProperty('--articlePreviewLockWidth', `${lockWidthPx}px`);
     }
     const panelRect = articlePanel.getBoundingClientRect();
@@ -1728,6 +1729,7 @@ function playExpandFullscreenThenNavigate(blogId) {
                 author: articlePanel.dataset.handoffAuthor || 'Anonymous',
                 publishedAt: articlePanel.dataset.handoffPublishedAt || '',
                 article: articlePanel.dataset.handoffArticle || '',
+                previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
                 ts: Date.now()
             };
             sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));

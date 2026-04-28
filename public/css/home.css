@@ -912,6 +912,7 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     display: inline-block;
     line-height: 1.1;
     overflow: visible;
+    font-size: clamp(2rem, 2.6vw, 2.6rem);
 }
 
 /* Column 1 heading style */
@@ -1216,7 +1217,7 @@ body.article-open {
     border: 1px solid rgba(20, 20, 20, 0.14);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.045);
     overflow: hidden;
-    /* Match reader .article-page + .article-page-first geometry. */
+    /* Exact parity with reader first-page padding. */
     padding: clamp(96px, 12.8vh, 146px) clamp(28px, 3.3vw, 40px) clamp(24px, 3vh, 34px);
     display: flex;
     flex-direction: column;
@@ -1296,7 +1297,7 @@ body.article-open {
 
 .home-preview-byline-date {
     font-style: italic;
-    color: rgba(0, 0, 0, 0.5);
+    color: rgba(0, 0, 0, 0.48);
 }
 
 .home-preview-body {
@@ -1342,9 +1343,14 @@ body.article-open {
     -webkit-font-smoothing: none;
 }
 
-.home-preview-body h1 { font-size: clamp(1rem, 1.15vw, 1.2rem); line-height: 1.2; }
+.home-preview-body h1 { font-size: clamp(1rem, 1.15vw, 1.22rem); line-height: 1.2; }
 .home-preview-body h2 { font-size: clamp(0.95rem, 0.98vw, 1.08rem); line-height: 1.25; }
 .home-preview-body h3 { font-size: clamp(0.9rem, 0.88vw, 0.98rem); line-height: 1.24; }
+
+/* Reader parity: first body block sits slightly closer to masthead. */
+.home-preview-page:has(> .article-inline-masthead) .home-preview-body > :first-child {
+    margin-top: clamp(2px, 0.35vw, 6px);
+}
 
 /* Quote / epigraph — match blog reader so preview keeps structure when split */
 .home-preview-body p[data-variant="epigraph"] {
