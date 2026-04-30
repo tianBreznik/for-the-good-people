@@ -642,22 +642,77 @@ body.reader-loading #comment-screen {
 .annotation-toolbar {
     position: absolute;
     z-index: 10000;
-    background: rgba(20, 20, 20, 0.94);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 999px;
-    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.28);
-    padding: 5px 10px;
-    backdrop-filter: blur(1px);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    backdrop-filter: none;
 }
 
 .annotation-add-btn {
-    border: none;
-    background: transparent;
-    color: #f5f5f5;
+    padding: 6px 12px;
+    border: 1px solid #808080;
+    border-radius: 0;
     font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
+    font-weight: 400;
+    font-family: 'MS Sans Serif', 'Arial', sans-serif;
     cursor: pointer;
+    transition: all 0.1s ease;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+    min-width: 60px;
+    background: linear-gradient(to bottom, #f0f0f0 0%, #d0d0d0 50%, #b8b8b8 100%);
+    color: #000;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.5);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 1px 0 rgba(0,0,0,0.2);
+}
+
+.annotation-add-btn:hover {
+    background: linear-gradient(to bottom, #e8e8e8 0%, #c8c8c8 50%, #a8a8a8 100%);
+    border-color: #606060;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 0 rgba(0,0,0,0.3);
+}
+
+.annotation-add-btn:active {
+    background: linear-gradient(to bottom, #b8b8b8 0%, #d0d0d0 50%, #f0f0f0 100%);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.1);
+    transform: translateY(1px);
+}
+
+.comment-card .reply {
+    display: block;
+    margin: 0;
+    padding: 2px 8px;
+    border: 1px solid var(--ann-border, rgba(128, 128, 128, 0.7));
+    border-radius: 0;
+    font-size: 10px;
+    font-weight: 400;
+    font-family: 'MS Sans Serif', 'Arial', sans-serif;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    text-decoration: none;
+    text-align: center;
+    min-width: 44px;
+    background: color-mix(in srgb, var(--ann-fill, rgba(232, 232, 232, 0.9)) 62%, white 38%);
+    color: #000;
+    text-shadow: none;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 1px 0 rgba(0,0,0,0.12);
+    position: static;
+    transform: none;
+}
+
+.comment-card .reply:hover {
+    background: color-mix(in srgb, var(--ann-fill-active, rgba(216, 216, 216, 0.92)) 66%, white 34%);
+    border-color: var(--ann-border-active, rgba(96, 96, 96, 0.8));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 0 rgba(0,0,0,0.18);
+}
+
+.comment-card .reply:active {
+    background: color-mix(in srgb, var(--ann-fill-active, rgba(205, 205, 205, 0.95)) 72%, white 28%);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.1);
+    transform: translateY(1px);
 }
 
 .annotation-highlight {
@@ -691,9 +746,9 @@ body.reader-loading #comment-screen {
 
 .annotation-card {
     border: none;
-    background: color-mix(in srgb, var(--ann-fill, rgba(255, 240, 166, 0.22)) 72%, white 28%);
+    background: color-mix(in srgb, var(--ann-fill, rgba(255, 240, 166, 0.22)) 26%, white 74%);
     border-radius: 0;
-    padding: 8px 0;
+    padding: 0;
     transition: background-color 140ms ease, border-color 140ms ease;
     max-width: 100%;
     margin-left: 0;
@@ -701,7 +756,20 @@ body.reader-loading #comment-screen {
     margin-bottom: 0;
 }
 
+.comment-card.annotation-card {
+    padding: 0 !important;
+}
+
 .annotation-card:hover {
+    background: transparent;
+}
+
+.annotation-card > .comment-shell {
+    background: color-mix(in srgb, var(--ann-fill, rgba(255, 240, 166, 0.22)) 72%, white 28%);
+    padding: 8px 0;
+}
+
+.annotation-card:hover > .comment-shell {
     background: color-mix(in srgb, var(--ann-fill-active, rgba(255, 240, 166, 0.3)) 68%, white 32%);
 }
 
@@ -716,15 +784,18 @@ body.reader-loading #comment-screen {
 .annotation-card .user.annotation-user {
     display: block;
     margin: 0 0 2px 0 !important;
-    position: relative;
-    left: 24px;
+    position: static;
+    left: auto;
+    padding-left: 6px;
 }
 
 .annotation-card .annotation-comment {
     color: rgba(30, 24, 10, 0.96);
-    padding: 0 10px 0 18px;
+    padding: 0 0 0 6px;
     display: block;
     margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
 }
 
 .annotation-card .comment-meat {
@@ -763,6 +834,26 @@ body.reader-loading #comment-screen {
     position: relative;
 }
 
+.comment-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 8px;
+    align-items: stretch;
+    width: 100%;
+}
+
+.comment-main {
+    min-width: 0;
+    padding-left: calc(var(--thread-depth, 0) * 20px);
+}
+
+.comment-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 10px;
+}
+
 .comment-card::before {
     counter-increment: footnote;
     content: counter(footnote);
@@ -775,6 +866,11 @@ body.reader-loading #comment-screen {
 }
 
 .comment-card.annotation-card::before {
+    content: none;
+    display: none;
+}
+
+.threaded-comment::before {
     content: none;
     display: none;
 }
@@ -799,12 +895,17 @@ body.reader-loading #comment-screen {
     -moz-osx-font-smoothing: grayscale !important;
 }
 
-.comment-card .comment-meat { display: inline; }
+.comment-card .comment-meat {
+    display: block;
+    padding-right: 0;
+}
 .comment-card .comment-content {
     display: inline;
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif !important;
     font-weight: 400 !important;
+    font-size: 14px;
+    line-height: 1.45;
     text-shadow: none !important;
     -webkit-text-stroke: 0 !important;
     color: #222 !important;
@@ -818,17 +919,41 @@ body.reader-loading #comment-screen {
     -moz-osx-font-smoothing: grayscale !important;
 }
 
-.comment-card .reply {
-    display: inline-block;
-    margin: 2px 0 0 0;
-    padding: 2px 6px;
-    font-size: 11px;
-}
-
 #commentList {
     list-style: none;
     margin: 0;
     padding: 0;
+}
+
+.threaded-comment {
+    padding-left: 0;
+}
+
+.comment-children {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+}
+
+.annotation-children {
+    margin: 0;
+    padding: 0;
+}
+
+.annotation-children > .threaded-comment {
+    background: color-mix(in srgb, var(--ann-fill, rgba(255, 240, 166, 0.22)) 34%, white 66%);
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.annotation-children > .threaded-comment:hover {
+    background: color-mix(in srgb, var(--ann-fill-active, rgba(255, 240, 166, 0.3)) 40%, white 60%);
+}
+
+.reply-user {
+    opacity: 0.72;
+    margin-right: 4px;
 }
 
 input[type=text] {

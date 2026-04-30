@@ -9,6 +9,7 @@ let comments = db.collection("comments");
 let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 let numberofcomments = 0;
 let commenttracker = [];
+let commentsState = new Map();
 
 let commentsReady = false;
 let readerReady = false;
@@ -268,9 +269,14 @@ function renderAnnotationList() {
         const userTag = String(item.user || 'anonymous').trim() || 'anonymous';
         const content = (item.commentText || '').trim();
         card.innerHTML = `
-            <h1 class="user annotation-user">@${userTag}</h1>
-            <div class="comment-meat">
-                <p class="comment-content annotation-comment">${content}</p>
+            <div class="comment-shell">
+                <div class="comment-main">
+                    <h1 class="user annotation-user">@${userTag}</h1>
+                    <p class="comment-content annotation-comment">${content}</p>
+                </div>
+                <div class="comment-actions">
+                    <button class="reply" onclick="event.stopPropagation(); makeAnchor('${userTag}','${item.id}')">reply</button>
+                </div>
             </div>
         `;
         host.appendChild(card);
@@ -395,6 +401,9 @@ function attachAnnotationsListener() {
             annotationsState = next.filter((a) => Number.isFinite(a.startOffset) && Number.isFinite(a.endOffset) && a.endOffset > a.startOffset);
             applyAnnotationHighlights();
             renderAnnotationList();
+            // On refresh, comments can load before annotations; rerender threads now that
+            // annotation parent IDs are known, so annotation replies are nested correctly.
+            renderThreadedComments();
         });
 }
 
@@ -514,14 +523,14 @@ const setupCommentSection = () => {
     if (commentsListenerAttached) return;
     commentsListenerAttached = true;
     db.collection("comments").onSnapshot((comments) => {
-        comments.forEach(comment => {
-            console.log("before: " + comment.id);
-            if(comment.id.includes(decodeURI(location.pathname.split("/").pop())) && !(commenttracker.indexOf(comment.id) > -1)){
-                console.log("created: " + comment.id);
-                createComment(comment, comment.id);
-                commenttracker.push(comment.id);
-            }
-        })
+        const nextState = new Map();
+        comments.forEach((comment) => {
+            const id = comment.id;
+            if (!id.startsWith(`${blogId}_`)) return;
+            nextState.set(id, comment.data() || {});
+        });
+        commentsState = nextState;
+        renderThreadedComments();
     })
 }
 
@@ -569,6 +578,99 @@ const createComment = (comment, commentid) => {
     `);
     }
 
+}
+
+function commentNumericOrder(id) {
+    const m = String(id || '').match(/_(\d+)$/);
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
+
+function renderThreadedComments() {
+    const commentList = document.getElementById("commentList");
+    if (!commentList) return;
+    commentList.innerHTML = '';
+    document.querySelectorAll('.annotation-card > .comment-children').forEach((el) => el.remove());
+    if (!commentsState.size) return;
+
+    const childrenByParent = new Map();
+    const roots = [];
+    const annotationIds = new Set(annotationsState.map((a) => a.id));
+    const entries = Array.from(commentsState.entries());
+
+    entries.forEach(([id, data]) => {
+        const parentIdRaw = String(data.replyId || '').trim();
+        const parentIsComment = parentIdRaw && commentsState.has(parentIdRaw);
+        const parentIsAnnotation = parentIdRaw && annotationIds.has(parentIdRaw);
+        if (!parentIsComment && !parentIsAnnotation) {
+            roots.push({ id, data });
+            return;
+        }
+        if (!childrenByParent.has(parentIdRaw)) childrenByParent.set(parentIdRaw, []);
+        childrenByParent.get(parentIdRaw).push({ id, data });
+    });
+
+    const sortByOrder = (a, b) => commentNumericOrder(a.id) - commentNumericOrder(b.id);
+    roots.sort(sortByOrder);
+    childrenByParent.forEach((arr) => arr.sort(sortByOrder));
+
+    const renderNode = (node, depth = 0) => {
+        const { id, data } = node;
+        const li = document.createElement('li');
+        li.className = 'comment-card threaded-comment';
+        li.id = id;
+        li.style.setProperty('--thread-depth', String(depth));
+
+        const user = String(data.user || 'anonymous');
+        const content = String(data.content || '');
+        const responseTo = String(data.responseTo || '').trim();
+
+        let contentHtml = content;
+        if (responseTo) {
+            contentHtml = `<span class="reply-user">${responseTo}</span> ${content}`;
+        }
+
+        li.innerHTML = `
+            <div class="comment-shell">
+                <div class="comment-main">
+                    <h1 class="user">@${user}</h1>
+                    <p class="comment-content">${contentHtml}</p>
+                </div>
+                <div class="comment-actions">
+                    <button class="reply" onclick="event.stopPropagation(); makeAnchor('${user}','${id}')">reply</button>
+                </div>
+            </div>
+        `;
+
+        const children = childrenByParent.get(id) || [];
+        if (children.length) {
+            const childList = document.createElement('ul');
+            childList.className = 'comment-children';
+            children.forEach((child) => childList.appendChild(renderNode(child, depth + 1)));
+            li.appendChild(childList);
+        }
+        return li;
+    };
+
+    roots.forEach((rootNode) => {
+        commentList.appendChild(renderNode(rootNode, 0));
+    });
+
+    // Attach comment threads that reply to annotation cards directly under those annotations.
+    annotationIds.forEach((annId) => {
+        const annCard = document.getElementById(`annotation-item-${annId}`);
+        const annChildren = childrenByParent.get(annId) || [];
+        if (!annCard || !annChildren.length) return;
+        const childList = document.createElement('ul');
+        childList.className = 'comment-children annotation-children';
+        childList.style.setProperty('--ann-fill', annCard.style.getPropertyValue('--ann-fill'));
+        childList.style.setProperty('--ann-fill-active', annCard.style.getPropertyValue('--ann-fill-active'));
+        childList.style.setProperty('--ann-border', annCard.style.getPropertyValue('--ann-border'));
+        childList.style.setProperty('--ann-border-active', annCard.style.getPropertyValue('--ann-border-active'));
+        annChildren.forEach((child) => childList.appendChild(renderNode(child, 1)));
+        annCard.appendChild(childList);
+    });
 }
 
 const setupBlog = (data) => {
