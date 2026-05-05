@@ -24,6 +24,10 @@ let annotationSelectionBound = false;
 let annotationHighlightNavBound = false;
 let annotationsState = [];
 let pendingAnnotationRange = null;
+/** Picked on first valid in-article selection; reused when clicking "Add annotation" so hue matches overlay + save. */
+let selectionSessionAnnotationIds = null;
+/** After "Add annotation": offsets + quote until user submits or cancels via the main #commentInput. */
+let pendingAnnotationDraft = null;
 let annotationToolbar = null;
 let annotationToolbarHideTimer = null;
 let annotationOverlayRoot = null;
@@ -57,7 +61,7 @@ function getAnnotationToolbar() {
     toolbar.hidden = true;
     toolbar.innerHTML = `<button type="button" class="annotation-add-btn">Add annotation</button>`;
     document.body.appendChild(toolbar);
-    toolbar.querySelector('.annotation-add-btn')?.addEventListener('click', createAnnotationFromSelection);
+    toolbar.querySelector('.annotation-add-btn')?.addEventListener('click', beginAnnotationComposeFromSelection);
     annotationToolbar = toolbar;
     return toolbar;
 }
@@ -69,6 +73,7 @@ function hideAnnotationToolbar() {
         annotationToolbarHideTimer = null;
     }
     toolbar.hidden = true;
+    clearAnnotationToolbarSessionTone();
 }
 
 function scheduleHideAnnotationToolbar() {
@@ -117,14 +122,127 @@ function annotationSoftColor(id, index = 0) {
     const hue = base;
     const sat = 58;
     const light = 84;
+    const satBtn = 46;
     return {
         fill: `hsla(${hue}, ${sat}%, ${light}%, 0.42)`,
         fillActive: `hsla(${hue}, ${sat}%, ${Math.max(74, light - 8)}%, 0.62)`,
         border: `hsla(${hue}, 46%, ${Math.max(56, light - 22)}%, 0.33)`,
         borderActive: `hsla(${hue}, 52%, ${Math.max(48, light - 30)}%, 0.52)`,
         badge: `hsla(${hue}, 44%, ${Math.max(62, light - 14)}%, 0.28)`,
-        badgeText: `hsla(${hue}, 38%, 30%, 0.95)`
+        badgeText: `hsla(${hue}, 38%, 30%, 0.95)`,
+        /** Same hue as highlight; mostly opaque with a hint of translucency (Add annotation button). */
+        buttonFillHi: `hsla(${hue}, ${satBtn}%, 90%, 0.92)`,
+        buttonFillMid: `hsla(${hue}, ${satBtn + 4}%, 76%, 0.9)`,
+        buttonFillLo: `hsla(${hue}, ${satBtn + 8}%, 63%, 0.88)`,
+        buttonBorder: `hsla(${hue}, 34%, 38%, 0.92)`
     };
+}
+
+/** Matches list + card ordering so compose-time hue matches post-save highlight hue. */
+function sortAnnotationsLikeRenderer(items) {
+    return [...items].sort((a, b) => {
+        const d = (a.createdAtMs || 0) - (b.createdAtMs || 0);
+        if (d !== 0) return d;
+        return String(a.id).localeCompare(String(b.id));
+    });
+}
+
+function computeToneForAnnotationIdentity(annotationId, createdAtMs) {
+    if (!annotationId || !Number.isFinite(createdAtMs)) {
+        return annotationSoftColor('pending', 0);
+    }
+    const hypothetical = { id: annotationId, createdAtMs };
+    const sorted = sortAnnotationsLikeRenderer([...annotationsState, hypothetical]);
+    const idx = sorted.findIndex((a) => a.id === annotationId);
+    const index = idx >= 0 ? idx : 0;
+    return annotationSoftColor(annotationId, index);
+}
+
+function computeToneForPendingAnnotationDraft(draft) {
+    if (!draft?.annotationId || !Number.isFinite(draft.createdAtMs)) {
+        return annotationSoftColor('pending', 0);
+    }
+    return computeToneForAnnotationIdentity(draft.annotationId, draft.createdAtMs);
+}
+
+function applyAnnotationToolbarSessionTone(tone) {
+    const t = getAnnotationToolbar();
+    t.classList.add('annotation-toolbar-toned');
+    t.style.setProperty('--ann-session-border', tone.buttonBorder);
+    t.style.setProperty('--ann-session-fill-hi', tone.buttonFillHi);
+    t.style.setProperty('--ann-session-fill-mid', tone.buttonFillMid);
+    t.style.setProperty('--ann-session-fill-lo', tone.buttonFillLo);
+}
+
+function clearAnnotationToolbarSessionTone() {
+    const t = annotationToolbar;
+    if (!t) return;
+    t.classList.remove('annotation-toolbar-toned');
+    t.style.removeProperty('--ann-session-border');
+    t.style.removeProperty('--ann-session-fill-hi');
+    t.style.removeProperty('--ann-session-fill-mid');
+    t.style.removeProperty('--ann-session-fill-lo');
+}
+
+function applyComposeInputTone(tone) {
+    const input = document.getElementById('commentInput');
+    if (!input) return;
+    input.style.setProperty('--ann-compose-fill', tone.fill);
+    input.style.setProperty('--ann-compose-border', tone.border);
+    input.style.setProperty('--ann-compose-border-focus', tone.borderActive);
+}
+
+function clearComposeInputTone() {
+    const input = document.getElementById('commentInput');
+    if (!input) return;
+    ['--ann-compose-fill', '--ann-compose-border', '--ann-compose-border-focus'].forEach((p) => {
+        input.style.removeProperty(p);
+    });
+}
+
+function clearPendingAnnotationHighlightPreview() {
+    document.querySelectorAll('#annotation-overlay-root .annotation-highlight-pending').forEach((el) => el.remove());
+}
+
+/** Toolbar tint only (no overlay rects — avoids jank under Safari’s native selection). */
+function applySelectionSessionToolbarToneOnly() {
+    if (!selectionSessionAnnotationIds) return;
+    const tone = computeToneForAnnotationIdentity(
+        selectionSessionAnnotationIds.annotationId,
+        selectionSessionAnnotationIds.createdAtMs
+    );
+    applyAnnotationToolbarSessionTone(tone);
+}
+
+function renderPendingAnnotationHighlightPreview(draft, tone) {
+    clearPendingAnnotationHighlightPreview();
+    const root = articleContentRoot();
+    if (!root || !draft) return;
+    const overlay = ensureAnnotationOverlayRoot();
+    const range = rangeFromOffsets(root, draft.startOffset, draft.endOffset);
+    if (!range) return;
+    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+    rects.forEach((rect) => {
+        const box = document.createElement('div');
+        box.className = 'annotation-highlight annotation-highlight-pending';
+        box.setAttribute('aria-hidden', 'true');
+        box.style.left = `${window.scrollX + rect.left}px`;
+        box.style.top = `${window.scrollY + rect.top}px`;
+        box.style.width = `${rect.width}px`;
+        box.style.height = `${rect.height}px`;
+        box.style.setProperty('--ann-fill', tone.fill);
+        box.style.setProperty('--ann-fill-active', tone.fillActive);
+        box.style.setProperty('--ann-border', tone.border);
+        box.style.setProperty('--ann-border-active', tone.borderActive);
+        overlay.appendChild(box);
+    });
+}
+
+function syncPendingAnnotationComposeChrome() {
+    if (!pendingAnnotationDraft?.annotationId) return;
+    const tone = computeToneForPendingAnnotationDraft(pendingAnnotationDraft);
+    applyComposeInputTone(tone);
+    renderPendingAnnotationHighlightPreview(pendingAnnotationDraft, tone);
 }
 
 function isSelectionInArticle(selection) {
@@ -215,15 +333,19 @@ function unwrapNode(el) {
 
 function clearAnnotationHighlights() {
     const overlay = ensureAnnotationOverlayRoot();
-    overlay.innerHTML = '';
+    overlay.querySelectorAll('.annotation-highlight:not(.annotation-highlight-pending)').forEach((el) => el.remove());
 }
 
 function applyAnnotationHighlights() {
     const root = articleContentRoot();
-    if (!root || !annotationsState.length) return;
+    if (!root) return;
     clearAnnotationHighlights();
     const overlay = ensureAnnotationOverlayRoot();
-    const sorted = [...annotationsState].sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+    if (!annotationsState.length) {
+        syncPendingAnnotationComposeChrome();
+        return;
+    }
+    const sorted = sortAnnotationsLikeRenderer(annotationsState);
     sorted.forEach((item, idx) => {
         const tone = annotationSoftColor(item.id, idx);
         if (!Number.isFinite(item.startOffset) || !Number.isFinite(item.endOffset)) return;
@@ -247,13 +369,14 @@ function applyAnnotationHighlights() {
             overlay.appendChild(box);
         });
     });
+    syncPendingAnnotationComposeChrome();
 }
 
 function renderAnnotationList() {
     const host = ensureAnnotationCommentsHost();
     if (!host) return;
     host.innerHTML = '';
-    const ordered = [...annotationsState].sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+    const ordered = sortAnnotationsLikeRenderer(annotationsState);
     ordered.forEach((item, idx) => {
         const tone = annotationSoftColor(item.id, idx);
         const card = document.createElement('div');
@@ -329,14 +452,30 @@ function bindAnnotationSelectionUi() {
         const sel = window.getSelection();
         if (!isSelectionInArticle(sel)) {
             pendingAnnotationRange = null;
+            selectionSessionAnnotationIds = null;
+            clearAnnotationToolbarSessionTone();
             scheduleHideAnnotationToolbar();
             return;
         }
         const range = sel.getRangeAt(0).cloneRange();
         const rect = range.getBoundingClientRect();
-        if (!rect || rect.width === 0 || rect.height === 0) return;
+        if (!rect || rect.width === 0 || rect.height === 0) {
+            pendingAnnotationRange = null;
+            selectionSessionAnnotationIds = null;
+            clearAnnotationToolbarSessionTone();
+            scheduleHideAnnotationToolbar();
+            return;
+        }
+        if (!selectionSessionAnnotationIds) {
+            const createdAtMs = Date.now();
+            selectionSessionAnnotationIds = {
+                annotationId: `${blogId}_ann_${createdAtMs}_${Math.random().toString(36).slice(2, 7)}`,
+                createdAtMs
+            };
+        }
         pendingAnnotationRange = range;
         toolbar.hidden = false;
+        applySelectionSessionToolbarToneOnly();
         const top = Math.max(8, window.scrollY + rect.top - 40);
         const left = Math.max(8, Math.min(window.scrollX + rect.left, window.scrollX + window.innerWidth - 150));
         toolbar.style.top = `${top}px`;
@@ -348,35 +487,81 @@ function bindAnnotationSelectionUi() {
     });
 }
 
-async function createAnnotationFromSelection() {
+const DEFAULT_COMMENT_PLACEHOLDER = 'Write a comment...';
+const ANNOTATION_COMMENT_PLACEHOLDER = 'Note on the highlighted passage…';
+
+function exitAnnotationComposeMode() {
+    clearPendingAnnotationHighlightPreview();
+    clearComposeInputTone();
+    pendingAnnotationDraft = null;
+    const input = document.getElementById('commentInput');
+    const form = document.getElementById('commentForm');
+    if (input) {
+        input.placeholder = DEFAULT_COMMENT_PLACEHOLDER;
+        input.classList.remove('annotation-compose-input');
+    }
+    form?.classList.remove('annotation-compose');
+}
+
+async function saveAnnotationFromDraft(draft, commentTextTrimmed) {
+    if (!draft.annotationId || !Number.isFinite(draft.createdAtMs)) {
+        throw new Error('Annotation draft missing id or timestamp');
+    }
+    const user = auth.currentUser?.email?.split('@')[0] || 'anonymous';
+    const createdAtMs = draft.createdAtMs;
+    const d = new Date(createdAtMs);
+    const postedAt = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    await db.collection('annotations').doc(draft.annotationId).set({
+        blogId,
+        startOffset: draft.startOffset,
+        endOffset: draft.endOffset,
+        selectedText: draft.selectedText,
+        commentText: commentTextTrimmed.trim(),
+        user,
+        postedAt,
+        createdAtMs
+    });
+}
+
+function beginAnnotationComposeFromSelection() {
     const root = articleContentRoot();
     if (!root || !pendingAnnotationRange) return;
     const offsets = serializeRangeOffsets(root, pendingAnnotationRange);
     if (!offsets) return;
     const selectedText = pendingAnnotationRange.toString().trim();
     if (!selectedText) return;
-    const commentText = window.prompt('Add annotation comment');
-    if (!commentText || !commentText.trim()) return;
 
-    const user = auth.currentUser?.email?.split('@')[0] || 'anonymous';
-    const createdAtMs = Date.now();
-    const d = new Date(createdAtMs);
-    const postedAt = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-    const docId = `${blogId}_ann_${createdAtMs}_${Math.random().toString(36).slice(2, 7)}`;
-    await db.collection('annotations').doc(docId).set({
-        blogId,
+    const createdAtMs = selectionSessionAnnotationIds?.createdAtMs ?? Date.now();
+    const annotationId =
+        selectionSessionAnnotationIds?.annotationId ??
+        `${blogId}_ann_${createdAtMs}_${Math.random().toString(36).slice(2, 7)}`;
+    selectionSessionAnnotationIds = null;
+
+    pendingAnnotationDraft = {
         startOffset: offsets.startOffset,
         endOffset: offsets.endOffset,
         selectedText,
-        commentText: commentText.trim(),
-        user,
-        postedAt,
+        annotationId,
         createdAtMs
-    });
+    };
     pendingAnnotationRange = null;
     const sel = window.getSelection();
     if (sel) sel.removeAllRanges();
     hideAnnotationToolbar();
+
+    const input = document.getElementById('commentInput');
+    const form = document.getElementById('commentForm');
+    if (!input) return;
+    input.removeAttribute('name');
+    input.value = '';
+    input.placeholder = ANNOTATION_COMMENT_PLACEHOLDER;
+    input.classList.add('annotation-compose-input');
+    form?.classList.add('annotation-compose');
+
+    syncPendingAnnotationComposeChrome();
+
+    commentScreenEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    input.focus();
 }
 
 function attachAnnotationsListener() {
@@ -469,16 +654,39 @@ commentRef.get().then((comms) => {
 })
 
 
-document.addEventListener("keydown", function(e) {
-    if(e.key === "Enter"){
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
         e.preventDefault();
         submitComment(numberofcomments);
     }
-})
+    if (e.key === 'Escape' && pendingAnnotationDraft) {
+        const input = document.getElementById('commentInput');
+        exitAnnotationComposeMode();
+        if (input && document.activeElement === input) input.value = '';
+        e.preventDefault();
+    }
+});
 
-function submitComment(commentindex) {
-    const input = document.getElementById("commentInput");
+async function submitComment(commentindex) {
+    const input = document.getElementById('commentInput');
+    if (!input) return;
     let commentText = input.value.trim();
+
+    if (pendingAnnotationDraft) {
+        if (!commentText) {
+            if (document.activeElement === input) exitAnnotationComposeMode();
+            return;
+        }
+        try {
+            await saveAnnotationFromDraft(pendingAnnotationDraft, commentText);
+            exitAnnotationComposeMode();
+            input.value = '';
+        } catch (err) {
+            console.error(err);
+        }
+        return;
+    }
+
     let responseUser = '';
     let responseId = '';
     let date = new Date();
@@ -535,6 +743,7 @@ const setupCommentSection = () => {
 }
 
 const makeAnchor = (replyuser, commentid) => {
+    exitAnnotationComposeMode();
     const input = document.getElementById("commentInput");
     console.log("reply user: " + replyuser);
     console.log("on comment: " + commentid);

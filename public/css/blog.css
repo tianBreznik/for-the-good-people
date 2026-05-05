@@ -650,6 +650,39 @@ body.reader-loading #comment-screen {
     backdrop-filter: none;
 }
 
+/* Same MS-style button as .annotation-add-btn; session-hue gradient + border (slightly translucent). */
+.annotation-toolbar.annotation-toolbar-toned .annotation-add-btn {
+    border-color: var(--ann-session-border, #808080);
+    background: linear-gradient(
+        to bottom,
+        var(--ann-session-fill-hi, #f0f0f0) 0%,
+        var(--ann-session-fill-mid, #d0d0d0) 50%,
+        var(--ann-session-fill-lo, #b8b8b8) 100%
+    );
+}
+
+.annotation-toolbar.annotation-toolbar-toned .annotation-add-btn:hover {
+    border-color: color-mix(in srgb, var(--ann-session-border, #606060) 72%, #606060);
+    background: linear-gradient(
+        to bottom,
+        color-mix(in srgb, black 7%, var(--ann-session-fill-hi, #e8e8e8)) 0%,
+        color-mix(in srgb, black 7%, var(--ann-session-fill-mid, #c8c8c8)) 50%,
+        color-mix(in srgb, black 8%, var(--ann-session-fill-lo, #a8a8a8)) 100%
+    );
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.annotation-toolbar.annotation-toolbar-toned .annotation-add-btn:active {
+    background: linear-gradient(
+        to bottom,
+        color-mix(in srgb, black 12%, var(--ann-session-fill-lo, #b8b8b8)) 0%,
+        color-mix(in srgb, black 8%, var(--ann-session-fill-mid, #d0d0d0)) 50%,
+        color-mix(in srgb, black 5%, var(--ann-session-fill-hi, #f0f0f0)) 100%
+    );
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255, 255, 255, 0.1);
+    transform: translateY(1px);
+}
+
 .annotation-add-btn {
     padding: 6px 12px;
     border: 1px solid #808080;
@@ -730,6 +763,11 @@ body.reader-loading #comment-screen {
 
 .annotation-highlight-active {
     background: var(--ann-fill-active, rgba(255, 214, 79, 0.65));
+}
+
+.annotation-highlight.annotation-highlight-pending {
+    pointer-events: none;
+    cursor: default;
 }
 
 #annotation-overlay-root {
@@ -821,6 +859,20 @@ body.reader-loading #comment-screen {
 
 #commentForm {
     background: transparent;
+}
+
+#commentForm.annotation-compose {
+    margin-top: 4px;
+}
+
+#commentInput.annotation-compose-input {
+    border-color: var(--ann-compose-border, rgba(120, 90, 0, 0.35));
+    background: color-mix(in srgb, var(--ann-compose-fill, rgba(255, 248, 220, 0.35)) 55%, white 45%);
+}
+
+#commentInput.annotation-compose-input:focus {
+    border-color: var(--ann-compose-border-focus, rgba(100, 75, 0, 0.45));
+    background: color-mix(in srgb, var(--ann-compose-fill, rgba(255, 252, 235, 0.5)) 50%, white 50%);
 }
 
 .comment-card {

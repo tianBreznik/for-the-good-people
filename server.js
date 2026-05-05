@@ -52,6 +52,9 @@ app.use((req, res) => {
     res.json("404");
 })
 
-app.listen("3008", () => {
-    console.log('listening......');
-})
+const PORT = Number(process.env.PORT) || 3008;
+const HOST = process.env.HOST || '0.0.0.0';
+
+app.listen(PORT, HOST, () => {
+    console.log(`listening on http://${HOST}:${PORT} (reachable from other devices on your LAN)`);
+});

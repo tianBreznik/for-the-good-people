@@ -9,10 +9,22 @@
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
     --bioHeight: clamp(36px, 6vh, 78px);
+    /* Entry splash → homepage (desktop default; mobile overrides below) */
     --homeTextSubmergeDuration: 1300ms;
     --homeOverlayClearDuration: 220ms;
     --homeTitleFadeDuration: 680ms;
     --homeTitleFadeDelay: 0ms;
+}
+
+@media (max-width: 900px) {
+    :root {
+        --homeTextSubmergeDuration: 1500ms;
+        --homeOverlayFadeStart: 380ms;
+        --homeOverlayClearDuration: 820ms;
+        --homeTitleFadeDuration: 880ms;
+        --homeTitleFadeDelay: 100ms;
+        --homeEaseEntry: cubic-bezier(0.33, 1, 0.68, 1);
+    }
 }
 
 body{
@@ -317,11 +329,12 @@ body.about-open .about-panel {
     height: 100%;
     opacity: 1;
     transition: opacity var(--homeOverlayClearDuration) ease-out calc(var(--homeTextSubmergeDuration) - var(--homeOverlayClearDuration));
-    z-index:100;
+    z-index: 100;
 }
 
-#first-container.fade{
+#first-container.fade {
     opacity: 0;
+    pointer-events: none;
 }
 
 /* Keep resting style untouched; animate only when .fade toggles on. */
@@ -380,7 +393,6 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
 #first-container-hold {
     background-image: var(--bg-image);
     background-size: 50%;
-    /*background: #8c8c8c;*/
     width: 100%;
     height: 100vh;
     z-index: 1000;
@@ -434,14 +446,10 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     color: transparent;
 
     background-image: var(--bg-image);
-    /*background-size: cover;*/
     background-position: center;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    /*filter:blendTrans(blur(opacity(0.5)));*/
-    /*text-shadow: 2px 5px 5px*/
-    /*rgba(255, 255, 255, 0.15);*/
 }
 
 #top-text::before {
@@ -455,7 +463,6 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     font-size: 11vw;
     font-family: 'Impact', sans-serif;
     background-image: var(--bg-image);
-    /*background-size: cover;*/
     background-position: center;
     -webkit-background-clip: text;
     background-clip: text;
@@ -503,15 +510,10 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     top: 55%;
 
     background-image: var(--bg-image);
-    /*background-size: cover;*/
     background-position: center;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    /*filter: opacity(0.4);*/
-    /*text-shadow: 2px 5px 5px*/
-    /*rgba(255, 255, 255, 0.2);*/
-    /*z-index: -1;*/
 }
 
 #bottom-text::before {
@@ -526,7 +528,6 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     font-family: 'Impact', sans-serif;
     text-align: center;
     background-image: var(--bg-image);
-    /*background-size: cover;*/
     background-position: center;
     -webkit-background-clip: text;
     background-clip: text;
@@ -536,6 +537,92 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     rgba(255, 255, 255, 0.3);
     z-index: 1;
 }
+
+/* —— Hero: mobile-only (desktop keeps rules above to match last committed layout) —— */
+@media (max-width: 900px) {
+    #first-container {
+        position: relative;
+        min-height: 100vh;
+        min-height: 100dvh;
+        height: auto;
+        transition: opacity var(--homeOverlayClearDuration) var(--homeEaseEntry) var(--homeOverlayFadeStart);
+    }
+
+    #top-text,
+    #bottom-text,
+    #top-text::before,
+    #bottom-text::before {
+        transition:
+            filter var(--homeTextSubmergeDuration) var(--homeEaseEntry),
+            opacity var(--homeTextSubmergeDuration) var(--homeEaseEntry);
+    }
+
+    .column-section .blog-title {
+        transition-property: opacity, filter;
+        transition-timing-function: var(--homeEaseEntry);
+    }
+
+    body.home-titles-visible.home-titles-emerging .column-section .blog-title {
+        animation: home-title-emerge-filter var(--homeTitleFadeDuration) var(--homeEaseEntry) forwards;
+    }
+
+    #first-container-hold {
+        inset: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        height: auto;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+
+    #top-text {
+        flex: 0 0 auto;
+        align-self: center;
+        margin: 0;
+        width: 100%;
+        max-width: 100%;
+        line-height: 0.95;
+        background-size: cover;
+        background-attachment: fixed;
+    }
+
+    #top-text::before {
+        font-size: inherit;
+        background-size: cover;
+        background-attachment: fixed;
+    }
+
+    #bottom-text {
+        top: auto;
+        flex: 0 0 auto;
+        align-self: center;
+        margin: 0;
+        width: 100%;
+        max-width: 100%;
+        line-height: 0.95;
+        background-size: cover;
+        background-attachment: fixed;
+    }
+
+    #bottom-text::before {
+        font-size: inherit;
+        background-size: cover;
+        background-attachment: fixed;
+    }
+
+    #top-text,
+    #bottom-text {
+        font-size: clamp(3rem, 14vw, 6.75rem);
+    }
+}
+
 /*TEXTURE BACKGROUND WHITE FADE
 /*#bottom-text {*/
 /*    text-transform: uppercase;*/
@@ -881,10 +968,6 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
-.blog-card:hover .blog-title::before {
-    display: none;
-}
-
 /* Subtle highlight for connected cards when author is hovered */
 .blog-card.hover .blog-title {
     filter: brightness(1.2) !important;
@@ -999,6 +1082,7 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     display: none;
 }
 
+/* Desktop: column edges glow when the section title row is hovered. */
 .column-section:has(.section-title-container:hover) {
     box-shadow: inset 2px 0 0 var(--section-accent, currentColor), inset -2px 0 0 var(--section-accent, currentColor);
 }
@@ -1135,7 +1219,10 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
 .column-section[data-col="2"] { --col-start: 20vw; }
 .column-section[data-col="3"] { --col-start: 40vw; }
 .column-section[data-col="4"] { --col-start: 60vw; }
-.column-section[data-col="5"] { --col-start: 80vw; }
+.column-section[data-col="5"] {
+    --col-start: 80vw;
+    --section-accent: rgba(255, 255, 255, 0.8);
+}
 
 /* Article preview sits under real columns; slabs + card text move with column transforms */
 :root {
@@ -1159,6 +1246,18 @@ body.article-open {
     background-size: 50vw auto;
     background-position: 0 0;
     background-repeat: repeat;
+}
+
+/*
+ * Regression from main layout wrapper: .home-main-stage is z-index:2, .article-panel stays z-index:1,
+ * so columns sat above the preview and stole clicks (document handler treated them as “outside” the panel).
+ * Do NOT raise the panel’s z-index (breaks the slab opening look). Instead, turn off hit-testing on the
+ * stage subtree while the preview is open so events reach the panel underneath; paint order unchanged.
+ */
+body.article-open .home-main-stage .home-main-track,
+body.article-open .home-main-stage .home-main-pane,
+body.article-open .home-main-stage .column-section {
+    pointer-events: none;
 }
 
 .article-panel {
@@ -1515,3 +1614,198 @@ body.bio-open .author-section {
     text-align: right;
 }
 
+/* --- Home: desktop = five columns; mobile = horizontal strip, one full screen per section --- */
+.home-main-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.home-main-stage .home-main-track,
+.home-main-stage .home-main-pane,
+.home-main-stage .column-section {
+    pointer-events: auto;
+}
+
+.home-main-track {
+    position: absolute;
+    inset: 0;
+    transform-style: flat;
+}
+
+.home-main-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+@media (min-width: 901px) {
+    .home-main-pane[data-col="1"] { left: 0; width: 20%; }
+    .home-main-pane[data-col="2"] { left: 20%; width: 20%; }
+    .home-main-pane[data-col="3"] { left: 40%; width: 20%; }
+    .home-main-pane[data-col="4"] { left: 60%; width: 20%; }
+    .home-main-pane[data-col="5"] { left: 80%; width: 20%; }
+    .home-main-track {
+        display: block;
+        overflow: visible;
+        transform: none !important;
+    }
+    .home-main-dots {
+        display: none !important;
+    }
+
+    .home-main-stage .home-main-track,
+    .home-main-stage .home-main-pane,
+    .home-main-stage .column-section,
+    .home-main-stage .cardcontainer,
+    .home-main-stage .blog-card {
+        pointer-events: auto;
+    }
+}
+
+@media (max-width: 900px) {
+    .home-main-stage {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+    /* Re-establish hit-testing under the stage (same as desktop base rules); some engines lose it
+       when the stage block is re-declared inside this media query. */
+    .home-main-stage .home-main-track,
+    .home-main-stage .home-main-pane,
+    .home-main-stage .column-section,
+    .home-main-stage .cardcontainer,
+    .home-main-stage .blog-card {
+        pointer-events: auto;
+    }
+
+    .home-main-track {
+        display: flex;
+        flex-direction: row;
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        min-height: 100dvh;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+        transform: none !important;
+        -webkit-transform: none !important;
+    }
+
+    .home-main-pane {
+        position: relative;
+        flex: 0 0 100%;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        box-sizing: border-box;
+        /* Don’t use overflow:hidden on both axes — it clipped hit targets for absolutely positioned .blog-title. */
+        overflow-x: hidden;
+        overflow-y: visible;
+    }
+
+    /*
+     * Panels are ~100vw: 50vw + repeat-x shows two horizontal tiles → mid-screen seam.
+     * Use one full-width horizontal tile (no-repeat on x) and repeat only vertically.
+     * Do not shift by 2× --col-start on a 100vw tile — that pulls the bitmap off-panel (white) and
+     * breaks background-clip:text on titles. Vary slice per column with background-position % instead.
+     */
+    .home-main-pane > .column-section[data-col] {
+        background-image: var(--bg-image);
+        background-size: cover;
+        background-position-y: 0;
+        background-position-x: 50%;
+        background-repeat: no-repeat;
+        position: absolute !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        will-change: auto;
+    }
+
+    .home-main-pane > .column-section[data-col="1"] {
+        background-position-x: 8%;
+    }
+    .home-main-pane > .column-section[data-col="2"] {
+        background-position-x: 28%;
+    }
+    .home-main-pane > .column-section[data-col="3"] {
+        background-position-x: 48%;
+    }
+    .home-main-pane > .column-section[data-col="4"] {
+        background-position-x: 68%;
+    }
+    .home-main-pane > .column-section[data-col="5"] {
+        background-position-x: 88%;
+    }
+
+    .home-main-pane .column-section {
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        -webkit-transform: none;
+        transform: none;
+        -webkit-transform-style: flat;
+        transform-style: flat;
+        isolation: isolate;
+        padding-left: max(8px, env(safe-area-inset-left, 0px));
+        padding-right: max(8px, env(safe-area-inset-right, 0px));
+        padding-bottom: 12px;
+    }
+
+    .author-section {
+        padding-bottom: max(100px, env(safe-area-inset-bottom, 0px));
+    }
+
+    .home-main-pane .section-heading-card .blog-title {
+        box-sizing: border-box;
+        padding-left: 4px;
+        padding-right: 4px;
+        max-width: 100%;
+        font-size: clamp(2.65rem, 11vw, 4.25rem);
+        line-height: 1.05;
+    }
+
+    .home-main-pane .blog-card {
+        box-sizing: border-box;
+        padding: 8px 10px;
+        overflow: visible;
+    }
+
+    .home-main-pane .cardcontainer {
+        min-width: 0;
+    }
+
+    .author-section #auth-controls {
+        box-sizing: border-box;
+        left: max(8px, env(safe-area-inset-left, 0px)) !important;
+        right: max(8px, env(safe-area-inset-right, 0px)) !important;
+        width: auto !important;
+        max-width: none;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    /* Scroll-driven active column (see initHomeActiveColumnFromScroll); turn off hover-based frame on narrow layout. */
+    .column-section:has(.section-title-container:hover) {
+        box-shadow: none;
+    }
+
+    .home-main-pane.home-column-active > .column-section {
+        box-shadow: inset 2px 0 0 var(--section-accent, currentColor), inset -2px 0 0 var(--section-accent, currentColor);
+    }
+}
