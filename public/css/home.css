@@ -1282,6 +1282,30 @@ body.article-open .home-main-stage .column-section {
     contain: layout paint;
 }
 
+.article-panel-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    color: rgba(0, 0, 0, 0.72);
+    font: 500 24px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 4;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.article-panel-close:active {
+    transform: translateY(1px);
+}
+
 /* Let flex + fitPreviewBlocksToPage measure reliably before columns animate (still invisible). */
 .article-panel.article-preview-layout {
     visibility: visible;
@@ -1553,7 +1577,8 @@ body.article-open:has(.article-panel.expanding-fullscreen) {
 }
 
 /* While preview is open, column motion uses preview timing (bio/about still use --aboutDuration) */
-body.article-open .column-section {
+body.article-open .column-section,
+body.article-closing .column-section {
     /* Inertial: slow to start, long deceleration at rest — reads as heavy mass */
     transition: transform var(--articlePreviewRevealDuration) cubic-bezier(0.58, 0.06, 0.22, 0.98);
 }
@@ -1694,19 +1719,33 @@ body.bio-open .author-section {
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
-        overscroll-behavior-x: contain;
+        /* Never settle between sections: always land on a pane boundary. */
+        overscroll-behavior-x: auto;
+        scroll-snap-type: x mandatory;
+        scroll-padding-inline: 0;
         scrollbar-width: thin;
         transform: none !important;
         -webkit-transform: none !important;
+        touch-action: pan-x;
+        /* If subpixel gaps appear between panes during momentum, show stone instead of white. */
+        background-image: var(--bg-image);
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
     }
 
     .home-main-pane {
         position: relative;
-        flex: 0 0 100%;
-        width: 100%;
+        /* Lock each pane to viewport width to avoid fractional flex widths that can flash seams. */
+        flex: 0 0 100vw;
+        width: 100vw;
+        min-width: 100vw;
         height: 100%;
         min-height: 0;
         box-sizing: border-box;
+        scroll-snap-align: start;
+        /* Keep momentum behavior; mandatory snapping handles final landing point. */
+        scroll-snap-stop: normal;
         /* Don’t use overflow:hidden on both axes — it clipped hit targets for absolutely positioned .blog-title. */
         overflow-x: hidden;
         overflow-y: visible;
@@ -1728,7 +1767,8 @@ body.bio-open .author-section {
         top: 0 !important;
         bottom: 0 !important;
         left: 0 !important;
-        width: 100% !important;
+        right: 0 !important;
+        width: auto !important;
         height: 100% !important;
         min-height: 0;
         overflow-x: hidden;
@@ -1807,5 +1847,119 @@ body.bio-open .author-section {
 
     .home-main-pane.home-column-active > .column-section {
         box-shadow: inset 2px 0 0 var(--section-accent, currentColor), inset -2px 0 0 var(--section-accent, currentColor);
+    }
+
+    body.article-open .article-panel .article-panel-close,
+    body.article-closing .article-panel .article-panel-close {
+        display: inline-flex;
+        top: max(10px, env(safe-area-inset-top, 0px));
+        right: max(10px, env(safe-area-inset-right, 0px));
+        width: 32px;
+        height: 32px;
+        border: 1px solid #8f1427;
+        border-radius: 0;
+        background: linear-gradient(to bottom, #f06a7a 0%, #cd2f47 52%, #a9152d 100%);
+        color: #fff;
+        text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 1px 0 rgba(0,0,0,0.25);
+        font: 700 19px/1 'MS Sans Serif', 'Arial', sans-serif;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        text-align: center;
+    }
+
+    body.article-open .article-panel .article-panel-close:hover,
+    body.article-closing .article-panel .article-panel-close:hover {
+        background: linear-gradient(to bottom, #ee5f71 0%, #c62a42 52%, #941127 100%);
+        border-color: #7f1021;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.24), 0 1px 0 rgba(0,0,0,0.3);
+    }
+
+    body.article-open .article-panel .article-panel-close:active,
+    body.article-closing .article-panel .article-panel-close:active {
+        background: linear-gradient(to bottom, #9a152b 0%, #c72d45 48%, #f06a7a 100%);
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.32), 0 1px 0 rgba(255,255,255,0.1);
+    }
+
+    /* During reverse-close, keep preview under slabs so the slabs visibly close over it. */
+    .article-panel.article-preview-closing {
+        z-index: 1;
+    }
+
+    /* Mobile: move slabs by full viewport width so they clear the screen fully. */
+    body.article-open[data-open-seam="1"] .column-section[data-col="2"],
+    body.article-open[data-open-seam="1"] .column-section[data-col="3"],
+    body.article-open[data-open-seam="1"] .column-section[data-col="4"],
+    body.article-open[data-open-seam="1"] .column-section[data-col="5"],
+    body.article-closing[data-open-seam="1"] .column-section[data-col="2"],
+    body.article-closing[data-open-seam="1"] .column-section[data-col="3"],
+    body.article-closing[data-open-seam="1"] .column-section[data-col="4"],
+    body.article-closing[data-open-seam="1"] .column-section[data-col="5"] {
+        transform: translateX(100vw);
+    }
+    body.article-open[data-open-seam="1"] .column-section[data-col="1"],
+    body.article-closing[data-open-seam="1"] .column-section[data-col="1"] {
+        transform: translateX(-100vw);
+    }
+
+    body.article-open[data-open-seam="2"] .column-section[data-col="1"],
+    body.article-open[data-open-seam="2"] .column-section[data-col="2"],
+    body.article-closing[data-open-seam="2"] .column-section[data-col="1"],
+    body.article-closing[data-open-seam="2"] .column-section[data-col="2"] {
+        transform: translateX(-100vw);
+    }
+    body.article-open[data-open-seam="2"] .column-section[data-col="3"],
+    body.article-open[data-open-seam="2"] .column-section[data-col="4"],
+    body.article-open[data-open-seam="2"] .column-section[data-col="5"],
+    body.article-closing[data-open-seam="2"] .column-section[data-col="3"],
+    body.article-closing[data-open-seam="2"] .column-section[data-col="4"],
+    body.article-closing[data-open-seam="2"] .column-section[data-col="5"] {
+        transform: translateX(100vw);
+    }
+
+    body.article-open[data-open-seam="3"] .column-section[data-col="1"],
+    body.article-open[data-open-seam="3"] .column-section[data-col="2"],
+    body.article-open[data-open-seam="3"] .column-section[data-col="3"],
+    body.article-closing[data-open-seam="3"] .column-section[data-col="1"],
+    body.article-closing[data-open-seam="3"] .column-section[data-col="2"],
+    body.article-closing[data-open-seam="3"] .column-section[data-col="3"] {
+        transform: translateX(-100vw);
+    }
+    body.article-open[data-open-seam="3"] .column-section[data-col="4"],
+    body.article-open[data-open-seam="3"] .column-section[data-col="5"],
+    body.article-closing[data-open-seam="3"] .column-section[data-col="4"],
+    body.article-closing[data-open-seam="3"] .column-section[data-col="5"] {
+        transform: translateX(100vw);
+    }
+
+    /* Mobile underlay reveal: slabs move away to reveal panel beneath, not a top overlay card. */
+    body.article-open .article-panel:not(.expanding-fullscreen) {
+        z-index: 1;
+    }
+
+    /* Prevent the track's fallback stone texture from filling the opening gap. */
+    body.article-open .home-main-track,
+    body.article-closing .home-main-track {
+        background-image: none;
+        background: transparent;
+    }
+
+    /* Mobile preview: fit page fully inside panel during edge-open animation. */
+    .article-panel {
+        width: 100vw;
+        max-width: 100vw;
+        left: 0;
+        transform: none;
+    }
+
+    .home-preview-page {
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+        height: min(var(--reader-page-height), calc(100dvh - 20px));
+        min-height: min(var(--reader-page-height), calc(100dvh - 20px));
+        max-height: min(var(--reader-page-height), calc(100dvh - 20px));
+        padding: clamp(68px, 9vh, 92px) clamp(16px, 4.5vw, 22px) clamp(18px, 2.8vh, 24px);
     }
 }

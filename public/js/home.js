@@ -71,6 +71,7 @@ let articlePreviewUiBound = false;
 let previewAutoCloseTimer = null;
 /** Keeps preview visible until column slabs finish sliding shut (matches --articlePreviewRevealDuration). */
 let articlePreviewClosingTimer = null;
+let articlePreviewCloseSeq = 0;
 let articleExpandNavigateTimer = null;
 let articleExpandInFlight = false;
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
@@ -83,6 +84,29 @@ let relayoutHomeSectionsRef = null;
 
 /** Mobile: which .home-main-pane is most visible in the horizontal track (drives .home-column-active). */
 let syncHomeActiveColumnRef = null;
+let lastActiveHomePaneCol = null;
+let lastHapticAtMs = 0;
+
+function triggerMobileHaptic(kind = 'light') {
+    if (!isHomeNarrowLayout()) return;
+    const now = performance.now();
+    if (now - lastHapticAtMs < 90) return;
+    lastHapticAtMs = now;
+
+    // Telegram WebApp bridge (if embedded there) supports real haptics on iOS/Android.
+    const tg = typeof window !== 'undefined' ? window.Telegram?.WebApp?.HapticFeedback : null;
+    if (tg) {
+        try {
+            if (kind === 'preview-reveal') tg.impactOccurred('medium');
+            else tg.impactOccurred('light');
+            return;
+        } catch (_) {}
+    }
+
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
+    if (kind === 'preview-reveal') navigator.vibrate([22, 28, 18]);
+    else navigator.vibrate(18);
+}
 
 function initHomeActiveColumnFromScroll(track) {
     const panes = () => Array.from(track.querySelectorAll('.home-main-pane'));
@@ -90,6 +114,7 @@ function initHomeActiveColumnFromScroll(track) {
     const sync = () => {
         if (typeof window.matchMedia === 'undefined' || !window.matchMedia(HOME_NARROW_QUERY).matches) {
             panes().forEach((p) => p.classList.remove('home-column-active'));
+            lastActiveHomePaneCol = null;
             return;
         }
         const tr = track.getBoundingClientRect();
@@ -111,6 +136,11 @@ function initHomeActiveColumnFromScroll(track) {
         }
         if (bestPane) {
             panes().forEach((p) => p.classList.toggle('home-column-active', p === bestPane));
+            const col = bestPane.dataset.col || null;
+            if (lastActiveHomePaneCol && col && col !== lastActiveHomePaneCol) {
+                triggerMobileHaptic('pane-snap');
+            }
+            lastActiveHomePaneCol = col;
         }
     };
 
@@ -125,7 +155,7 @@ function homeFinePointerHoverUi() {
     return typeof window.matchMedia !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 }
 
-/** Phones/tablets in narrow layout: go straight to reader on card tap (no slab preview). */
+/** Narrow layout without fine pointer: first tap on card opens slab preview; tap preview panel to open reader. */
 function homeDirectArticleTapNav() {
     return typeof window.matchMedia !== 'undefined' && window.matchMedia(HOME_NARROW_QUERY).matches && !homeFinePointerHoverUi();
 }
@@ -926,7 +956,10 @@ db.collection("blogs").get().then((blogs) => {
     // Article preview: real stone columns slide apart to reveal panel underneath (see home.css)
     const articlePanel = document.createElement('section');
     articlePanel.className = 'article-panel';
-    articlePanel.innerHTML = `<div id="article-first-page"></div>`;
+    articlePanel.innerHTML = `
+        <button type="button" class="article-panel-close" aria-label="Close preview">×</button>
+        <div id="article-first-page"></div>
+    `;
     document.body.appendChild(articlePanel);
 
     console.log('Created author cards for:', Array.from(uniqueAuthors));
@@ -1151,6 +1184,46 @@ function clearActivePreviewSeam() {
     document.body.removeAttribute('data-open-seam');
     document.documentElement.style.removeProperty('--articleExpandWidth');
     document.documentElement.style.removeProperty('--articlePreviewMaxWidth');
+}
+
+function isHomeNarrowLayout() {
+    return typeof window.matchMedia !== 'undefined' && window.matchMedia(HOME_NARROW_QUERY).matches;
+}
+
+function anchorMobilePaneToViewport(card) {
+    if (!isHomeNarrowLayout()) return Promise.resolve();
+    const track = document.querySelector('.home-main-track');
+    const pane = card?.closest('.home-main-pane');
+    if (!track || !pane) return Promise.resolve();
+
+    const targetLeft = pane.offsetLeft;
+    const remaining = Math.abs(track.scrollLeft - targetLeft);
+    if (remaining <= 1) return Promise.resolve();
+
+    return new Promise((resolve) => {
+        let settledTicks = 0;
+        let rafId = 0;
+        const startedAt = performance.now();
+        const timeoutMs = 480;
+        const tick = () => {
+            const delta = Math.abs(track.scrollLeft - targetLeft);
+            if (delta < 1.5) settledTicks += 1;
+            else settledTicks = 0;
+            if (settledTicks >= 2 || performance.now() - startedAt > timeoutMs) {
+                track.scrollLeft = targetLeft;
+                resolve();
+                return;
+            }
+            rafId = requestAnimationFrame(tick);
+        };
+        track.scrollTo({ left: targetLeft, behavior: 'smooth' });
+        rafId = requestAnimationFrame(tick);
+        setTimeout(() => {
+            if (rafId) cancelAnimationFrame(rafId);
+            track.scrollLeft = targetLeft;
+            resolve();
+        }, timeoutMs + 40);
+    });
 }
 
 function createBlogCard(blog, section, sectionIndex) {
@@ -1572,6 +1645,7 @@ function getArticlePreviewRevealMs() {
 }
 
 function closeArticlePreview() {
+    const closeSeq = ++articlePreviewCloseSeq;
     if (articleExpandNavigateTimer) {
         clearTimeout(articleExpandNavigateTimer);
         articleExpandNavigateTimer = null;
@@ -1581,8 +1655,13 @@ function closeArticlePreview() {
         clearTimeout(previewAutoCloseTimer);
         previewAutoCloseTimer = null;
     }
+    document.body.classList.add('article-closing');
     document.body.classList.remove('article-open');
-    clearActivePreviewSeam();
+    // Keep seam for one frame in closing state so slabs have a concrete shifted state to animate back from.
+    requestAnimationFrame(() => {
+        if (closeSeq !== articlePreviewCloseSeq) return;
+        clearActivePreviewSeam();
+    });
     const panel = document.querySelector('.article-panel');
     if (panel) {
         delete panel.dataset.blogId;
@@ -1595,8 +1674,16 @@ function closeArticlePreview() {
         panel.classList.add('article-preview-closing');
         if (articlePreviewClosingTimer) clearTimeout(articlePreviewClosingTimer);
         articlePreviewClosingTimer = setTimeout(() => {
+            if (closeSeq !== articlePreviewCloseSeq) return;
             articlePreviewClosingTimer = null;
             panel.classList.remove('article-preview-closing');
+            document.body.classList.remove('article-closing');
+            delete panel.dataset.handoffTitle;
+            delete panel.dataset.handoffAuthor;
+            delete panel.dataset.handoffPublishedAt;
+            delete panel.dataset.handoffArticle;
+            const mount = panel.querySelector('#article-first-page');
+            if (mount) mount.innerHTML = '';
         }, getArticlePreviewRevealMs());
     }
 }
@@ -1607,6 +1694,14 @@ function ensureArticlePreviewUi() {
     const articlePanel = document.querySelector('.article-panel');
     if (!articlePanel) return;
     articlePreviewUiBound = true;
+    const closeBtn = articlePanel.querySelector('.article-panel-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeArticlePreview();
+        });
+    }
 
     articlePanel.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1698,6 +1793,8 @@ function applyArticlePreviewFromBlogCard(card, seamIndex) {
     articleEl.dataset.handoffAuthor = author;
     articleEl.dataset.handoffPublishedAt = publishedAt;
     articleEl.dataset.handoffArticle = rawArticle;
+    // Hover preview path is desktop-only; always use section seam reveal.
+    document.body.classList.remove('article-closing');
     setActivePreviewSeam(seamIndex);
     renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
         document.body.classList.add('article-open');
@@ -1821,6 +1918,35 @@ function playExpandFullscreenThenNavigate(blogId) {
         location.href = `/${blogId}`;
         return;
     }
+
+    const writeHandoffAndGo = (previewPageRect) => {
+        try {
+            const payload = {
+                blogId,
+                title: articlePanel.dataset.handoffTitle || '',
+                author: articlePanel.dataset.handoffAuthor || 'Anonymous',
+                publishedAt: articlePanel.dataset.handoffPublishedAt || '',
+                article: articlePanel.dataset.handoffArticle || '',
+                previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
+                ts: Date.now()
+            };
+            sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
+        } catch (_) {}
+        location.href = `/${blogId}`;
+    };
+
+    if (
+        articlePanel.dataset.blogId === blogId &&
+        articlePanel.classList.contains('expanding-fullscreen') &&
+        articlePanel.classList.contains('article-expand-run') &&
+        !articleExpandInFlight
+    ) {
+        const previewPageDone = articlePanel.querySelector('.home-preview-page');
+        const rectDone = previewPageDone ? previewPageDone.getBoundingClientRect() : null;
+        writeHandoffAndGo(rectDone);
+        return;
+    }
+
     if (articleExpandInFlight) return;
     articleExpandInFlight = true;
     if (articleExpandNavigateTimer) {
@@ -1851,76 +1977,50 @@ function playExpandFullscreenThenNavigate(blogId) {
     articlePanel.style.setProperty('--articleExpandPanelShiftX', `${panelShiftX.toFixed(2)}px`);
     articlePanel.classList.remove('expanding-fullscreen');
     articlePanel.classList.remove('article-expand-run');
-    const navigateOnce = () => {
+    // Commit the clipped “slit at the seam” while the panel is still hidden (no article-open), so we never
+    // paint one frame of the full-width preview slab before the grow runs.
+    articlePanel.classList.add('expanding-fullscreen');
+    void articlePanel.offsetHeight;
+    if (!document.body.classList.contains('article-open')) {
+        document.body.classList.add('article-open');
+    }
+    void articlePanel.offsetHeight;
+    const onExpandComplete = () => {
         if (!articleExpandInFlight) return;
         articleExpandInFlight = false;
         if (articleExpandNavigateTimer) {
             clearTimeout(articleExpandNavigateTimer);
             articleExpandNavigateTimer = null;
         }
-        try {
-            const payload = {
-                blogId,
-                title: articlePanel.dataset.handoffTitle || '',
-                author: articlePanel.dataset.handoffAuthor || 'Anonymous',
-                publishedAt: articlePanel.dataset.handoffPublishedAt || '',
-                article: articlePanel.dataset.handoffArticle || '',
-                previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
-                ts: Date.now()
-            };
-            sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
-        } catch (_) {}
-        location.href = `/${blogId}`;
+        writeHandoffAndGo(previewPageRect);
     };
     requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            articlePanel.classList.add('expanding-fullscreen');
-            // Commit the start frame, then animate both motions together.
-            void articlePanel.offsetHeight;
-            requestAnimationFrame(() => {
-                articlePanel.classList.add('article-expand-run');
-            });
-            const expandMs = getExpandNavigateMs();
-            const onTransitionEnd = (e) => {
-                if (e.target !== articlePanel) return;
-                if (e.propertyName !== 'clip-path' && e.propertyName !== 'transform') return;
-                articlePanel.removeEventListener('transitionend', onTransitionEnd);
-                navigateOnce();
-            };
-            articlePanel.addEventListener('transitionend', onTransitionEnd);
-            // Fallback in case transitionend does not fire.
-            articleExpandNavigateTimer = setTimeout(() => {
-                articlePanel.removeEventListener('transitionend', onTransitionEnd);
-                navigateOnce();
-            }, expandMs + 80);
-        });
+        // Start grow on the earliest painted frame after article-open to avoid a visible dead interval.
+        void articlePanel.offsetHeight;
+        articlePanel.classList.add('article-expand-run');
+        const expandMs = getExpandNavigateMs();
+        const onTransitionEnd = (e) => {
+            if (e.target !== articlePanel) return;
+            if (e.propertyName !== 'clip-path' && e.propertyName !== 'transform') return;
+            articlePanel.removeEventListener('transitionend', onTransitionEnd);
+            onExpandComplete();
+        };
+        articlePanel.addEventListener('transitionend', onTransitionEnd);
+        // Fallback in case transitionend does not fire.
+        articleExpandNavigateTimer = setTimeout(() => {
+            articlePanel.removeEventListener('transitionend', onTransitionEnd);
+            onExpandComplete();
+        }, expandMs + 80);
     });
 }
 
-function expandArticlePanelAndNavigate(blogId, card) {
+async function expandArticlePanelAndNavigate(blogId, card) {
     const title = card.dataset.title || '';
     const rawArticle = card.dataset.article || '';
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
-
-    if (homeDirectArticleTapNav()) {
-        try {
-            sessionStorage.setItem(
-                READER_HANDOFF_KEY,
-                JSON.stringify({
-                    blogId,
-                    title,
-                    author,
-                    publishedAt,
-                    article: rawArticle,
-                    previewPageHeight: null,
-                    ts: Date.now()
-                })
-            );
-        } catch (_) {}
-        location.href = `/${blogId}`;
-        return;
-    }
+    const narrowTapFlow = homeDirectArticleTapNav();
+    if (narrowTapFlow) await anchorMobilePaneToViewport(card);
 
     const articlePanel = document.querySelector('.article-panel');
     if (!articlePanel) {
@@ -1943,7 +2043,13 @@ function expandArticlePanelAndNavigate(blogId, card) {
 
     setActivePreviewSeam(seamIndex);
     renderFirstPagePreview(articlePanel, { title, article: rawArticle, author, publishedAt }, () => {
-        document.body.classList.add('article-open');
+        // Mobile: desktop-style reveal only (preview sits under slabs). Tap preview panel to navigate.
+        if (narrowTapFlow) {
+            document.body.classList.remove('article-closing');
+            document.body.classList.add('article-open');
+            triggerMobileHaptic('preview-reveal');
+            return;
+        }
         playExpandFullscreenThenNavigate(blogId);
     });
 }
