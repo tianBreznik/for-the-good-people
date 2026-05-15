@@ -1058,6 +1058,111 @@ input[type=text]:focus {
     }
 }
 
+/* Loaded inside home mobile iframe (?embed=1). */
+html.reader-embed,
+body.reader-embed {
+    background: #fff;
+}
+
+body.reader-embed .blog {
+    padding-top: clamp(8px, 1.2svh, 14px);
+    padding-bottom: clamp(16px, 2.5svh, 28px);
+}
+
+/* Embed: comments sit outside paginated pages (avoid overflow:hidden caret bugs on iOS). */
+body.reader-embed .comment-block {
+    margin-inline: 0;
+    width: 100%;
+    padding-top: clamp(12px, 1.8svh, 20px);
+}
+
+body.reader-embed #commentForm {
+    padding-inline: clamp(14px, 4.5vw, 24px);
+    box-sizing: border-box;
+}
+
+body.reader-embed #commentInput {
+    display: block;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 12px 14px;
+    min-height: 44px;
+    font-size: 16px;
+    line-height: 1.25;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+@media (max-width: 900px) {
+    /*
+     * Use svh (small viewport) instead of dvh/vh for reader sizing + vertical padding.
+     * dvh and vh follow the dynamic toolbar on iOS Safari and change while scrolling,
+     * which makes the first page height and vh-based padding “breathe” and reflow body text.
+     */
+    :root {
+        --reader-page-width: calc(100vw - 24px);
+        --reader-page-height: calc(100svh - clamp(18px, 3.2svh, 38px));
+        --reader-page-pad-inline: clamp(14px, 4.2vw, 20px);
+        --reader-page-pad-block: clamp(18px, 2.5svh, 26px);
+    }
+
+    .blog {
+        max-width: 100vw;
+        padding-inline: 0;
+    }
+
+    #article-body.article-columns {
+        padding-inline: 0;
+        gap: clamp(10px, 1.6svh, 18px);
+    }
+
+    #article-body .article-spread {
+        min-height: 0;
+        padding-bottom: clamp(6px, 1svh, 12px);
+    }
+
+    #article-body .article-spread:last-child {
+        padding-bottom: 0;
+    }
+
+    #article-body .article-page:not(.article-page-first) {
+        min-height: 0;
+    }
+
+    #article-body .article-page {
+        padding-top: clamp(16px, 2.2svh, 22px);
+        padding-inline: var(--reader-page-pad-inline);
+        padding-bottom: clamp(24px, 3.4svh, 36px);
+    }
+
+    #article-body .article-page.article-page-first {
+        padding-top: clamp(56px, 8.5svh, 104px);
+    }
+
+    #article-body .article-page .article-page-number {
+        bottom: clamp(12px, 1.6svh, 18px);
+    }
+
+    #commentForm {
+        padding-inline: clamp(14px, 4.5vw, 24px);
+        box-sizing: border-box;
+    }
+
+    #commentForm input[type="text"] {
+        max-width: none;
+        width: 100%;
+        margin: 0;
+        padding: 12px 14px;
+        min-height: 44px;
+        font-size: 16px;
+        line-height: 1.25;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+}
+
 .sub-heading{
     padding: 0 5vw;
     color: #2d2d2d;

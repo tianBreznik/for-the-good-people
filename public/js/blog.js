@@ -17,6 +17,8 @@ let commentsListenerAttached = false;
 let articleBlocksCache = { blocks: [], footnoteDefs: new Map() };
 let spreadResizeBound = false;
 let spreadReflowTimer = null;
+let annotationLayoutListenersBound = false;
+let annotationLayoutRaf = null;
 let currentBlogMeta = null;
 let footnoteNavAttached = false;
 let annotationsListenerAttached = false;
@@ -34,6 +36,39 @@ let annotationOverlayRoot = null;
 const annotationColorSeed = Math.floor(Date.now() / 1000);
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
 const READER_HANDOFF_MAX_AGE_MS = 90 * 1000;
+const READER_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+
+if (READER_EMBED) {
+    document.documentElement.classList.add('reader-embed');
+    document.body.classList.add('reader-embed');
+    const viewportMeta = document.querySelector('meta[name="viewport"]');
+    if (viewportMeta && !/interactive-widget/i.test(viewportMeta.content)) {
+        viewportMeta.content = `${viewportMeta.content}, interactive-widget=resizes-content`;
+    }
+}
+
+function mountCommentScreenForLayout(lastPageEl) {
+    if (!commentScreenEl) return;
+    if (READER_EMBED) {
+        const blogRoot = document.querySelector('.blog');
+        if (blogRoot) blogRoot.appendChild(commentScreenEl);
+        return;
+    }
+    if (lastPageEl) lastPageEl.appendChild(commentScreenEl);
+}
+
+function bindCommentInputEmbedFocusFix() {
+    const input = document.getElementById('commentInput');
+    if (!input || input.dataset.embedFocusFixBound) return;
+    input.dataset.embedFocusFixBound = '1';
+    const scrollInputIntoView = () => {
+        requestAnimationFrame(() => {
+            input.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+        });
+    };
+    input.addEventListener('focus', scrollInputIntoView);
+    input.addEventListener('touchend', scrollInputIntoView, { passive: true });
+}
 
 document.body.classList.add('reader-loading');
 
@@ -334,6 +369,15 @@ function unwrapNode(el) {
 function clearAnnotationHighlights() {
     const overlay = ensureAnnotationOverlayRoot();
     overlay.querySelectorAll('.annotation-highlight:not(.annotation-highlight-pending)').forEach((el) => el.remove());
+}
+
+function scheduleAnnotationLayoutSync() {
+    if (!articleBlocksCache.blocks.length) return;
+    if (annotationLayoutRaf != null) return;
+    annotationLayoutRaf = requestAnimationFrame(() => {
+        annotationLayoutRaf = null;
+        applyAnnotationHighlights();
+    });
 }
 
 function applyAnnotationHighlights() {
@@ -1006,7 +1050,10 @@ function getSpreadTargetHeight() {
     const viewportH = window.visualViewport
         ? Math.floor(window.visualViewport.height)
         : window.innerHeight;
-    const inset = Math.max(30, Math.min(52, Math.round(viewportH * 0.048)));
+    const narrow = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+    const inset = narrow
+        ? Math.max(16, Math.min(36, Math.round(viewportH * 0.028)))
+        : Math.max(30, Math.min(52, Math.round(viewportH * 0.048)));
     return Math.max(viewportH - inset, 440);
 }
 
@@ -1123,8 +1170,21 @@ function estimateFootnoteStripCharsPerLine() {
     const root = document.getElementById('article-body');
     const vw = window.innerWidth || 800;
     const w = root && root.clientWidth > 80 ? root.clientWidth : Math.min(1340, vw - 40);
-    const gap = Math.min(100, Math.max(40, Math.round(w * 0.055)));
-    const colPx = Math.max(220, (w - gap) * 0.5 - 20);
+    const narrow = vw <= 900;
+    let colPx;
+    if (narrow) {
+        const page = root && root.querySelector('.article-page-left');
+        const cw = page && page.clientWidth > 80 ? page.clientWidth : w;
+        const cs = page && window.getComputedStyle ? window.getComputedStyle(page) : null;
+        const pad =
+            cs != null
+                ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
+                : 56;
+        colPx = Math.max(200, cw - pad - 12);
+    } else {
+        const gap = Math.min(100, Math.max(40, Math.round(w * 0.055)));
+        colPx = Math.max(220, (w - gap) * 0.5 - 20);
+    }
     const approxCharPxFoot = 3.92;
     return Math.max(48, Math.floor(colPx / approxCharPxFoot));
 }
@@ -1269,13 +1329,75 @@ function splitParagraphToFit(pageBodyEl, paragraphEl, maxBodyScrollHeight) {
 
     if (best <= 3 || best >= words.length - 3) return null;
 
-    const leftPart = document.createElement('p');
-    leftPart.textContent = words.slice(0, best).join(' ');
-
-    const rightPart = document.createElement('p');
-    rightPart.textContent = words.slice(best).join(' ');
+    const leftPart = paragraphEl.cloneNode(true);
+    const rightPart = paragraphEl.cloneNode(true);
+    splitNodeAtWordBoundary(leftPart, rightPart, best);
 
     return { leftPart, rightPart };
+}
+
+function splitNodeAtWordBoundary(leftRoot, rightRoot, splitWordIndex) {
+    const leftWalker = document.createTreeWalker(leftRoot, NodeFilter.SHOW_TEXT);
+    const rightWalker = document.createTreeWalker(rightRoot, NodeFilter.SHOW_TEXT);
+    let wordCount = 0;
+    const leftNodes = [];
+    const rightNodes = [];
+    let node;
+    while ((node = leftWalker.nextNode())) leftNodes.push(node);
+    while ((node = rightWalker.nextNode())) rightNodes.push(node);
+
+    let splitDone = false;
+    for (let i = 0; i < leftNodes.length; i++) {
+        const ln = leftNodes[i];
+        const rn = rightNodes[i];
+        if (splitDone) {
+            ln.textContent = '';
+            continue;
+        }
+        const nodeWords = ln.textContent.split(/(\s+)/);
+        let nodeWordIdx = 0;
+        let leftText = '';
+        let rightText = '';
+        let inRight = false;
+        for (const token of nodeWords) {
+            if (/\S/.test(token)) {
+                if (!inRight && wordCount + nodeWordIdx >= splitWordIndex) {
+                    inRight = true;
+                }
+                nodeWordIdx++;
+            }
+            if (inRight) rightText += token;
+            else leftText += token;
+        }
+        if (inRight) {
+            ln.textContent = leftText;
+            rn.textContent = rightText;
+            splitDone = true;
+            wordCount += nodeWordIdx;
+        } else {
+            rn.textContent = '';
+            wordCount += nodeWordIdx;
+        }
+    }
+
+    pruneEmptyInlineNodes(leftRoot);
+    pruneEmptyInlineNodes(rightRoot);
+}
+
+function pruneEmptyInlineNodes(root) {
+    const inlineTags = new Set(['SPAN', 'A', 'EM', 'STRONG', 'B', 'I', 'SUP', 'SUB', 'MARK', 'S', 'U']);
+    const walk = (el) => {
+        for (let i = el.childNodes.length - 1; i >= 0; i--) {
+            const child = el.childNodes[i];
+            if (child.nodeType === Node.ELEMENT_NODE) {
+                walk(child);
+                if (inlineTags.has(child.tagName) && !child.textContent.trim()) {
+                    child.remove();
+                }
+            }
+        }
+    };
+    walk(root);
 }
 
 function applyPageNumbers(articleBodyEl) {
@@ -1340,9 +1462,7 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     finalizePageFootnotes(currentPage, defMap, assignedFootnoteAnchors);
 
-    if (commentScreenEl) {
-        currentPage.appendChild(commentScreenEl);
-    }
+    mountCommentScreenForLayout(currentPage);
 
     applyPageNumbers(articleBody);
 
@@ -1352,19 +1472,36 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 const renderArticleBody = (articleData, options = {}) => {
     articleBlocksCache = parseArticleBlocks(articleData);
     renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
+    if (READER_EMBED) bindCommentInputEmbedFocusFix();
     applyAnnotationHighlights();
     renderAnnotationList();
 
     if (!spreadResizeBound) {
         spreadResizeBound = true;
+        let lastSpreadWidth = window.innerWidth;
         window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            if (Math.abs(w - lastSpreadWidth) < 2) return;
+            lastSpreadWidth = w;
             clearTimeout(spreadReflowTimer);
             spreadReflowTimer = setTimeout(() => {
                 if (articleBlocksCache.blocks.length) {
                     renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
+                    applyAnnotationHighlights();
                 }
             }, 140);
         });
+    }
+
+    if (!annotationLayoutListenersBound) {
+        annotationLayoutListenersBound = true;
+        const onLayoutScroll = () => scheduleAnnotationLayoutSync();
+        window.addEventListener('scroll', onLayoutScroll, { passive: true });
+        const vv = window.visualViewport;
+        if (vv) {
+            vv.addEventListener('scroll', onLayoutScroll, { passive: true });
+            vv.addEventListener('resize', onLayoutScroll, { passive: true });
+        }
     }
 
     if (options.provisional) return;

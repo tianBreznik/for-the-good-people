@@ -75,6 +75,11 @@ let articlePreviewCloseSeq = 0;
 let articleExpandNavigateTimer = null;
 let articleExpandInFlight = false;
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
+let mobileReaderShellEl = null;
+let mobileReaderFrameEl = null;
+let mobileReaderHistoryPushed = false;
+let mobileReaderClosingTimer = null;
+let mobileReaderCloseSeq = 0;
 
 /** Full-viewport panes on small screens; desktop keeps five columns inside the same wrapper. */
 const HOME_NARROW_QUERY = '(max-width: 900px)';
@@ -155,9 +160,117 @@ function homeFinePointerHoverUi() {
     return typeof window.matchMedia !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 }
 
-/** Narrow layout without fine pointer: first tap on card opens slab preview; tap preview panel to open reader. */
+/** Narrow layout without fine pointer: first tap on card opens in-app reader (iframe). */
 function homeDirectArticleTapNav() {
     return typeof window.matchMedia !== 'undefined' && window.matchMedia(HOME_NARROW_QUERY).matches && !homeFinePointerHoverUi();
+}
+
+function ensureMobileReaderShell() {
+    if (mobileReaderShellEl) return mobileReaderShellEl;
+    const shell = document.createElement('div');
+    shell.className = 'mobile-reader-shell';
+    shell.hidden = true;
+    shell.setAttribute('aria-hidden', 'true');
+    shell.innerHTML = `
+        <button type="button" class="mobile-reader-close" aria-label="Close article">×</button>
+        <iframe class="mobile-reader-frame" title="Article reader" loading="lazy"></iframe>
+    `;
+    document.body.appendChild(shell);
+    mobileReaderShellEl = shell;
+    mobileReaderFrameEl = shell.querySelector('.mobile-reader-frame');
+
+    shell.querySelector('.mobile-reader-close')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMobileInAppReader();
+    });
+
+    window.addEventListener('popstate', () => {
+        if (mobileReaderHistoryPushed && document.body.classList.contains('mobile-reader-open')) {
+            closeMobileInAppReader({ fromPopstate: true });
+        }
+    });
+
+    return shell;
+}
+
+function openMobileInAppReader(blogId, seamIndex = 2) {
+    if (!blogId) return;
+    if (mobileReaderClosingTimer) {
+        clearTimeout(mobileReaderClosingTimer);
+        mobileReaderClosingTimer = null;
+    }
+
+    const shell = ensureMobileReaderShell();
+    const frame = mobileReaderFrameEl;
+    if (!frame) return;
+
+    setActivePreviewSeam(seamIndex);
+
+    const embedUrl = `/${blogId}?embed=1`;
+    if (frame.getAttribute('src') !== embedUrl) {
+        frame.src = embedUrl;
+    }
+
+    shell.hidden = false;
+    shell.setAttribute('aria-hidden', 'false');
+    shell.classList.remove('mobile-reader-closing');
+
+    document.body.classList.remove('article-closing');
+    document.body.classList.add('article-open', 'mobile-reader-open');
+    triggerMobileHaptic('preview-reveal');
+
+    if (!mobileReaderHistoryPushed) {
+        history.pushState({ mobileReader: true, blogId }, '', window.location.pathname);
+        mobileReaderHistoryPushed = true;
+    }
+}
+
+function closeMobileInAppReader(options = {}) {
+    const fromPopstate = Boolean(options.fromPopstate);
+    if (!document.body.classList.contains('mobile-reader-open')) {
+        mobileReaderHistoryPushed = false;
+        return;
+    }
+
+    const closeSeq = ++mobileReaderCloseSeq;
+    if (mobileReaderClosingTimer) {
+        clearTimeout(mobileReaderClosingTimer);
+        mobileReaderClosingTimer = null;
+    }
+
+    document.body.classList.add('article-closing');
+    document.body.classList.remove('article-open');
+    requestAnimationFrame(() => {
+        if (closeSeq !== mobileReaderCloseSeq) return;
+        clearActivePreviewSeam();
+    });
+
+    if (mobileReaderShellEl) {
+        mobileReaderShellEl.classList.add('mobile-reader-closing');
+    }
+
+    mobileReaderClosingTimer = setTimeout(() => {
+        if (closeSeq !== mobileReaderCloseSeq) return;
+        mobileReaderClosingTimer = null;
+
+        document.body.classList.remove('article-closing', 'mobile-reader-open');
+        if (mobileReaderShellEl) {
+            mobileReaderShellEl.hidden = true;
+            mobileReaderShellEl.setAttribute('aria-hidden', 'true');
+            mobileReaderShellEl.classList.remove('mobile-reader-closing');
+        }
+        if (mobileReaderFrameEl) {
+            mobileReaderFrameEl.removeAttribute('src');
+        }
+
+        const hadHistory = mobileReaderHistoryPushed;
+        mobileReaderHistoryPushed = false;
+
+        if (!fromPopstate && hadHistory) {
+            history.back();
+        }
+    }, getArticlePreviewRevealMs());
 }
 
 const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
@@ -961,6 +1074,7 @@ db.collection("blogs").get().then((blogs) => {
         <div id="article-first-page"></div>
     `;
     document.body.appendChild(articlePanel);
+    ensureMobileReaderShell();
 
     console.log('Created author cards for:', Array.from(uniqueAuthors));
     
@@ -1645,6 +1759,10 @@ function getArticlePreviewRevealMs() {
 }
 
 function closeArticlePreview() {
+    if (document.body.classList.contains('mobile-reader-open')) {
+        closeMobileInAppReader();
+        return;
+    }
     const closeSeq = ++articlePreviewCloseSeq;
     if (articleExpandNavigateTimer) {
         clearTimeout(articleExpandNavigateTimer);
@@ -1706,7 +1824,27 @@ function ensureArticlePreviewUi() {
     articlePanel.addEventListener('click', (e) => {
         e.stopPropagation();
         const id = articlePanel.dataset.blogId;
-        if (id) playExpandFullscreenThenNavigate(id);
+        if (!id) return;
+        if (homeDirectArticleTapNav()) {
+            // Mobile: preview is already full-screen; navigate directly for a seamless transition.
+            const previewPage = articlePanel.querySelector('.home-preview-page');
+            const previewPageRect = previewPage ? previewPage.getBoundingClientRect() : null;
+            try {
+                const payload = {
+                    blogId: id,
+                    title: articlePanel.dataset.handoffTitle || '',
+                    author: articlePanel.dataset.handoffAuthor || 'Anonymous',
+                    publishedAt: articlePanel.dataset.handoffPublishedAt || '',
+                    article: articlePanel.dataset.handoffArticle || '',
+                    previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
+                    ts: Date.now()
+                };
+                sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
+            } catch (_) {}
+            location.href = `/${id}`;
+            return;
+        }
+        playExpandFullscreenThenNavigate(id);
     });
 
     document.addEventListener(
@@ -1714,7 +1852,12 @@ function ensureArticlePreviewUi() {
         (e) => {
             if (!document.body.classList.contains('article-open')) return;
             if (e.target.closest('.article-panel')) return;
+            if (e.target.closest('.mobile-reader-shell')) return;
             if (e.target.closest('.blog-card')) return;
+            if (document.body.classList.contains('mobile-reader-open')) {
+                closeMobileInAppReader();
+                return;
+            }
             closeArticlePreview();
         },
         true
@@ -2020,7 +2163,13 @@ async function expandArticlePanelAndNavigate(blogId, card) {
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
     const narrowTapFlow = homeDirectArticleTapNav();
-    if (narrowTapFlow) await anchorMobilePaneToViewport(card);
+    if (narrowTapFlow) {
+        const sectionIndex = Number(card.dataset.sectionIndex || 1);
+        const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
+        await anchorMobilePaneToViewport(card);
+        openMobileInAppReader(blogId, seamIndex);
+        return;
+    }
 
     const articlePanel = document.querySelector('.article-panel');
     if (!articlePanel) {
@@ -2043,13 +2192,6 @@ async function expandArticlePanelAndNavigate(blogId, card) {
 
     setActivePreviewSeam(seamIndex);
     renderFirstPagePreview(articlePanel, { title, article: rawArticle, author, publishedAt }, () => {
-        // Mobile: desktop-style reveal only (preview sits under slabs). Tap preview panel to navigate.
-        if (narrowTapFlow) {
-            document.body.classList.remove('article-closing');
-            document.body.classList.add('article-open');
-            triggerMobileHaptic('preview-reveal');
-            return;
-        }
         playExpandFullscreenThenNavigate(blogId);
     });
 }
