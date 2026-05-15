@@ -1230,6 +1230,7 @@ db.collection("blogs").get().then((blogs) => {
             positionCardsInSection(sections[i]);
         }
         positionCardsInSection(authorSection, { startY: getFirstContentRowTop(sections) });
+        layoutAuthControls();
         syncHomeActiveColumnRef?.();
     };
     relayoutHomeSectionsRef = relayoutHomeSections;
@@ -1458,6 +1459,48 @@ function createWriteBlogCard(section) {
     `;
 }
 
+function layoutAuthControlTitle(titleEl) {
+    if (!titleEl) return;
+    const probe = titleEl.cloneNode(true);
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style.whiteSpace = 'nowrap';
+    probe.style.width = 'auto';
+    document.body.appendChild(probe);
+    const w = Math.ceil(probe.getBoundingClientRect().width + 6);
+    const h = Math.ceil(probe.getBoundingClientRect().height + 2);
+    document.body.removeChild(probe);
+    const card = titleEl.closest('.blog-card');
+    const container = titleEl.closest('.cardcontainer');
+    if (card) {
+        card.style.position = 'relative';
+        card.style.width = `${w + 10}px`;
+        card.style.height = `${h + 6}px`;
+        card.style.overflow = 'visible';
+        card.style.flexShrink = '0';
+    }
+    if (container) {
+        container.style.flexShrink = '0';
+        container.style.width = 'auto';
+        container.style.minWidth = '0';
+    }
+    titleEl.style.position = 'relative';
+    titleEl.style.left = '0';
+    titleEl.style.top = '0';
+    titleEl.style.textAlign = 'left';
+    titleEl.style.whiteSpace = 'nowrap';
+    titleEl.style.width = `${w}px`;
+    titleEl.style.display = 'block';
+}
+
+function layoutAuthControls() {
+    layoutAuthControlTitle(document.getElementById('auth-login-text'));
+    const editorCard = document.getElementById('auth-editor-card');
+    if (editorCard && editorCard.style.display !== 'none') {
+        layoutAuthControlTitle(editorCard.querySelector('.blog-title'));
+    }
+}
+
 function createAuthControls(section) {
     // container pinned to bottom-right
     const wrapper = document.createElement('div');
@@ -1498,39 +1541,7 @@ function createAuthControls(section) {
     wrapper.appendChild(login);
     section.appendChild(wrapper);
 
-    // Size cards to fit their text exactly and anchor text top-left
-    const ensureSize = (titleEl) => {
-        const probe = titleEl.cloneNode(true);
-        probe.style.position = 'absolute';
-        probe.style.visibility = 'hidden';
-        probe.style.whiteSpace = 'nowrap';
-        probe.style.width = 'auto';
-        document.body.appendChild(probe);
-        // Measure pseudo-text as well by matching styles
-        const w = Math.ceil(probe.getBoundingClientRect().width + 6); // buffer for pseudo layer
-        const h = Math.ceil(probe.getBoundingClientRect().height + 2);
-        document.body.removeChild(probe);
-        const card = titleEl.closest('.blog-card');
-        if (card) {
-            card.style.position = 'relative';
-            card.style.width = `${w + 10}px`; // generous buffer
-            card.style.height = `${h + 6}px`;
-            card.style.overflow = 'visible'; // allow pseudo-element to extend
-        }
-        // Anchor the absolute title inside the card
-        titleEl.style.left = '0px';
-        titleEl.style.top = '0px';
-        titleEl.style.textAlign = 'left';
-        titleEl.style.whiteSpace = 'nowrap';
-        titleEl.style.width = `${w}px`;
-        return { w, h };
-    };
-
-    if (typeof window.matchMedia === 'undefined' || !window.matchMedia(HOME_NARROW_QUERY).matches) {
-        ensureSize(document.getElementById('auth-login-text'));
-        const editorTitle = wrapper.querySelector('#auth-editor-card .blog-title');
-        if (editorTitle) ensureSize(editorTitle);
-    }
+    layoutAuthControls();
 }
 
 function updateAuthControls(user, isRealPerson) {
@@ -1554,36 +1565,10 @@ function updateAuthControls(user, isRealPerson) {
         if (editorCard) editorCard.style.display = 'none';
     }
 
+    layoutAuthControls();
     if (typeof window.matchMedia !== 'undefined' && window.matchMedia(HOME_NARROW_QUERY).matches) {
         relayoutHomeSectionsRef?.();
-        return;
     }
-
-    // Recompute sizes after label change
-    const resize = (titleEl) => {
-        const probe = titleEl.cloneNode(true);
-        probe.style.position = 'absolute';
-        probe.style.visibility = 'hidden';
-        probe.style.whiteSpace = 'nowrap';
-        probe.style.width = 'auto';
-        document.body.appendChild(probe);
-        const w = Math.ceil(probe.getBoundingClientRect().width + 6);
-        const h = Math.ceil(probe.getBoundingClientRect().height + 2);
-        document.body.removeChild(probe);
-        const card = titleEl.closest('.blog-card');
-        if (card) {
-            card.style.width = `${w + 10}px`;
-            card.style.height = `${h + 6}px`;
-            card.style.overflow = 'visible';
-        }
-        titleEl.style.width = `${w}px`;
-        titleEl.style.left = '0px';
-        titleEl.style.top = '0px';
-        titleEl.style.textAlign = 'left';
-    };
-    resize(loginText);
-    const editorTitle = document.querySelector('#auth-editor-card .blog-title');
-    if (editorTitle && isRealPerson) resize(editorTitle);
 }
 
 function getRandomColor() {
