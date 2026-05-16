@@ -132,6 +132,7 @@ body {
 }
 
 .toolbar-font-size { width: 58px; }
+.toolbar-section-select { min-width: 88px; max-width: 108px; }
 .toolbar-color {
     width: 28px;
     height: 28px;

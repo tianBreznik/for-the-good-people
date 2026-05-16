@@ -19,6 +19,14 @@
             <input type="text" class="title-input" placeholder="Blog title...">
             <div class="editor-toolbar">
                 <div class="toolbar-buttons">
+                    <select id="content-type-select" class="toolbar-select toolbar-section-select" required title="Home page section" aria-label="Home page section">
+                        <option value="" disabled selected>Section…</option>
+                        <option value="scene_report">#SCENE</option>
+                        <option value="interview">Interview</option>
+                        <option value="opinion">Opinion</option>
+                        <option value="ideas">Ideas</option>
+                    </select>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
                     <button class="toolbar-btn" data-action="title-toggle" title="Title toggle (T/p)">T/p</button>
                     <button class="toolbar-btn" data-action="line-break" title="Line break (↵)">↵</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>

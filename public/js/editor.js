@@ -17,9 +17,12 @@ import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2.11.5';
 
 // Editor functionality with Tiptap and auto-save
 
+const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
+
 const titleInput = document.querySelector('.title-input');
 const publishBtn = document.querySelector('.publish-btn');
 const saveDraftBtn = document.querySelector('.save-draft-btn');
+const contentTypeSelect = document.querySelector('#content-type-select');
 const imageUpload = document.querySelector('#image-upload');
 const autosaveStatus = document.querySelector('#autosave-status');
 
@@ -39,6 +42,26 @@ let footnoteDialogInsertAnchor = null;
 let blogID = location.pathname.split("/");
 blogID.shift();
 const isEditing = blogID[0] !== "editor";
+
+function inferContentTypeFromBlogId(blogId) {
+    const seeded = Array.from(String(blogId || '')).reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    return CONTENT_TYPES[seeded % CONTENT_TYPES.length];
+}
+
+function normalizeContentType(value) {
+    return typeof value === 'string' && CONTENT_TYPES.includes(value) ? value : '';
+}
+
+function getSelectedContentType() {
+    return normalizeContentType(contentTypeSelect?.value);
+}
+
+function setContentTypeSelect(value, blogIdForFallback) {
+    if (!contentTypeSelect) return;
+    const normalized = normalizeContentType(value)
+        || (blogIdForFallback ? inferContentTypeFromBlogId(blogIdForFallback) : '');
+    contentTypeSelect.value = normalized || '';
+}
 
 function closePoetryDialog() {
     const dialog = document.getElementById('poetry-dialog');
@@ -717,6 +740,12 @@ function setupEventListeners() {
     saveDraftBtn.addEventListener('click', saveDraft);
     imageUpload.addEventListener('change', handleImageUpload);
     titleInput.addEventListener('input', triggerAutoSave);
+    if (contentTypeSelect) {
+        contentTypeSelect.addEventListener('change', () => {
+            markUnsavedChanges();
+            triggerAutoSave();
+        });
+    }
 }
 
 function setupAutoSave() {
@@ -745,6 +774,7 @@ async function saveDraft() {
             title: titleInput.value,
             contentHtml: getEditorHTML(),
             contentText: getEditorText(),
+            contentType: getSelectedContentType() || null,
             lastSaved: new Date().toISOString(),
             isDraft: true
         };
@@ -1056,6 +1086,13 @@ async function publishBlog() {
         alert('Please fill in both title and content');
         return;
     }
+
+    const contentType = getSelectedContentType();
+    if (!contentType) {
+        alert('Please choose which section this article belongs to');
+        contentTypeSelect?.focus();
+        return;
+    }
     
     try {
         publishBtn.disabled = true;
@@ -1070,6 +1107,7 @@ async function publishBlog() {
             title: titleInput.value.trim(),
             article: html,
             articleFormat: 'tiptap-html',
+            contentType,
             publishedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
             author: window.auth.currentUser.email.split("@")[0],
             numberofcomments: 0,
@@ -1114,7 +1152,9 @@ async function loadBlogData() {
         }
 
         const data = doc.data();
+        const blogId = decodeURI(blogID[0]);
         titleInput.value = data.title || '';
+        setContentTypeSelect(data.contentType, blogId);
         isHydratingEditor = true;
         editor.commands.setContent(data.article || '<p></p>', false, {
             preserveWhitespace: 'full'
@@ -1133,6 +1173,7 @@ function loadExistingBlog() {
         try {
             const draft = JSON.parse(savedDraft);
             if (draft.title) titleInput.value = draft.title;
+            if (draft.contentType) setContentTypeSelect(draft.contentType);
             if (draft.contentHtml) {
                 isHydratingEditor = true;
                 editor.commands.setContent(draft.contentHtml, false, {
