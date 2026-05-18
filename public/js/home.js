@@ -32,24 +32,53 @@ function revealHomeTitlesWithEmerge() {
     }, ms + 80);
 }
 
-// If we just returned from login, skip showing the entry overlay transition entirely
-try {
-    if (sessionStorage.getItem('justLoggedIn') === '1' && topdiv) {
-        topdiv.style.transition = 'none';
-        topdiv.classList.add('fade');
-        // clear the flag so subsequent visits behave normally
-        sessionStorage.removeItem('justLoggedIn');
+const JUST_LOGGED_IN_KEY = 'justLoggedIn';
+
+function dismissSplashImmediately() {
+    if (!topdiv) return;
+    topdiv.style.transition = 'none';
+    topdiv.classList.add('fade');
+    topdiv.style.display = 'none';
+    try {
         sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
+    } catch (e) {}
+    requestAnimationFrame(() => {
+        if (topdiv) topdiv.style.transition = '';
+    });
+}
+
+/** Splash + title reveal only after the column grid exists (avoids post-login flicker). */
+function applyHomeEntryAfterGridReady() {
+    let fromLogin = false;
+    try {
+        if (sessionStorage.getItem(JUST_LOGGED_IN_KEY) === '1') {
+            sessionStorage.removeItem(JUST_LOGGED_IN_KEY);
+            fromLogin = true;
+        }
+    } catch (e) {}
+
+    let entryDismissed = false;
+    try {
+        entryDismissed = sessionStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1';
+    } catch (e) {}
+
+    if (topdiv && (fromLogin || entryDismissed) && !topdiv.classList.contains('fade')) {
+        dismissSplashImmediately();
+    }
+
+    if (fromLogin) {
         revealHomeTitlesWithEmerge();
-        topdiv.style.display = 'none';
-        // allow transitions again for future interactions
-        requestAnimationFrame(() => { if (topdiv) topdiv.style.transition = ''; });
-    } else if (sessionStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1' && topdiv) {
-        topdiv.style.transition = 'none';
-        topdiv.classList.add('fade');
-        topdiv.style.display = 'none';
+    } else if (entryDismissed || (topdiv && topdiv.classList.contains('fade'))) {
         document.body.classList.add('home-titles-visible');
-        requestAnimationFrame(() => { if (topdiv) topdiv.style.transition = ''; });
+    }
+
+    syncAuthControls(auth.currentUser);
+}
+
+// Returning visitors: hide splash while Firestore loads (titles revealed after grid is ready).
+try {
+    if (sessionStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1' && topdiv) {
+        dismissSplashImmediately();
     }
 } catch (e) {}
 const navbar = document.querySelector('.navbar');
@@ -1214,17 +1243,6 @@ db.collection("blogs").get().then((blogs) => {
 
     // (Reverted) remove title hover article preview behavior
 
-    // Helper: fade out entry overlay if logged in
-    const ensureFirstContainerFaded = () => {
-        if (!topdiv) return;
-        if (!topdiv.classList.contains('fade')) {
-            topdiv.classList.add('fade');
-            try {
-                sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
-            } catch (err) {}
-        }
-    };
-
     const relayoutHomeSections = () => {
         for (let i = 1; i <= 4; i++) {
             positionCardsInSection(sections[i]);
@@ -1240,29 +1258,107 @@ db.collection("blogs").get().then((blogs) => {
     window.addEventListener('resize', relayoutHomeSections);
     window.visualViewport?.addEventListener('resize', relayoutHomeSections);
 
-    // Monitor auth state to update controls
-    auth.onAuthStateChanged((user) => {
-        if (user) {
-            user.getIdTokenResult().then((idTokenResult) => {
-                const isRealPerson = idTokenResult.claims.role === "real person";
-                updateAuthControls(user, isRealPerson);
-                // If we arrived here after login, auto dismiss the entry overlay
-                ensureFirstContainerFaded();
-                requestAnimationFrame(relayoutHomeSections);
-            });
-        } else {
-            updateAuthControls(null, false);
-            requestAnimationFrame(relayoutHomeSections);
-        }
-    });
-    
+    applyHomeEntryAfterGridReady();
 })
+
+function getHomeLoginUi() {
+    if (typeof firebaseui === 'undefined') return null;
+    return firebaseui.auth.AuthUI.getInstance() || new firebaseui.auth.AuthUI(auth);
+}
+
+function closeHomeLoginOverlay() {
+    const overlay = document.getElementById('home-login-overlay');
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('home-login-open');
+    if (typeof resetHomeLoginViews === 'function') resetHomeLoginViews();
+    try {
+        const ui = firebaseui.auth.AuthUI.getInstance();
+        if (ui) ui.reset();
+    } catch (e) {}
+}
+
+function applyHomeEntryAfterSignIn() {
+    const gridReady = !!document.querySelector('.home-main-stage');
+    try {
+        sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
+        if (!gridReady) sessionStorage.setItem(JUST_LOGGED_IN_KEY, '1');
+    } catch (e) {}
+    if (topdiv && !topdiv.classList.contains('fade')) {
+        dismissSplashImmediately();
+    }
+    if (gridReady) {
+        revealHomeTitlesWithEmerge();
+    }
+}
+
+function openHomeLoginOverlay() {
+    const overlay = document.getElementById('home-login-overlay');
+    if (!overlay || auth.currentUser) return;
+
+    if (typeof showHomeSignInView === 'function') showHomeSignInView();
+
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('home-login-open');
+
+    startHomeLoginUi();
+}
+
+function openHomeAuthorApplyOverlay() {
+    const overlay = document.getElementById('home-login-overlay');
+    if (!overlay) return;
+
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('home-login-open');
+
+    if (typeof showHomeAuthorApplyView === 'function') showHomeAuthorApplyView();
+}
+
+function startHomeLoginUi() {
+    const ui = getHomeLoginUi();
+    if (!ui) return;
+
+    ui.start(
+        '#home-login-ui',
+        getAuthUiConfig({
+            callbacks: {
+                signInSuccessWithAuthResult(authResult) {
+                    const user = authResult.user;
+                    if (user && typeof refreshAuthorIdFromToken === 'function') {
+                        refreshAuthorIdFromToken(user);
+                    }
+                    closeHomeLoginOverlay();
+                    applyHomeEntryAfterSignIn();
+                    syncAuthControls(user);
+                    return false;
+                },
+            },
+        })
+    );
+}
+
+function initHomeLoginOverlay() {
+    const overlay = document.getElementById('home-login-overlay');
+    if (!overlay) return;
+    overlay.querySelectorAll('[data-home-login-close]').forEach((el) => {
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeHomeLoginOverlay();
+        });
+    });
+
+    if (typeof initHomeSignupForm === 'function') initHomeSignupForm();
+}
 
 function formatTitleForCard(rawTitle) {
     if (!rawTitle) return '';
+    const normalized = String(rawTitle).replace(/\s+/g, ' ').trim();
     const maxLen = 100;
-    const trimmed = rawTitle.substring(0, maxLen);
-    return rawTitle.length > maxLen ? trimmed + '...' : trimmed;
+    const trimmed = normalized.substring(0, maxLen);
+    return normalized.length > maxLen ? trimmed + '...' : trimmed;
 }
 
 function getContentTypeForDoc(blogId, data) {
@@ -1499,6 +1595,10 @@ function layoutAuthControls() {
     if (editorCard && editorCard.style.display !== 'none') {
         layoutAuthControlTitle(editorCard.querySelector('.blog-title'));
     }
+    const applyCard = document.getElementById('auth-apply-card');
+    if (applyCard && applyCard.style.display !== 'none') {
+        layoutAuthControlTitle(applyCard.querySelector('.blog-title'));
+    }
 }
 
 function createAuthControls(section) {
@@ -1537,7 +1637,19 @@ function createAuthControls(section) {
     `;
     editor.onclick = () => window.location.href = '/editor';
 
+    const apply = document.createElement('div');
+    apply.className = 'cardcontainer';
+    apply.id = 'auth-apply-card';
+    apply.style.display = 'none';
+    apply.innerHTML = `
+        <div class="blog-card auth-plain" style="cursor: pointer;">
+            <h1 class="blog-title" data-text="APPLY">APPLY</h1>
+        </div>
+    `;
+    apply.onclick = () => openHomeAuthorApplyOverlay();
+
     wrapper.appendChild(editor);
+    wrapper.appendChild(apply);
     wrapper.appendChild(login);
     section.appendChild(wrapper);
 
@@ -1547,6 +1659,7 @@ function createAuthControls(section) {
 function updateAuthControls(user, isRealPerson) {
     const loginText = document.getElementById('auth-login-text');
     const editorCard = document.getElementById('auth-editor-card');
+    const applyCard = document.getElementById('auth-apply-card');
     if (!loginText) return;
 
     if (user) {
@@ -1556,6 +1669,7 @@ function updateAuthControls(user, isRealPerson) {
         const loginCard = document.getElementById('auth-login-card');
         if (loginCard) loginCard.setAttribute('data-logout', 'true');
         if (editorCard) editorCard.style.display = isRealPerson ? 'block' : 'none';
+        if (applyCard) applyCard.style.display = isRealPerson ? 'none' : 'block';
     } else {
         loginText.textContent = 'LOGIN';
         loginText.setAttribute('data-text', 'LOGIN');
@@ -1563,6 +1677,7 @@ function updateAuthControls(user, isRealPerson) {
         const loginCard = document.getElementById('auth-login-card');
         if (loginCard) loginCard.removeAttribute('data-logout');
         if (editorCard) editorCard.style.display = 'none';
+        if (applyCard) applyCard.style.display = 'none';
     }
 
     layoutAuthControls();
@@ -1570,6 +1685,32 @@ function updateAuthControls(user, isRealPerson) {
         relayoutHomeSectionsRef?.();
     }
 }
+
+/** Keep author-column LOGIN / EDITOR in sync with Firebase (incl. return from /admin on mobile). */
+function syncAuthControls(user) {
+    if (!document.getElementById('auth-login-text')) return;
+
+    if (user) {
+        const tokenPromise = typeof refreshAuthorIdFromToken === 'function'
+            ? refreshAuthorIdFromToken(user)
+            : Promise.resolve();
+        tokenPromise
+            .then(() => user.getIdTokenResult())
+            .then((idTokenResult) => {
+                const isRealPerson = idTokenResult.claims.role === 'real person';
+                updateAuthControls(user, isRealPerson);
+            })
+            .catch(() => updateAuthControls(user, false));
+    } else {
+        updateAuthControls(null, false);
+    }
+}
+
+auth.onAuthStateChanged((user) => syncAuthControls(user));
+
+window.addEventListener('pageshow', () => {
+    syncAuthControls(auth.currentUser);
+});
 
 function getRandomColor() {
     const letters = '0123456789ABCDEF';
@@ -1644,6 +1785,12 @@ function positionCardsInSection(section, options = {}) {
 
     cards.forEach(card => {
         const title = card.querySelector('.blog-title');
+        if (!title) return;
+        const normalizedTitle = (title.textContent || '').replace(/\s+/g, ' ').trim();
+        if (title.textContent !== normalizedTitle) {
+            title.textContent = normalizedTitle;
+            title.setAttribute('data-text', normalizedTitle);
+        }
         title.style.margin = '0';
         title.style.padding = '0';
         title.style.boxSizing = 'border-box';
@@ -2306,13 +2453,10 @@ function handleActionCard(cardId) {
     } else if (cardId === 'dashboard') {
         window.location.href = '/admin';
     } else if (cardId === 'login') {
-        // Check if user is logged in
         if (auth.currentUser) {
-            // User is logged in, logout
             logoutUser();
         } else {
-            // User is not logged in, redirect to admin page for login
-            window.location.href = '/admin';
+            openHomeLoginOverlay();
         }
     }
 }
@@ -2335,5 +2479,4 @@ if (topdiv) {
     };
 }
 
-
-
+initHomeLoginOverlay();

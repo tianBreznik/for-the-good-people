@@ -755,7 +755,7 @@ async function submitComment(commentindex) {
                 content: commentText,
                 postedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
                 responseTo: responseUser,
-                user: auth.currentUser.email.split("@")[0],
+                user: getAuthorIdFromUser(auth.currentUser),
                 replyId: responseId,
             })
             .then(() => {

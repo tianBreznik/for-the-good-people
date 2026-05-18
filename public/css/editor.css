@@ -105,6 +105,15 @@ body {
 .editor-toolbar::-webkit-scrollbar { display: none; }
 .editor-toolbar { scrollbar-width: none; -ms-overflow-style: none; }
 
+.editor-toolbar-track {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
+    min-width: 0;
+}
+
 .toolbar-buttons,
 .toolbar-actions {
     display: inline-flex;
@@ -267,15 +276,27 @@ body {
     margin: 0 .35rem;
 }
 
-/* Publishing variants — !important beats inline styles TipTap re-applies from textAlign etc. after setContent */
+/* Variant presentation — keep typography !important; text-align comes from toolbar (inline style). */
 .tiptap-editor .ProseMirror p[data-variant="poetry"] {
     font-family: Georgia, 'Times New Roman', Times, serif !important;
-    text-align: center !important;
+    text-align: center;
     max-width: 28em !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
+    margin-left: auto;
+    margin-right: auto;
     white-space: pre-wrap !important;
     line-height: 1.75 !important;
+}
+
+.tiptap-editor .ProseMirror p[data-variant="poetry"][style*="text-align: left"],
+.tiptap-editor .ProseMirror p[data-variant="poetry"][style*="text-align: start"] {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+.tiptap-editor .ProseMirror p[data-variant="poetry"][style*="text-align: right"],
+.tiptap-editor .ProseMirror p[data-variant="poetry"][style*="text-align: end"] {
+    margin-left: auto;
+    margin-right: 0;
 }
 
 .tiptap-editor .ProseMirror p[data-variant="poetry"][data-poetry-italic="true"] {
@@ -284,11 +305,23 @@ body {
 
 .tiptap-editor .ProseMirror p[data-variant="poetry-author"] {
     font-family: Georgia, 'Times New Roman', Times, serif !important;
-    text-align: center !important;
+    text-align: center;
     max-width: 28em !important;
-    margin: 0.65rem auto 0 !important;
+    margin: 0.65rem auto 0;
     font-size: 0.92em !important;
     opacity: 0.85 !important;
+}
+
+.tiptap-editor .ProseMirror p[data-variant="poetry-author"][style*="text-align: left"],
+.tiptap-editor .ProseMirror p[data-variant="poetry-author"][style*="text-align: start"] {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+.tiptap-editor .ProseMirror p[data-variant="poetry-author"][style*="text-align: right"],
+.tiptap-editor .ProseMirror p[data-variant="poetry-author"][style*="text-align: end"] {
+    margin-left: auto;
+    margin-right: 0;
 }
 
 .tiptap-editor .ProseMirror p[data-variant="epigraph"] {
@@ -467,50 +500,232 @@ body {
     text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 2px #000;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    .editor-toolbar {
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        flex-wrap: nowrap !important;
-        -webkit-overflow-scrolling: touch !important;
-        min-height: 60px !important;
-        height: auto !important;
-        padding: 8px 10px !important;
+/* Mobile / narrow editor (matches home narrow breakpoint) */
+@media (max-width: 900px) {
+    body.editor-page {
+        display: block;
+        min-height: 100%;
+        min-height: 100dvh;
+        overflow-x: hidden;
     }
 
     .editor-container {
-        padding: 20px 15px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding:
+            max(10px, env(safe-area-inset-top, 0px))
+            max(10px, env(safe-area-inset-right, 0px))
+            calc(50px + env(safe-area-inset-bottom, 0px))
+            max(10px, env(safe-area-inset-left, 0px));
     }
-    
-    .toolbar-close-btn { display: inline-flex; }
-    
+
+    .editor-header {
+        position: sticky;
+        top: 0;
+        z-index: 200;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+        background: #fff;
+        box-shadow: none;
+    }
+
     .title-input {
-        font-size: 36px;
+        font-size: clamp(1.75rem, 8vw, 2.25rem);
+        margin-bottom: 8px;
+        letter-spacing: -0.03em;
     }
-    
-    .tiptap-editor .ProseMirror {
-        font-size: 16px;
-    }
-    
+
     .editor-toolbar {
-        flex-wrap: wrap;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .editor-toolbar-track {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        max-width: 100%;
+        padding: 8px 4px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        touch-action: pan-x;
+        scrollbar-width: none;
+        border: none;
+        border-radius: 0;
+        background: linear-gradient(#ededed, #dcdcdc);
+        box-shadow: none;
+    }
+
+    .editor-toolbar-track::-webkit-scrollbar {
+        display: none;
+    }
+
+    .toolbar-buttons,
+    .toolbar-actions {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
         gap: 6px;
     }
-    
+
     .toolbar-btn {
-        min-width: 32px;
-        height: 32px;
+        width: 36px;
+        min-width: 36px;
+        max-width: 36px;
+        height: 36px;
+        min-height: 36px;
+        max-height: 36px;
         font-size: 12px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
     }
-    
+
+    .toolbar-btn.wide {
+        width: 36px;
+        min-width: 36px;
+        max-width: 36px;
+    }
+
+    .toolbar-select {
+        height: 36px;
+        font-size: 12px;
+        touch-action: manipulation;
+    }
+
+    .toolbar-section-select {
+        min-width: 96px;
+        max-width: 112px;
+    }
+
+    .toolbar-font-size {
+        width: 52px;
+    }
+
+    .toolbar-color,
+    .toolbar-color-wrap {
+        width: 36px;
+        height: 36px;
+    }
+
+    .toolbar-divider {
+        display: none;
+    }
+
+    .toolbar-close-btn {
+        display: inline-flex;
+    }
+
+    .autosave-status {
+        font-size: 11px;
+        padding: 6px 8px;
+        white-space: nowrap;
+    }
+
+    .editor-content {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 14px 12px;
+        border-width: 1px;
+        box-shadow: none;
+        min-height: calc(100lvh - 12.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    }
+
+    .tiptap-editor {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .tiptap-editor .ProseMirror {
+        min-height: calc(100lvh - 16rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        overflow-y: visible;
+        font-size: 17px;
+        line-height: 1.65;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .tiptap-editor .ProseMirror img[data-display="inline"] {
+        max-width: 100%;
+        display: block;
+        margin: 0.5rem 0;
+    }
+
     .editor-footer {
-        padding: 10px 15px;
+        padding:
+            4px
+            max(10px, env(safe-area-inset-right, 0px))
+            calc(4px + env(safe-area-inset-bottom, 0px))
+            max(10px, env(safe-area-inset-left, 0px));
+        background: #fff;
+        border-top: none;
+        flex-wrap: nowrap;
+        gap: 6px 10px;
+        align-items: center;
+        justify-content: space-between;
     }
-    
-    .btn {
-        padding: 10px 20px;
-        font-size: 13px;
+
+    .editor-footer .footer-left,
+    .editor-footer .footer-right {
+        display: flex;
+        flex: 0 1 auto;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 6px 10px;
+    }
+
+    .editor-footer .footer-right {
+        justify-content: flex-end;
+    }
+
+    .editor-footer .btn {
+        min-height: 0;
+        padding: 2px 8px;
+        font-size: 14px;
+        line-height: 1.15;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .editor-dialog {
+        padding:
+            max(12px, env(safe-area-inset-top, 0px))
+            max(12px, env(safe-area-inset-right, 0px))
+            max(12px, env(safe-area-inset-bottom, 0px))
+            max(12px, env(safe-area-inset-left, 0px));
+        align-items: flex-end;
+    }
+
+    .editor-dialog-panel {
+        max-width: none;
+        max-height: min(88dvh, 640px);
+        border-radius: 12px 12px 0 0;
+        padding: 1rem 1.1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .editor-dialog-actions {
+        flex-wrap: wrap;
+        justify-content: stretch;
+    }
+
+    .editor-dialog-actions .btn {
+        flex: 1 1 auto;
+        min-height: 44px;
+        text-align: center;
     }
 }
 

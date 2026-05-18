@@ -1,6 +1,7 @@
 let ul = document.querySelectorAll('.links-container');
 
 auth.onAuthStateChanged((user) => {
+    if (!ul.length) return;
     if (user) {
         console.log(user);
 

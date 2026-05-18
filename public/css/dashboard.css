@@ -30,6 +30,25 @@ body {
     transition: .5s;
 }
 
+.login .firebaseui-idp-icon,
+.login .firebaseui-idp-favicon {
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.login .firebaseui-idp-button[data-provider-id='twitter.com'] .firebaseui-idp-icon,
+.login .firebaseui-idp-button[data-provider-id='twitter.com'] .firebaseui-idp-favicon {
+    background-image: url('/icons/auth-twitter.svg') !important;
+    filter: none !important;
+}
+
+.login .firebaseui-idp-button[data-provider-id='apple.com'] .firebaseui-idp-icon,
+.login .firebaseui-idp-button[data-provider-id='apple.com'] .firebaseui-idp-favicon {
+    background-image: url('/icons/auth-apple.svg') !important;
+    filter: none !important;
+}
+
 /* Dashboard container */
 .dashboard-container {
     max-width: 1200px;

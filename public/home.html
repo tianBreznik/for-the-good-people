@@ -7,6 +7,7 @@
     <title>Good People</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;1,600&display=swap" rel="stylesheet">
+    <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.css" />
     <link rel="stylesheet" href="css/home.css">
 
 </head>
@@ -31,6 +32,62 @@
 <!--        </div>-->
 <!--    </header>-->
 
+    <div id="home-login-overlay" class="home-login-overlay" hidden aria-hidden="true">
+        <div class="home-login-backdrop" data-home-login-close></div>
+        <button type="button" class="home-login-close" data-home-login-close aria-label="Close">×</button>
+        <div class="home-login-panel" role="dialog" aria-modal="true" aria-label="Sign in">
+            <div id="home-login-signin-block">
+                <div id="home-login-ui"></div>
+                <button type="button" class="home-login-create-account" id="home-login-create-account">Create account</button>
+                <button type="button" class="home-login-secondary" id="home-login-apply-author">Apply to write as an author</button>
+            </div>
+
+            <div id="home-signup-view" class="home-signup-view" hidden>
+                <h2 class="home-signup-title">Create account</h2>
+                <form id="home-signup-form" class="home-signup-form" novalidate>
+                    <label class="home-signup-label" for="home-signup-name">Name</label>
+                    <input type="text" id="home-signup-name" class="home-signup-input" autocomplete="name" spellcheck="false" maxlength="24" placeholder="name" required>
+                    <p class="home-signup-field-hint">Shown as @name on posts and comments.</p>
+
+                    <label class="home-signup-label" for="home-signup-email">Email</label>
+                    <input type="email" id="home-signup-email" class="home-signup-input" autocomplete="email" required>
+
+                    <label class="home-signup-label" for="home-signup-password">Password</label>
+                    <input type="password" id="home-signup-password" class="home-signup-input" autocomplete="new-password" minlength="6" required>
+
+                    <p id="home-signup-error" class="home-signup-error" hidden></p>
+
+                    <button type="submit" class="home-auth-btn" id="home-signup-submit">Create account</button>
+                    <button type="button" class="home-login-create-account" id="home-signup-back">Back to sign in</button>
+                    <button type="button" class="home-login-secondary" id="home-signup-apply-author">Want to write? Submit an author application</button>
+                </form>
+            </div>
+
+            <div id="home-author-apply-view" class="home-signup-view" hidden>
+                <h2 class="home-signup-title">Author application</h2>
+                <p class="home-auth-intro">Publishing is invite-only. Fill out this form and the site admin will review your request. If approved, your email will be added to the allowed authors list — then sign in again to access the editor.</p>
+                <form id="home-author-apply-form" class="home-signup-form" novalidate>
+                    <label class="home-signup-label" for="home-apply-name">Name</label>
+                    <input type="text" id="home-apply-name" class="home-signup-input" autocomplete="name" spellcheck="false" maxlength="24" placeholder="name" required>
+                    <p class="home-signup-field-hint">The @name shown on your posts (letters, numbers, underscores).</p>
+
+                    <label class="home-signup-label" for="home-apply-email">Email</label>
+                    <input type="email" id="home-apply-email" class="home-signup-input" autocomplete="email" required>
+                    <p class="home-signup-field-hint">Use the same email you sign up or sign in with.</p>
+
+                    <label class="home-signup-label" for="home-apply-message">Why do you want to write?</label>
+                    <textarea id="home-apply-message" class="home-signup-textarea" rows="4" maxlength="2000" placeholder="A few sentences about what you would like to publish here…" required></textarea>
+
+                    <p id="home-apply-error" class="home-signup-error" hidden></p>
+                    <p id="home-apply-success" class="home-signup-success" hidden></p>
+
+                    <button type="submit" class="home-auth-btn" id="home-apply-submit">Submit application</button>
+                    <button type="button" class="home-login-create-account" id="home-apply-back">Back to sign in</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- blog section -->
     <section class="blogs-section">
         <!-- <div class="blog-card">
@@ -47,6 +104,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-auth.js"></script>
 
     <script src="js/firebase.js"></script>
+    <script src="js/auth-signup.js"></script>
     <script src="js/home.js"></script>
     <script src="js/nav.js"></script>
 

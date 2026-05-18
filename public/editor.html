@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/css/editor.css">
 
 </head>
-<body>
+<body class="editor-page">
     <!-- Navigation removed per design -->
 
     <!-- Editor Container -->
@@ -18,6 +18,7 @@
         <div class="editor-header">
             <input type="text" class="title-input" placeholder="Blog title...">
             <div class="editor-toolbar">
+                <div class="editor-toolbar-track">
                 <div class="toolbar-buttons">
                     <select id="content-type-select" class="toolbar-select toolbar-section-select" required title="Home page section" aria-label="Home page section">
                         <option value="" disabled selected>Section…</option>
@@ -91,6 +92,7 @@
                     <button class="toolbar-btn" data-action="redo" title="Redo">↪️</button>
                     <button class="toolbar-btn toolbar-close-btn" data-action="close" title="Close (✕)">✕</button>
                     <span class="autosave-status" id="autosave-status">Ready</span>
+                </div>
                 </div>
             </div>
         </div>

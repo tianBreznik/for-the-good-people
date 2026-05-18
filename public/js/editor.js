@@ -578,8 +578,27 @@ function setupFootnoteDialog() {
     });
 }
 
+const EDITOR_NARROW_QUERY = '(max-width: 900px)';
+
+function setupMobileEditorLayout() {
+    if (!window.matchMedia(EDITOR_NARROW_QUERY).matches) return;
+
+    const scrollCaretIntoView = () => {
+        requestAnimationFrame(() => {
+            const sel = window.getSelection();
+            if (!sel?.rangeCount) return;
+            const node = sel.getRangeAt(0).startContainer;
+            const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+            el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+        });
+    };
+
+    document.querySelector('.tiptap-editor .ProseMirror')?.addEventListener('focus', scrollCaretIntoView, true);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initializeEditor();
+    setupMobileEditorLayout();
     setupAutoSave();
     setupToolbar();
     setupPoetryDialog();
@@ -1109,7 +1128,7 @@ async function publishBlog() {
             articleFormat: 'tiptap-html',
             contentType,
             publishedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
-            author: window.auth.currentUser.email.split("@")[0],
+            author: getAuthorIdFromUser(window.auth.currentUser),
             numberofcomments: 0,
             lastModified: new Date().toISOString()
         };

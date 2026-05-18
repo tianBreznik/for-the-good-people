@@ -13,26 +13,23 @@ auth.onAuthStateChanged((user) => {
 })
 
 const setupLoginButton = () => {
-    ui.start("#loginUI", {
-        callbacks: {
-            signInSuccessWithAuthResult: function(authResult, redirectUrl) {
-                console.log(authResult);
-                // Mark that we just logged in so home can skip intro fade
-                try { sessionStorage.setItem('justLoggedIn', '1'); } catch (e) {}
-                // After successful login, always return to home without keeping login page in history
-                window.location.replace('/');
-                return false; // prevent FirebaseUI from doing its own redirect
-            }
-        },
-        signInFlow: 'popup',
-        signinOptions: [firebase.auth.GoogleAuthProvider.PROVIDER_ID]
-    })
-}
+    ui.start(
+        '#loginUI',
+        getAuthUiConfig({
+            callbacks: {
+                signInSuccessWithAuthResult(authResult) {
+                    console.log(authResult);
+                    return false;
+                },
+            },
+        })
+    );
+};
 
 //fetch user written blogs
 const getUserWrittenBlogs = () => {
     db.collection("blogs")
-        .where("author", "==", auth.currentUser.email.split("@")[0])
+        .where('author', '==', getAuthorIdFromUser(auth.currentUser))
         .get()
         .then((blogs) => {
             if (blogs.empty) {
