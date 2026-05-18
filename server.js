@@ -5,9 +5,13 @@ const path = require('path');
 const fs = require('fs');
 const fileupload = require('express-fileupload');
 const { getAdmin, completeUserSignup, submitAuthorApplication } = require('./lib/firebase-admin');
-const { sendAuthorApplicationNotification } = require('./lib/notify-admin');
+const {
+    sendAuthorApplicationNotification,
+    isMailConfigured,
+    getNotifyRecipients,
+} = require('./lib/notify-admin');
 
-let initial_path = path.join(__dirname, "public");
+let initial_path = path.join(__dirname, 'public');
 const uploadsDir = path.join(initial_path, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -110,57 +114,51 @@ app.post('/api/auth/author-application', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(initial_path, "home.html"));
-})
+    res.sendFile(path.join(initial_path, 'home.html'));
+});
 
 app.get('/editor', (req, res) => {
-    res.sendFile(path.join(initial_path, "editor.html"));
-})
+    res.sendFile(path.join(initial_path, 'editor.html'));
+});
 
-// upload link
 app.post('/upload', (req, res) => {
     let file = req.files.image;
     let date = new Date();
-    // image name
     let imagename = date.getDate() + date.getTime() + file.name;
-    // image upload path
-    let path = 'public/uploads/' + imagename;
+    let uploadPath = 'public/uploads/' + imagename;
 
-    // create upload
-    file.mv(path, (err, result) => {
-        if(err){
+    file.mv(uploadPath, (err, result) => {
+        if (err) {
             throw err;
-        } else{
-            // our image upload path
-            res.json(`uploads/${imagename}`)
+        } else {
+            res.json(`uploads/${imagename}`);
         }
-    })
-})
+    });
+});
 
-app.get("/admin", (req, res) => {
-    res.sendFile(path.join(initial_path, "dashboard.html"));
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(initial_path, 'dashboard.html'));
+});
 
-})
-app.get("/:blog", (req, res) => {
-    res.sendFile(path.join(initial_path, "blog.html"));
-})
+app.get('/:blog', (req, res) => {
+    res.sendFile(path.join(initial_path, 'blog.html'));
+});
 
-app.get("/:blog/editor", (req, res) => {
-    res.sendFile(path.join(initial_path, "editor.html"));
-})
+app.get('/:blog/editor', (req, res) => {
+    res.sendFile(path.join(initial_path, 'editor.html'));
+});
 
 app.use((req, res) => {
-    res.json("404");
-})
+    res.json('404');
+});
 
 const PORT = Number(process.env.PORT) || 3008;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
     console.log(`listening on http://${HOST}:${PORT} (reachable from other devices on your LAN)`);
-    const { isMailConfigured } = require('./lib/notify-admin');
     if (isMailConfigured()) {
-        console.log(`[mail] Author application notifications → ${process.env.ADMIN_NOTIFY_EMAIL}`);
+        console.log(`[mail] Author application notifications → ${getNotifyRecipients().join(', ')}`);
     } else {
         console.warn(
             '[mail] Author application emails OFF — add ADMIN_NOTIFY_EMAIL, SMTP_HOST, SMTP_USER, SMTP_PASS to .env and restart'
