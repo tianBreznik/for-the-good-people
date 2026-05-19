@@ -1,5 +1,5 @@
 /**
- * Sign-up and author application forms (site UI). Author access is admin-approved via allowlist.
+ * Sign-up and author application forms (site UI). Aukjkjkjkthor access is admin-approved via allowlist.
  */
 (function () {
     const NAME_RE = /^[a-z0-9_]{3,24}$/;
