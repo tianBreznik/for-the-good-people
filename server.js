@@ -83,15 +83,14 @@ app.post('/api/auth/author-application', async (req, res) => {
         } else if (result.alreadyApproved) {
             console.log(`[mail] No email — ${resolvedEmail} is already on authorAllowlist`);
         } else if (result.ok) {
-            try {
-                await sendAuthorApplicationNotification({
-                    name: resolvedName,
-                    email: resolvedEmail,
-                    message,
-                });
-            } catch (mailErr) {
+            // Respond before SMTP — a slow/blocked mail connection must not hang the form.
+            sendAuthorApplicationNotification({
+                name: resolvedName,
+                email: resolvedEmail,
+                message,
+            }).catch((mailErr) => {
                 console.error('author-application email failed', mailErr);
-            }
+            });
         }
 
         return res.json({ ok: true, ...result });

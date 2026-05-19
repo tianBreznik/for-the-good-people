@@ -167,11 +167,19 @@
         const user = typeof auth !== 'undefined' ? auth.currentUser : null;
         if (user) body.idToken = await user.getIdToken();
 
-        const res = await fetch('/api/auth/author-application', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30_000);
+        let res;
+        try {
+            res = await fetch('/api/auth/author-application', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
             const err = new Error(data.error || 'application_failed');
@@ -292,6 +300,8 @@
                 setApplyError('Applications are not configured on the server yet. Contact the site admin.');
             } else if (err.code === 'invalid_name') {
                 setApplyError('Name: 3–24 characters, letters, numbers, and underscores only.');
+            } else if (err.name === 'AbortError') {
+                setApplyError('Request timed out. Your application may still have been saved — try again only if you do not see a confirmation.');
             } else {
                 setApplyError('Could not submit application. Try again.');
                 console.error(err);
