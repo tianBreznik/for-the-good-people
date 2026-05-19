@@ -78,9 +78,7 @@ app.post('/api/auth/author-application', async (req, res) => {
             uid,
         });
 
-        if (result.duplicate) {
-            console.log(`[mail] No email — pending application already exists for ${resolvedEmail}`);
-        } else if (result.alreadyApproved) {
+        if (result.alreadyApproved) {
             console.log(`[mail] No email — ${resolvedEmail} is already on authorAllowlist`);
         } else if (result.ok) {
             // Respond before SMTP — a slow/blocked mail connection must not hang the form.
@@ -88,9 +86,13 @@ app.post('/api/auth/author-application', async (req, res) => {
                 name: resolvedName,
                 email: resolvedEmail,
                 message,
+                duplicate: Boolean(result.duplicate),
             }).catch((mailErr) => {
                 console.error('author-application email failed', mailErr);
             });
+            if (result.duplicate) {
+                console.log(`[mail] Resending notification for duplicate pending application: ${resolvedEmail}`);
+            }
         }
 
         return res.json({ ok: true, ...result });
