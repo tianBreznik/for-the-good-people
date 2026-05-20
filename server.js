@@ -9,6 +9,7 @@ const {
     sendAuthorApplicationNotification,
     isMailConfigured,
     getNotifyRecipients,
+    getMailMode,
 } = require('./lib/notify-admin');
 
 let initial_path = path.join(__dirname, 'public');
@@ -114,6 +115,25 @@ app.post('/api/auth/author-application', async (req, res) => {
     }
 });
 
+const faviconSvg = path.join(initial_path, 'favicon.svg');
+const faviconPng = path.join(initial_path, 'favicon.png');
+const faviconIco = path.join(initial_path, 'favicon.ico');
+
+app.get('/favicon.svg', (req, res) => {
+    res.type('image/svg+xml');
+    res.sendFile(faviconSvg);
+});
+
+app.get('/favicon.png', (req, res) => {
+    res.type('image/png');
+    res.sendFile(faviconPng);
+});
+
+app.get('/favicon.ico', (req, res) => {
+    res.type('image/x-icon');
+    res.sendFile(faviconIco);
+});
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(initial_path, 'home.html'));
 });
@@ -158,11 +178,14 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
     console.log(`listening on http://${HOST}:${PORT} (reachable from other devices on your LAN)`);
+    const mailMode = getMailMode();
     if (isMailConfigured()) {
-        console.log(`[mail] Author application notifications → ${getNotifyRecipients().join(', ')}`);
+        console.log(
+            `[mail] Author application notifications (${mailMode}) → ${getNotifyRecipients().join(', ')}`
+        );
     } else {
         console.warn(
-            '[mail] Author application emails OFF — add ADMIN_NOTIFY_EMAIL, SMTP_HOST, SMTP_USER, SMTP_PASS to .env and restart'
+            '[mail] Author application emails OFF — production needs RESEND_API_KEY (Railway blocks SMTP). See RAILWAY.md.'
         );
     }
 });
