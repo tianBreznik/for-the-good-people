@@ -255,7 +255,12 @@ body.about-open .about-panel {
     pointer-events: auto;
 }
 
+.about-panel-copy {
+    width: 100%;
+}
+
 .about-panel p {
+    margin: 0 0 1em;
     font-family: Helvetica, Arial, sans-serif;
     line-height: 1.65;
     font-size: 16px;
@@ -275,6 +280,14 @@ body.about-open .about-panel {
     /* Reduce subpixel smoothing so grain is visible */
     -webkit-font-smoothing: none;
     -moz-osx-font-smoothing: auto;
+}
+
+.about-panel-lead {
+    margin-bottom: 1.75em;
+}
+
+.about-panel p:last-child {
+    margin-bottom: 0;
 }
 
 /* Subtle paper grain overlay to imitate e-ink/paper texture */
