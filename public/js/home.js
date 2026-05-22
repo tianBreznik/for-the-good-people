@@ -1087,7 +1087,7 @@ db.collection("blogs").get().then((blogs) => {
         <div class="about-panel-copy">
             <p class="about-panel-lead">All you need is good people.</p>
             <p>Good People Posting is a platform for writing drawn from ordinary life. We publish short texts that bear the mark of a particular person: one who was there, or one who could not let a thought go unwritten.</p>
-            <p>Reading is open to all. Writing is admitted by application. Its work is to recover what conversation carries and to leave it where others may find it.</p>
+            <p>Reading is open to all. Writing is admitted by application. Our work is to recover what conversation carries and to leave it where others may find it.</p>
         </div>`;
     document.body.appendChild(aboutPanel);
 
