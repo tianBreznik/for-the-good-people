@@ -9,20 +9,13 @@
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
     --bioHeight: clamp(36px, 6vh, 78px);
-    /* Entry splash → homepage (desktop default; mobile overrides below) */
-    --homeTextSubmergeDuration: 1300ms;
-    --homeOverlayClearDuration: 220ms;
-    --homeTitleFadeDuration: 680ms;
-    --homeTitleFadeDelay: 0ms;
+    /* One rigid wall — slow, with keyed drag hitch (linear + keyframes) */
+    --homeSplashCurtainDuration: 2800ms;
 }
 
 @media (max-width: 900px) {
     :root {
-        --homeTextSubmergeDuration: 1500ms;
-        --homeOverlayFadeStart: 380ms;
-        --homeOverlayClearDuration: 820ms;
-        --homeTitleFadeDuration: 880ms;
-        --homeTitleFadeDelay: 100ms;
+        --homeSplashCurtainDuration: 2600ms;
         --homeEaseEntry: cubic-bezier(0.33, 1, 0.68, 1);
     }
 }
@@ -337,75 +330,72 @@ body.about-open .about-panel {
 
 #first-container {
     display: block;
+    position: fixed;
+    inset: 0;
     background-color: #8c8c8c;
     width: 100%;
     height: 100%;
-    opacity: 1;
-    transition: opacity var(--homeOverlayClearDuration) ease-out calc(var(--homeTextSubmergeDuration) - var(--homeOverlayClearDuration));
+    transform: translate3d(0, 0, 0);
     z-index: 100;
+    will-change: transform;
+}
+
+/*
+ * Rigid wall: smooth upward travel + tiny synced horizontal scrape
+ * (same X/Y on both panels so the stone seam never slips).
+ */
+@keyframes home-wall-splash {
+    0%   { transform: translate3d(0, 0, 0); }
+    18%  { transform: translate3d(0.4px, -8%, 0); }
+    40%  { transform: translate3d(-0.5px, -30%, 0); }
+    65%  { transform: translate3d(0.45px, -62%, 0); }
+    85%  { transform: translate3d(-0.35px, -86%, 0); }
+    100% { transform: translate3d(0, calc(-100% + 1px), 0); }
+}
+
+@keyframes home-wall-stage {
+    0%   { transform: translate3d(0, calc(100% - 1px), 0); }
+    18%  { transform: translate3d(0.4px, calc(92% - 1px), 0); }
+    40%  { transform: translate3d(-0.5px, calc(70% - 1px), 0); }
+    65%  { transform: translate3d(0.45px, calc(38% - 1px), 0); }
+    85%  { transform: translate3d(-0.35px, calc(14% - 1px), 0); }
+    100% { transform: translate3d(0, 0, 0); }
 }
 
 #first-container.fade {
-    opacity: 0;
+    animation: home-wall-splash var(--homeSplashCurtainDuration) ease-in-out forwards;
     pointer-events: none;
 }
 
-/* Keep resting style untouched; animate only when .fade toggles on. */
-#top-text,
-#bottom-text,
-#top-text::before,
-#bottom-text::before {
-    transition:
-        filter var(--homeTextSubmergeDuration) ease-out,
-        opacity var(--homeTextSubmergeDuration) ease-out;
+body.splash-sliding {
+    overflow: hidden;
 }
 
-#first-container.fade #top-text,
-#first-container.fade #bottom-text {
-    filter: blur(1.9px) saturate(0.82) brightness(0.92) contrast(0.9);
-    opacity: 0.24;
+body.splash-sliding .home-main-stage {
+    will-change: transform;
 }
 
-#first-container.fade #top-text::before,
-#first-container.fade #bottom-text::before {
-    filter: brightness(0.73) contrast(1.2) blur(2.8px);
-    opacity: 0.08;
+/* Homepage is the lower panel of the same wall (parked just below the splash). */
+body:not(.home-titles-visible) .home-main-stage {
+    transform: translate3d(0, calc(100% - 1px), 0);
+    animation: none;
 }
 
-/* Entry overlay: keep column titles invisible until overlay opacity hits 0 (see home.js). */
-.column-section .blog-title {
-    transition-property: opacity;
-    transition-duration: var(--homeTitleFadeDuration);
-    transition-timing-function: ease-out;
-    transition-delay: 0ms;
+body.home-titles-visible .home-main-stage {
+    animation: home-wall-stage var(--homeSplashCurtainDuration) ease-in-out forwards;
 }
 
-body:not(.home-titles-visible) .column-section .blog-title {
-    opacity: 0;
-}
-
-body.home-titles-visible .column-section .blog-title {
-    opacity: 1;
-    transition-delay: var(--homeTitleFadeDelay);
-}
-
-/* One-shot “de-submerge” on titles: only while `home-titles-emerging` is set (see home.js). */
-@keyframes home-title-emerge-filter {
-    from {
-        filter: blur(1.9px) saturate(0.82) brightness(0.92) contrast(0.9);
-    }
-    to {
-        filter: none;
-    }
-}
-
-body.home-titles-visible.home-titles-emerging .column-section .blog-title {
-    animation: home-title-emerge-filter var(--homeTitleFadeDuration) ease-out forwards;
+body.home-titles-instant .home-main-stage {
+    animation: none !important;
+    transform: translate3d(0, 0, 0) !important;
 }
 
 #first-container-hold {
+    /* Same stone grid as .column-section so the wall seam can be continuous */
     background-image: var(--bg-image);
-    background-size: 50%;
+    background-size: 50vw auto;
+    background-position: 0 0;
+    background-repeat: repeat;
     width: 100%;
     height: 100vh;
     z-index: 1000;
@@ -559,30 +549,16 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     }
 
     #first-container {
-        position: relative;
+        position: fixed;
+        inset: 0;
         min-height: 100vh;
         min-height: 100dvh;
-        height: auto;
+        height: 100%;
         background-color: transparent;
-        transition: opacity var(--homeOverlayClearDuration) var(--homeEaseEntry) var(--homeOverlayFadeStart);
     }
 
-    #top-text,
-    #bottom-text,
-    #top-text::before,
-    #bottom-text::before {
-        transition:
-            filter var(--homeTextSubmergeDuration) var(--homeEaseEntry),
-            opacity var(--homeTextSubmergeDuration) var(--homeEaseEntry);
-    }
-
-    .column-section .blog-title {
-        transition-property: opacity, filter;
-        transition-timing-function: var(--homeEaseEntry);
-    }
-
-    body.home-titles-visible.home-titles-emerging .column-section .blog-title {
-        animation: home-title-emerge-filter var(--homeTitleFadeDuration) var(--homeEaseEntry) forwards;
+    #first-container.fade {
+        animation: home-wall-splash var(--homeSplashCurtainDuration) ease-in-out forwards;
     }
 
     #first-container-hold {
@@ -596,10 +572,11 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
         justify-content: space-between;
         align-items: center;
         padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+        /* Match column stone grid (not cover) so the wall seam stays continuous */
         background-image: var(--bg-image);
-        background-size: cover;
-        background-position: var(--home-mobile-first-slab-bg-x) 0;
-        background-repeat: no-repeat;
+        background-size: 50vw auto;
+        background-position: 0 0;
+        background-repeat: repeat;
     }
 
     #top-text {
@@ -1227,13 +1204,15 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
-/* Each column gets a perfectly aligned texture slice */
+/* Each column gets a perfectly aligned texture slice.
+ * Y is shifted by one viewport so the homepage continues the splash slab’s
+ * stone (same 50vw tile grid) — no “texture restart” at the wall seam. */
 .column-section {
     z-index: 2;
     background-image: var(--bg-image);
     background-size: 50vw auto;
     background-position-x: calc(-1 * var(--col-start, 0vw));
-    background-position-y: 0;
+    background-position-y: -100vh;
     background-repeat: repeat;
     /* Keep slab motion on a stable layer; reduces post-transition text snap with clip-text inside */
     will-change: transform;
@@ -1268,7 +1247,7 @@ body.home-titles-visible.home-titles-emerging .column-section .blog-title {
 body.article-open {
     background-image: var(--bg-image);
     background-size: 50vw auto;
-    background-position: 0 0;
+    background-position: 0 -100vh;
     background-repeat: repeat;
 }
 
@@ -1783,10 +1762,10 @@ body.bio-open .author-section {
      */
     .home-main-pane > .column-section[data-col] {
         background-image: var(--bg-image);
-        background-size: cover;
-        background-position-y: 0;
-        background-position-x: 50%;
-        background-repeat: no-repeat;
+        background-size: 50vw auto;
+        background-position-x: calc(-1 * var(--col-start, 0vw));
+        background-position-y: -100vh;
+        background-repeat: repeat;
         position: absolute !important;
         top: 0 !important;
         bottom: 0 !important;
@@ -1801,20 +1780,13 @@ body.bio-open .author-section {
         will-change: auto;
     }
 
-    .home-main-pane > .column-section[data-col="1"] {
-        background-position-x: var(--home-mobile-first-slab-bg-x);
-    }
-    .home-main-pane > .column-section[data-col="2"] {
-        background-position-x: 28%;
-    }
-    .home-main-pane > .column-section[data-col="3"] {
-        background-position-x: 48%;
-    }
-    .home-main-pane > .column-section[data-col="4"] {
-        background-position-x: 68%;
-    }
+    .home-main-pane > .column-section[data-col="1"],
+    .home-main-pane > .column-section[data-col="2"],
+    .home-main-pane > .column-section[data-col="3"],
+    .home-main-pane > .column-section[data-col="4"],
     .home-main-pane > .column-section[data-col="5"] {
-        background-position-x: 88%;
+        background-position-x: calc(-1 * var(--col-start, 0vw));
+        background-position-y: -100vh;
     }
 
     .home-main-pane .column-section {

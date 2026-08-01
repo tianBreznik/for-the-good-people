@@ -16,20 +16,20 @@ function parseCssDurationMs(value) {
     return Math.round(n);
 }
 
-/** After first-container is gone: show titles + one-shot filter emerge (class removed after animation). */
-function revealHomeTitlesWithEmerge() {
+/** Show column titles. Pass { instant: true } when skipping the splash motion. */
+function revealHomeTitlesWithEmerge(options) {
+    const instant = options && options.instant;
+    if (instant) {
+        document.body.classList.add('home-titles-instant');
+    } else {
+        document.body.classList.remove('home-titles-instant');
+    }
     document.body.classList.add('home-titles-visible');
-    document.body.classList.add('home-titles-emerging');
-    if (titleEmergeClearTimer) clearTimeout(titleEmergeClearTimer);
-    const raw =
-        typeof getComputedStyle !== 'undefined'
-            ? getComputedStyle(document.documentElement).getPropertyValue('--homeTitleFadeDuration')
-            : '';
-    const ms = parseCssDurationMs(raw);
-    titleEmergeClearTimer = setTimeout(() => {
+    document.body.classList.remove('home-titles-emerging');
+    if (titleEmergeClearTimer) {
+        clearTimeout(titleEmergeClearTimer);
         titleEmergeClearTimer = null;
-        document.body.classList.remove('home-titles-emerging');
-    }, ms + 80);
+    }
 }
 
 const JUST_LOGGED_IN_KEY = 'justLoggedIn';
@@ -67,8 +67,9 @@ function applyHomeEntryAfterGridReady() {
     }
 
     if (fromLogin) {
-        revealHomeTitlesWithEmerge();
+        revealHomeTitlesWithEmerge({ instant: true });
     } else if (entryDismissed || (topdiv && topdiv.classList.contains('fade'))) {
+        document.body.classList.add('home-titles-instant');
         document.body.classList.add('home-titles-visible');
     }
 
@@ -1291,7 +1292,7 @@ function applyHomeEntryAfterSignIn() {
         dismissSplashImmediately();
     }
     if (gridReady) {
-        revealHomeTitlesWithEmerge();
+        revealHomeTitlesWithEmerge({ instant: true });
     }
 }
 
@@ -2464,20 +2465,25 @@ function handleActionCard(cardId) {
 }
 
 if (topdiv) {
-    topdiv.addEventListener('transitionend', (e) => {
-        if (e.target !== topdiv || e.propertyName !== 'opacity') return;
+    topdiv.addEventListener('animationend', (e) => {
+        if (e.target !== topdiv || e.animationName !== 'home-wall-splash') return;
         if (!topdiv.classList.contains('fade')) return;
         topdiv.style.display = 'none';
+        document.body.classList.remove('splash-sliding');
+        const stage = document.querySelector('.home-main-stage');
+        if (stage) stage.style.willChange = 'auto';
         try {
             sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
         } catch (err) {}
-        revealHomeTitlesWithEmerge();
     });
 
     topdiv.onclick = () => {
         if (topdiv.classList.contains('fade')) return;
-        topdiv.classList.add('fade');
+        document.body.classList.add('splash-sliding');
         if (navbar) navbar.style.position = 'relative';
+        // Same keyed drag curve on both panels (one stone wall)
+        revealHomeTitlesWithEmerge();
+        topdiv.classList.add('fade');
     };
 }
 
