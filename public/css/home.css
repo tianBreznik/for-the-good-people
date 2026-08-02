@@ -52,18 +52,22 @@ body{
     align-items: center;
 }
 
-body.bio-open .bio-panel {
+body.bio-open .bio-panel,
+body.search-open .bio-panel {
     transform: translateY(0);
 }
 
-/* Push everything down when bio opens */
+/* Push everything down when bio / search strip opens */
 body.bio-open .title-section,
-body.bio-open .author-section {
+body.bio-open .author-section,
+body.search-open .title-section,
+body.search-open .author-section {
     transform: translateY(var(--bioHeight));
 }
 
-/* Shift stone background vertically as well when bio opens */
-body.bio-open {
+/* Shift stone background vertically as well when top strip opens */
+body.bio-open,
+body.search-open {
     background-position-y: var(--bioHeight);
 }
 
@@ -97,8 +101,9 @@ body.bio-open {
     background-size: 3.2px 3.2px;
 }
 
-/* Ink effect inside bio text */
-.bio-panel p {
+/* Ink effect inside bio text + search field */
+.bio-panel p,
+.home-search-strip input[type="search"] {
     font-family: Helvetica, Arial, sans-serif;
     line-height: 1.65;
     font-size: 16px;
@@ -116,6 +121,53 @@ body.bio-open {
     text-shadow: 0 0 0.6px rgba(0,0,0,0.36);
     -webkit-font-smoothing: none;
     -moz-osx-font-smoothing: auto;
+}
+
+body.search-open #bio-content,
+body.search-closing #bio-content {
+    display: none;
+}
+
+body.bio-open .home-search-strip,
+body:not(.search-open):not(.search-closing) .home-search-strip {
+    display: none;
+}
+
+body.search-open .home-search-strip,
+body.search-closing .home-search-strip {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+}
+
+.home-search-strip input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    caret-color: #171717;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.home-search-strip input[type="search"]::placeholder {
+    color: transparent;
+    -webkit-text-fill-color: rgba(23, 23, 23, 0.42);
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    opacity: 1;
+}
+
+.home-search-strip input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
 }
 
 ::selection{
@@ -969,18 +1021,16 @@ body.home-titles-instant .home-main-stage {
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
-/* Subtle highlight for connected cards when author is hovered */
-.blog-card.hover .blog-title {
+/* Wash for non-matching cards during search */
+.blog-card.search-miss .blog-title {
     filter: brightness(1.2) !important;
 }
 
-/* Hide shadow when .hover class is present (same as regular hover) */
-.blog-card.hover .blog-title::before {
+.blog-card.search-miss .blog-title::before {
     display: none;
 }
 
-/* Override hover when .hover class is present */
-.blog-card.hover:hover .blog-title {
+.blog-card.search-miss:hover .blog-title {
     filter: brightness(1.2) !important;
 }
 
@@ -1612,7 +1662,9 @@ body.about-open .author-section {
 }
 
 body.bio-open .title-section,
-body.bio-open .author-section {
+body.bio-open .author-section,
+body.search-open .title-section,
+body.search-open .author-section {
     transform: translateY(var(--bioHeight));
 }
 
@@ -1805,6 +1857,12 @@ body.bio-open .author-section {
 
     .author-section {
         padding-bottom: max(100px, env(safe-area-inset-bottom, 0px));
+    }
+
+    /* Search is desktop-only for now */
+    #search-card,
+    .cardcontainer:has(#search-card) {
+        display: none !important;
     }
 
     .home-main-pane .section-heading-card .blog-title {

@@ -92,13 +92,11 @@ let physicsObjects = []; // Array of all physics objects (cards + popup)
 let popup = null; // The growing popup object
 let physicsActive = false; // Whether physics simulation is running
 let animationFrameId = null; // For the physics animation loop
-let hoverTimer = null; // Dwell before article preview opens (blog title)
+let articlePreviewUiBound = false;
 let bioHoverTimer = null; // Author tag → bio strip
 let aboutHoverTimer = null; // About card → about panel
-/** Dwell before article preview (titles), author bio strip, and About panel. */
-const PREVIEW_HOVER_DWELL_MS = 800;
-let articlePreviewUiBound = false;
-let previewAutoCloseTimer = null;
+/** Dwell before author bio strip and About panel open on desktop hover. */
+const PANEL_HOVER_DWELL_MS = 800;
 /** Keeps preview visible until column slabs finish sliding shut (matches --articlePreviewRevealDuration). */
 let articlePreviewClosingTimer = null;
 let articlePreviewCloseSeq = 0;
@@ -185,7 +183,7 @@ function initHomeActiveColumnFromScroll(track) {
     requestAnimationFrame(sync);
 }
 
-/** Desktop-only: hover dwell + preview. Touch devices get spurious mouseenter / sticky hover. */
+/** Fine pointer (mouse/trackpad). Used to distinguish desktop preview clicks from mobile tap-nav. */
 function homeFinePointerHoverUi() {
     return typeof window.matchMedia !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 }
@@ -1077,7 +1075,10 @@ db.collection("blogs").get().then((blogs) => {
     if (!uniqueAuthors.has('Anonymous')) {
         createAuthorCard('Anonymous', authorSection);
     }
-    
+
+    // Desktop search control under author tags (hidden on mobile via CSS)
+    createSearchCard(authorSection);
+
     // Add a static ABOUT card under authors
     createAboutCard(authorSection);
 
@@ -1092,10 +1093,15 @@ db.collection("blogs").get().then((blogs) => {
         </div>`;
     document.body.appendChild(aboutPanel);
 
-    // Create top bio panel (initially hidden above viewport)
+    // Create top bio / search strip (initially hidden above viewport)
     const bioPanel = document.createElement('section');
     bioPanel.className = 'bio-panel';
-    bioPanel.innerHTML = `<p id="bio-content">Author bio</p>`;
+    bioPanel.innerHTML = `
+        <p id="bio-content">Author bio</p>
+        <form id="home-search-strip" class="home-search-strip" autocomplete="off" role="search">
+            <input type="search" id="home-search-input" name="q" placeholder="Search titles and authors…" aria-label="Search titles and authors" />
+        </form>
+    `;
     document.body.appendChild(bioPanel);
 
     // Article preview: real stone columns slide apart to reveal panel underneath (see home.css)
@@ -1141,12 +1147,13 @@ db.collection("blogs").get().then((blogs) => {
                 }, 120);
             };
             const openAbout = () => {
+                closeHomeSearchStrip();
                 document.body.classList.add('about-open');
                 attachAboutMoveCloser();
             };
             aboutCard.addEventListener('mouseenter', () => {
                 clearAboutHoverTimer();
-                aboutHoverTimer = setTimeout(openAbout, PREVIEW_HOVER_DWELL_MS);
+                aboutHoverTimer = setTimeout(openAbout, PANEL_HOVER_DWELL_MS);
             });
             aboutCard.addEventListener('mouseleave', () => clearAboutHoverTimer());
             aboutCard.addEventListener('focus', () => {
@@ -1163,6 +1170,7 @@ db.collection("blogs").get().then((blogs) => {
             aboutCard.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                closeHomeSearchStrip();
                 document.body.classList.toggle('about-open');
             });
             document.addEventListener(
@@ -1198,6 +1206,7 @@ db.collection("blogs").get().then((blogs) => {
                 }, 120);
             };
             const openBio = (authorName) => {
+                closeHomeSearchStrip({ switchToBio: true });
                 if (bioContent) bioContent.textContent = `@${authorName} — short bio goes here.`;
                 document.body.classList.add('bio-open');
                 attachBioMoveCloser();
@@ -1206,7 +1215,7 @@ db.collection("blogs").get().then((blogs) => {
                 const name = card.getAttribute('data-author');
                 card.addEventListener('mouseenter', () => {
                     clearBioHoverTimer();
-                    bioHoverTimer = setTimeout(() => openBio(name), PREVIEW_HOVER_DWELL_MS);
+                    bioHoverTimer = setTimeout(() => openBio(name), PANEL_HOVER_DWELL_MS);
                 });
                 card.addEventListener('mouseleave', () => clearBioHoverTimer());
                 card.addEventListener('focus', () => {
@@ -1228,6 +1237,7 @@ db.collection("blogs").get().then((blogs) => {
                         document.body.classList.remove('bio-open');
                         return;
                     }
+                    closeHomeSearchStrip({ switchToBio: true });
                     if (bioContent) bioContent.textContent = `@${name} — short bio goes here.`;
                     document.body.classList.add('bio-open');
                 });
@@ -1242,6 +1252,45 @@ db.collection("blogs").get().then((blogs) => {
                 true
             );
         }
+    }
+
+    const searchCard = document.getElementById('search-card');
+    const searchForm = document.getElementById('home-search-strip');
+    const searchInput = document.getElementById('home-search-input');
+    if (searchCard) {
+        searchCard.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (document.body.classList.contains('search-open')) {
+                closeHomeSearchStrip();
+                return;
+            }
+            openHomeSearchStrip();
+        });
+        document.addEventListener(
+            'click',
+            (e) => {
+                if (!document.body.classList.contains('search-open')) return;
+                if (e.target.closest('.bio-panel') || e.target.closest('#search-card')) return;
+                closeHomeSearchStrip();
+            },
+            true
+        );
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            if (!document.body.classList.contains('search-open')) return;
+            closeHomeSearchStrip();
+        });
+    }
+    if (searchForm) {
+        searchForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+        });
+    }
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            applyHomeSearchFilter(searchInput.value);
+        });
     }
 
     // (Reverted) remove title hover article preview behavior
@@ -1457,7 +1506,25 @@ function createBlogCard(blog, section, sectionIndex) {
     card.dataset.sectionIndex = String(sectionIndex);
     card.onclick = (e) => {
         e.stopPropagation();
-        expandArticlePanelAndNavigate(blog.id, card);
+        // Mobile narrow: first tap opens in-app reader.
+        if (homeDirectArticleTapNav()) {
+            expandArticlePanelAndNavigate(blog.id, card);
+            return;
+        }
+        // Desktop: click opens preview; click same title again closes it. Preview click opens article.
+        const panel = document.querySelector('.article-panel');
+        const previewOpen =
+            document.body.classList.contains('article-open') &&
+            !document.body.classList.contains('article-closing') &&
+            panel &&
+            !panel.classList.contains('expanding-fullscreen');
+        if (previewOpen && panel.dataset.blogId === blog.id) {
+            closeArticlePreview();
+            return;
+        }
+        const sectionIndex = Number(card.dataset.sectionIndex || 1);
+        const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
+        applyArticlePreviewFromBlogCard(card, seamIndex);
     };
     // Persist preview data for the hover preview panel
     if (typeof data.preview === 'string' && data.preview.length) {
@@ -1514,6 +1581,126 @@ function createAboutCard(section) {
             </div>
         </div>
     `;
+}
+
+function createSearchCard(section) {
+    section.innerHTML += `
+        <div class="cardcontainer">
+            <div class="blog-card" id="search-card" data-action="search" style="cursor: pointer;">
+                <h1 class="blog-title" data-text="search">search</h1>
+            </div>
+        </div>
+    `;
+}
+
+function getAboutDurationMs() {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--aboutDuration').trim();
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return 800;
+    if (raw.endsWith('ms')) return n;
+    if (raw.endsWith('s')) return n * 1000;
+    return n;
+}
+
+let searchStripCloseTimer = null;
+let searchStripCloseSeq = 0;
+
+function closeHomeSearchStrip(options = {}) {
+    const { switchToBio = false } = options;
+    const wasOpen =
+        document.body.classList.contains('search-open') ||
+        document.body.classList.contains('search-closing');
+    document.body.classList.remove('search-open');
+    const input = document.getElementById('home-search-input');
+    if (input) input.value = '';
+    applyHomeSearchFilter('');
+
+    if (!wasOpen || switchToBio) {
+        document.body.classList.remove('search-closing');
+        if (searchStripCloseTimer) {
+            clearTimeout(searchStripCloseTimer);
+            searchStripCloseTimer = null;
+        }
+        return;
+    }
+
+    // Keep search content visible while the strip slides shut (avoids bio flash).
+    const closeSeq = ++searchStripCloseSeq;
+    document.body.classList.add('search-closing');
+    const panel = document.querySelector('.bio-panel');
+    const finish = () => {
+        if (closeSeq !== searchStripCloseSeq) return;
+        document.body.classList.remove('search-closing');
+        searchStripCloseTimer = null;
+        if (panel) panel.removeEventListener('transitionend', onEnd);
+    };
+    const onEnd = (e) => {
+        if (e.target !== panel || e.propertyName !== 'transform') return;
+        finish();
+    };
+    if (panel) panel.addEventListener('transitionend', onEnd);
+    if (searchStripCloseTimer) clearTimeout(searchStripCloseTimer);
+    searchStripCloseTimer = setTimeout(finish, getAboutDurationMs() + 80);
+}
+
+function openHomeSearchStrip() {
+    document.body.classList.remove('bio-open');
+    document.body.classList.remove('about-open');
+    document.body.classList.remove('search-closing');
+    if (searchStripCloseTimer) {
+        clearTimeout(searchStripCloseTimer);
+        searchStripCloseTimer = null;
+    }
+    searchStripCloseSeq += 1;
+    document.body.classList.add('search-open');
+    const input = document.getElementById('home-search-input');
+    if (input) {
+        requestAnimationFrame(() => {
+            input.focus();
+            input.select();
+        });
+    }
+}
+
+function applyHomeSearchFilter(query) {
+    const q = String(query || '').trim().toLowerCase();
+    document.querySelectorAll('.title-section .cardcontainer[data-author]').forEach((el) => {
+        if (el.classList.contains('section-title-container')) return;
+        const card = el.querySelector('.blog-card');
+        if (!card) return;
+        const title = (card.dataset.title || '').toLowerCase();
+        const author = (el.getAttribute('data-author') || '').toLowerCase();
+        const match = !q || title.includes(q) || author.includes(q);
+        card.classList.toggle('search-miss', !match);
+    });
+    if (q) {
+        scrollHomeSearchMatchesIntoView();
+    }
+}
+
+function scrollHomeSearchMatchesIntoView() {
+    document.querySelectorAll('.title-section').forEach((section) => {
+        const matches = Array.from(section.querySelectorAll('.cardcontainer[data-author]')).filter((el) => {
+            if (el.classList.contains('section-title-container')) return false;
+            const card = el.querySelector('.blog-card');
+            return card && !card.classList.contains('search-miss');
+        });
+        if (!matches.length) return;
+
+        const viewTop = section.scrollTop;
+        const viewBottom = viewTop + section.clientHeight;
+        const pad = 12;
+        const anyVisible = matches.some((el) => {
+            const top = el.offsetTop;
+            const bottom = top + el.offsetHeight;
+            return bottom > viewTop + pad && top < viewBottom - pad;
+        });
+        if (anyVisible) return;
+
+        const first = matches[0];
+        const targetTop = Math.max(0, first.offsetTop - pad);
+        section.scrollTo({ top: targetTop, behavior: 'smooth' });
+    });
 }
 
 function createActionCard(actionText, section) {
@@ -1885,6 +2072,17 @@ function positionCardsInSection(section, options = {}) {
 
         y += height + 4;
     });
+
+    // Absolute cards don't extend scrollHeight — keep a flow spacer so columns can scroll.
+    let spacer = section.querySelector(':scope > .column-scroll-spacer');
+    if (!spacer) {
+        spacer = document.createElement('div');
+        spacer.className = 'column-scroll-spacer';
+        spacer.setAttribute('aria-hidden', 'true');
+        spacer.style.cssText = 'position:relative;width:1px;pointer-events:none;visibility:hidden;';
+        section.appendChild(spacer);
+    }
+    spacer.style.height = `${Math.max(y, startY)}px`;
 }
 
 function getArticlePreviewRevealMs() {
@@ -1904,10 +2102,6 @@ function closeArticlePreview() {
         articleExpandNavigateTimer = null;
     }
     articleExpandInFlight = false;
-    if (previewAutoCloseTimer) {
-        clearTimeout(previewAutoCloseTimer);
-        previewAutoCloseTimer = null;
-    }
     document.body.classList.add('article-closing');
     document.body.classList.remove('article-open');
     // Keep seam for one frame in closing state so slabs have a concrete shifted state to animate back from.
@@ -1997,47 +2191,6 @@ function ensureArticlePreviewUi() {
         },
         true
     );
-
-    // Close preview when pointer leaves the panel (no outside click required).
-    document.addEventListener(
-        'mousemove',
-        (e) => {
-            if (!homeFinePointerHoverUi()) return;
-            if (!document.body.classList.contains('article-open')) return;
-            if (!articlePanel || articlePanel.classList.contains('expanding-fullscreen')) return;
-            const rect = articlePanel.getBoundingClientRect();
-            const insidePanel =
-                e.clientX >= rect.left &&
-                e.clientX <= rect.right &&
-                e.clientY >= rect.top &&
-                e.clientY <= rect.bottom;
-
-            if (insidePanel) {
-                if (previewAutoCloseTimer) {
-                    clearTimeout(previewAutoCloseTimer);
-                    previewAutoCloseTimer = null;
-                }
-                return;
-            }
-
-            if (!previewAutoCloseTimer) {
-                previewAutoCloseTimer = setTimeout(() => {
-                    previewAutoCloseTimer = null;
-                    if (document.body.classList.contains('article-open')) {
-                        closeArticlePreview();
-                    }
-                }, 90);
-            }
-        },
-        true
-    );
-}
-
-function clearPreviewHoverTimer() {
-    if (hoverTimer) {
-        clearTimeout(hoverTimer);
-        hoverTimer = null;
-    }
 }
 
 function clearBioHoverTimer() {
@@ -2071,7 +2224,6 @@ function applyArticlePreviewFromBlogCard(card, seamIndex) {
     articleEl.dataset.handoffAuthor = author;
     articleEl.dataset.handoffPublishedAt = publishedAt;
     articleEl.dataset.handoffArticle = rawArticle;
-    // Hover preview path is desktop-only; always use section seam reveal.
     document.body.classList.remove('article-closing');
     setActivePreviewSeam(seamIndex);
     renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
@@ -2080,59 +2232,7 @@ function applyArticlePreviewFromBlogCard(card, seamIndex) {
 }
 
 function setupHoverInteractions() {
-    const blogCards = document.querySelectorAll('.cardcontainer[data-author] .blog-card:not(.author-card)');
-    const authorCards = document.querySelectorAll('.blog-card.author-card');
-
-    if (homeFinePointerHoverUi()) {
-        blogCards.forEach(card => {
-            const authorName = card.closest('.cardcontainer').getAttribute('data-author');
-            const sectionIndex = Number(card.dataset.sectionIndex || 1);
-            const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
-
-            card.addEventListener('mouseenter', () => {
-                authorCards.forEach(authorCard => {
-                    const authorCardName = authorCard.getAttribute('data-author');
-                    if (authorCardName !== authorName) {
-                        authorCard.classList.add('hover');
-                    }
-                });
-                clearPreviewHoverTimer();
-                const articleEl = document.querySelector('.article-panel');
-                if (!articleEl) return;
-                hoverTimer = setTimeout(() => {
-                    applyArticlePreviewFromBlogCard(card, seamIndex);
-                }, PREVIEW_HOVER_DWELL_MS);
-            });
-
-            card.addEventListener('mouseleave', () => {
-                clearPreviewHoverTimer();
-                authorCards.forEach(authorCard => {
-                    authorCard.classList.remove('hover');
-                });
-            });
-        });
-
-        authorCards.forEach(authorCard => {
-            const authorName = authorCard.getAttribute('data-author');
-
-            authorCard.addEventListener('mouseenter', () => {
-                if ((authorName || '').toLowerCase() === 'about') return;
-                blogCards.forEach(card => {
-                    const cardAuthorName = card.closest('.cardcontainer').getAttribute('data-author');
-                    if (cardAuthorName !== authorName) {
-                        card.classList.add('hover');
-                    }
-                });
-            });
-
-            authorCard.addEventListener('mouseleave', () => {
-                blogCards.forEach(card => {
-                    card.classList.remove('hover');
-                });
-            });
-        });
-    }
-
+    // Desktop hover is CSS-only (title highlight). Preview opens on click.
     ensureArticlePreviewUi();
 }
 
