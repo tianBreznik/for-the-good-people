@@ -27,8 +27,11 @@ body.reader-loading #comment-screen {
     z-index: 1;
     max-width: min(1340px, calc(100vw - 40px));
     margin: 0 auto;
-    /* Calibrated handoff offset to avoid visible vertical snap. */
-    padding: 9px 20px 56px;
+    /* Match home preview: page card is vertically centered in the viewport. */
+    padding:
+        calc((100dvh - var(--readerHandoffPageHeight, var(--reader-page-height))) / 2)
+        20px
+        56px;
     box-sizing: border-box;
     background: transparent;
 }
@@ -348,10 +351,13 @@ body.reader-loading #comment-screen {
     margin-top: 0.35em;
 }
 
-/* Inline masthead h1: beat .article-page h1 bottom margin so title sits close to byline. */
+/* Inline masthead h1: match home preview title metrics exactly. */
 #article-body .article-page .article-inline-masthead h1.title {
     font-size: clamp(1.14rem, 1.38vw, 1.42rem);
     line-height: 1.16;
+    font-weight: 700;
+    letter-spacing: normal;
+    margin-top: 0;
     margin-bottom: clamp(2px, 0.35vw, 5px);
 }
 
@@ -459,7 +465,7 @@ body.reader-loading #comment-screen {
 }
 
 #article-body .article-page blockquote:not([data-variant]) {
-    margin: 1rem 0;
+    margin: clamp(8px, 1vh, 12px) 0;
     padding-left: 1rem;
     border-left: 3px solid rgba(0, 0, 0, 0.22);
 }
@@ -471,7 +477,7 @@ body.reader-loading #comment-screen {
 #article-body .article-page blockquote[data-variant="quote"] {
     border-left: none;
     padding-left: 0;
-    margin: 1rem 0;
+    margin: clamp(8px, 1vh, 12px) 0;
     font-style: italic;
 }
 
