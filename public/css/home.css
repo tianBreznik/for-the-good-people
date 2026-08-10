@@ -1021,6 +1021,19 @@ body.home-titles-instant .home-main-stage {
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
+/* Wash non-matching cards when an author (or title) is hovered */
+.blog-card.hover .blog-title {
+    filter: brightness(1.2) !important;
+}
+
+.blog-card.hover .blog-title::before {
+    display: none;
+}
+
+.blog-card.hover:hover .blog-title {
+    filter: brightness(1.2) !important;
+}
+
 /* Wash for non-matching cards during search */
 .blog-card.search-miss .blog-title {
     filter: brightness(1.2) !important;

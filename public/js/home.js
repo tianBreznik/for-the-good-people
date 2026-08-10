@@ -2232,7 +2232,51 @@ function applyArticlePreviewFromBlogCard(card, seamIndex) {
 }
 
 function setupHoverInteractions() {
-    // Desktop hover is CSS-only (title highlight). Preview opens on click.
+    // Cross-highlight author ↔ titles on desktop. Preview still opens on click only.
+    const blogCards = document.querySelectorAll('.title-section .cardcontainer[data-author] .blog-card:not(.author-card)');
+    const authorCards = document.querySelectorAll('.blog-card.author-card');
+
+    if (homeFinePointerHoverUi()) {
+        blogCards.forEach((card) => {
+            const authorName = card.closest('.cardcontainer').getAttribute('data-author');
+
+            card.addEventListener('mouseenter', () => {
+                authorCards.forEach((authorCard) => {
+                    const authorCardName = authorCard.getAttribute('data-author');
+                    if (authorCardName !== authorName) {
+                        authorCard.classList.add('hover');
+                    }
+                });
+            });
+
+            card.addEventListener('mouseleave', () => {
+                authorCards.forEach((authorCard) => {
+                    authorCard.classList.remove('hover');
+                });
+            });
+        });
+
+        authorCards.forEach((authorCard) => {
+            const authorName = authorCard.getAttribute('data-author');
+
+            authorCard.addEventListener('mouseenter', () => {
+                if ((authorName || '').toLowerCase() === 'about') return;
+                blogCards.forEach((card) => {
+                    const cardAuthorName = card.closest('.cardcontainer').getAttribute('data-author');
+                    if (cardAuthorName !== authorName) {
+                        card.classList.add('hover');
+                    }
+                });
+            });
+
+            authorCard.addEventListener('mouseleave', () => {
+                blogCards.forEach((card) => {
+                    card.classList.remove('hover');
+                });
+            });
+        });
+    }
+
     ensureArticlePreviewUi();
 }
 

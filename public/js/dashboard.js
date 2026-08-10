@@ -5,7 +5,7 @@ const blogsSection = document.querySelector('.blogs-section');
 auth.onAuthStateChanged((user) => {
     if (user) {
         login.style.display = 'none';
-        getUserWrittenBlogs();
+        getUserWrittenBlogs(user);
     }
     else{
         setupLoginButton();
@@ -26,23 +26,52 @@ const setupLoginButton = () => {
     );
 };
 
+/** Author keys this account may have used on blog docs (handle, email local-part, displayName). */
+function authorIdsForUser(user) {
+    const ids = [];
+    const add = (value) => {
+        const v = String(value || '').trim().replace(/^@+/, '');
+        if (v && !ids.includes(v)) ids.push(v);
+    };
+    add(typeof getAuthorIdFromUser === 'function' ? getAuthorIdFromUser(user) : '');
+    if (user.email) add(user.email.split('@')[0]);
+    if (user.displayName) {
+        add(user.displayName.trim().replace(/^@+/, '').replace(/\s+/g, '_').slice(0, 24));
+    }
+    return ids.slice(0, 10);
+}
+
 //fetch user written blogs
-const getUserWrittenBlogs = () => {
-    db.collection("blogs")
-        .where('author', '==', getAuthorIdFromUser(auth.currentUser))
-        .get()
-        .then((blogs) => {
-            if (blogs.empty) {
-                showEmptyState();
-            } else {
-                blogs.forEach((blog) => {
-                    createBlog(blog);
-                })
-            }
-        })
-        .catch((err) => {
-            console.log(err);
-        })
+const getUserWrittenBlogs = (user) => {
+    const runQuery = () => {
+        const authorIds = authorIdsForUser(user);
+        if (!authorIds.length) {
+            showEmptyState();
+            return;
+        }
+        const query = authorIds.length === 1
+            ? db.collection('blogs').where('author', '==', authorIds[0])
+            : db.collection('blogs').where('author', 'in', authorIds);
+        query
+            .get()
+            .then((blogs) => {
+                if (blogs.empty) {
+                    showEmptyState();
+                } else {
+                    blogs.forEach((blog) => {
+                        createBlog(blog);
+                    });
+                }
+            })
+            .catch((err) => {
+                console.log(err);
+            });
+    };
+
+    const tokenPromise = typeof refreshAuthorIdFromToken === 'function'
+        ? refreshAuthorIdFromToken(user)
+        : Promise.resolve();
+    tokenPromise.then(runQuery).catch(runQuery);
 }
 
 const showEmptyState = () => {
