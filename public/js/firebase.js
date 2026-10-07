@@ -74,7 +74,10 @@ if (restoreAuthReturnOriginIfNeeded()) {
 
     firebase.initializeApp(firebaseConfig);
 
-    let db = firebase.firestore();
+    let db = null;
+    if (typeof firebase.firestore === 'function') {
+        db = firebase.firestore();
+    }
     let auth = firebase.auth();
     window.db = db;
     window.auth = auth;
@@ -124,13 +127,9 @@ if (restoreAuthReturnOriginIfNeeded()) {
         apple: '/icons/auth-apple.svg',
     };
 
-    /** Enable matching providers in Firebase Console → Authentication → Sign-in method. */
+    /** OAuth providers for FirebaseUI. Email uses our own sign-in / Create account forms. */
     function getAuthSignInOptions() {
         return [
-            {
-                provider: firebase.auth.EmailAuthProvider.PROVIDER_ID,
-                requireDisplayName: true,
-            },
             firebase.auth.GoogleAuthProvider.PROVIDER_ID,
             {
                 provider: 'apple.com',
@@ -159,6 +158,27 @@ if (restoreAuthReturnOriginIfNeeded()) {
     window.refreshAuthorIdFromToken = refreshAuthorIdFromToken;
     window.getAuthSignInOptions = getAuthSignInOptions;
     window.getAuthUiConfig = getAuthUiConfig;
+
+    /** Preset avatars in /public/pfps — shared by apply picker and home bio panel. */
+    window.AUTHOR_AVATAR_FILES = [
+        'IMG_0633.jpg',
+        'IMG_7131.jpg',
+        'IMG_8737.jpg',
+        'IMG_8739.JPG',
+        'IMG_8740.JPG',
+        'IMG_8741.JPG',
+        'IMG_8743.JPG',
+        'IMG_8744.JPG',
+        'IMG_8745.PNG',
+        'IMG_8747.JPG',
+        'IMG_8748.jpg',
+        'IMG_8749.jpg',
+        'IMG_8750.jpg',
+        'IMG_8751.jpg',
+        'IMG_8753.jpg',
+        'IMG_8755.jpg',
+        'IMG_9128.jpg'
+    ];
 
     const logoutUser = () => {
         clearAuthorIdCache();

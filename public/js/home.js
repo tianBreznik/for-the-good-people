@@ -1,9 +1,56 @@
 const blogSection = document.querySelector('.blogs-section');
 const topdiv = document.querySelector('#first-container');
 
-/** Once the splash is dismissed this session, skip it when returning to home (e.g. from blog reader). */
+/** Once the splash is dismissed, skip it when returning to home (shared across tabs). */
 const HOME_ENTRY_DISMISSED_KEY = 'homeEntryDismissed';
 
+function isHomeEntryDismissed() {
+    try {
+        // /?splash=1 forces the curtain for texture checks
+        if (new URLSearchParams(window.location.search).get('splash') === '1') return false;
+        if (localStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1') return true;
+        // Migrate older same-tab flag so prior sessions still skip splash.
+        if (sessionStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1') {
+            localStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
+            return true;
+        }
+    } catch (_) {}
+    return false;
+}
+
+function persistHomeEntryDismissed() {
+    try {
+        localStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
+        sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
+    } catch (_) {}
+}
+
+/** Hide splash on next paint (returning visits). Do NOT call during the slide-out animation. */
+function applyHomeEntrySkipSplashPaint() {
+    try {
+        document.documentElement.classList.add('home-entry-skip-splash');
+    } catch (_) {}
+}
+
+function markHomeEntryDismissed({ hideNow = false } = {}) {
+    persistHomeEntryDismissed();
+    if (hideNow) applyHomeEntrySkipSplashPaint();
+}
+
+function hasPendingAdminHomeAction() {
+    try {
+        const admin = new URLSearchParams(window.location.search).get('admin');
+        return (
+            admin === 'approve' ||
+            admin === 'reject' ||
+            admin === 'approved' ||
+            admin === 'rejected' ||
+            admin === 'error'
+        );
+    } catch (_) {
+        return false;
+    }
+}
 let titleEmergeClearTimer = null;
 
 function parseCssDurationMs(value) {
@@ -39,9 +86,7 @@ function dismissSplashImmediately() {
     topdiv.style.transition = 'none';
     topdiv.classList.add('fade');
     topdiv.style.display = 'none';
-    try {
-        sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
-    } catch (e) {}
+    markHomeEntryDismissed({ hideNow: true });
     requestAnimationFrame(() => {
         if (topdiv) topdiv.style.transition = '';
     });
@@ -57,10 +102,7 @@ function applyHomeEntryAfterGridReady() {
         }
     } catch (e) {}
 
-    let entryDismissed = false;
-    try {
-        entryDismissed = sessionStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1';
-    } catch (e) {}
+    const entryDismissed = isHomeEntryDismissed() || hasPendingAdminHomeAction();
 
     if (topdiv && (fromLogin || entryDismissed) && !topdiv.classList.contains('fade')) {
         dismissSplashImmediately();
@@ -76,12 +118,15 @@ function applyHomeEntryAfterGridReady() {
     syncAuthControls(auth.currentUser);
 }
 
-// Returning visitors: hide splash while Firestore loads (titles revealed after grid is ready).
-try {
-    if (sessionStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1' && topdiv) {
-        dismissSplashImmediately();
-    }
-} catch (e) {}
+// Returning visitors / admin links: skip splash immediately (don't wait for blogs).
+if (hasPendingAdminHomeAction() || isHomeEntryDismissed()) {
+    markHomeEntryDismissed({ hideNow: true });
+    dismissSplashImmediately();
+    revealHomeTitlesWithEmerge({ instant: true });
+}
+
+// First visit: keep splash as cover until the column grid exists.
+// (Hiding it early left a blank page whenever Firestore was slow or stuck.)
 const navbar = document.querySelector('.navbar');
 
 let topfaded = false;
@@ -1047,6 +1092,8 @@ db.collection("blogs").get().then((blogs) => {
     blogs.forEach(blog => {
         if(blog.id != decodeURI(location.pathname.split("/").pop())){
             const doc = blog.data();
+            const authorName = doc.author ? doc.author.split('@')[0] : 'Anonymous';
+            noteAuthorLatestPost(authorName, blog, doc);
             const contentType = getContentTypeForDoc(blog.id, doc);
             const sectionIndex = contentTypeToSection(contentType);
             const card = createBlogCard(blog, sections[sectionIndex], sectionIndex);
@@ -1074,7 +1121,11 @@ db.collection("blogs").get().then((blogs) => {
     // Ensure Anonymous is always included
     if (!uniqueAuthors.has('Anonymous')) {
         createAuthorCard('Anonymous', authorSection);
+        uniqueAuthors.add('Anonymous');
     }
+
+    // New random avatars every page refresh (until profile picker exists).
+    reshuffleAuthorAvatars(Array.from(uniqueAuthors));
 
     // Desktop search control under author tags (hidden on mobile via CSS)
     createSearchCard(authorSection);
@@ -1097,7 +1148,18 @@ db.collection("blogs").get().then((blogs) => {
     const bioPanel = document.createElement('section');
     bioPanel.className = 'bio-panel';
     bioPanel.innerHTML = `
-        <p id="bio-content">Author bio</p>
+        <div class="bio-panel-profile" id="bio-panel-profile">
+            <img class="bio-avatar" id="bio-avatar" src="" alt="" width="168" height="168" decoding="async" />
+            <div class="bio-panel-copy">
+                <p class="bio-author-name" id="bio-author-name"></p>
+                <p class="bio-text" id="bio-text"></p>
+                <div class="bio-links" id="bio-links" hidden></div>
+                <p class="bio-latest" id="bio-latest" hidden>
+                    <span class="bio-latest-label">Latest</span>
+                    <a class="bio-latest-link" id="bio-latest-link" href="#"></a>
+                </p>
+            </div>
+        </div>
         <form id="home-search-strip" class="home-search-strip" autocomplete="off" role="search">
             <input type="search" id="home-search-input" name="q" placeholder="Search titles and authors…" aria-label="Search titles and authors" />
         </form>
@@ -1189,28 +1251,39 @@ db.collection("blogs").get().then((blogs) => {
         card => (card.getAttribute('data-author') || '').toLowerCase() !== 'about'
     );
     const bioEl = document.querySelector('.bio-panel');
-    const bioContent = document.getElementById('bio-content');
     if (bioEl && authorCardsForBio.length) {
         if (homeFinePointerHoverUi()) {
             let bioCloser = null;
+            const detachBioMoveCloser = () => {
+                if (!bioCloser) return;
+                document.removeEventListener('mousemove', bioCloser, true);
+                bioCloser = null;
+            };
             const attachBioMoveCloser = () => {
                 if (bioCloser) return;
                 setTimeout(() => {
                     if (bioCloser) return;
-                    bioCloser = () => {
+                    bioCloser = (e) => {
+                        if (e.target && e.target.closest && e.target.closest('.bio-panel')) return;
                         document.body.classList.remove('bio-open');
-                        document.removeEventListener('mousemove', bioCloser, true);
-                        bioCloser = null;
+                        detachBioMoveCloser();
                     };
                     document.addEventListener('mousemove', bioCloser, true);
                 }, 120);
             };
             const openBio = (authorName) => {
                 closeHomeSearchStrip({ switchToBio: true });
-                if (bioContent) bioContent.textContent = `@${authorName} — short bio goes here.`;
+                fillAuthorBioPanel(authorName);
                 document.body.classList.add('bio-open');
                 attachBioMoveCloser();
             };
+            bioEl.addEventListener('mouseenter', () => {
+                clearBioHoverTimer();
+                detachBioMoveCloser();
+            });
+            bioEl.addEventListener('mouseleave', () => {
+                document.body.classList.remove('bio-open');
+            });
             authorCardsForBio.forEach(card => {
                 const name = card.getAttribute('data-author');
                 card.addEventListener('mouseenter', () => {
@@ -1231,14 +1304,13 @@ db.collection("blogs").get().then((blogs) => {
                     e.stopPropagation();
                     const open =
                         document.body.classList.contains('bio-open') &&
-                        bioContent &&
-                        (bioContent.textContent || '').trimStart().startsWith(`@${name}`);
+                        bioEl.dataset.author === name;
                     if (open) {
                         document.body.classList.remove('bio-open');
                         return;
                     }
                     closeHomeSearchStrip({ switchToBio: true });
-                    if (bioContent) bioContent.textContent = `@${name} — short bio goes here.`;
+                    fillAuthorBioPanel(name);
                     document.body.classList.add('bio-open');
                 });
             });
@@ -1311,7 +1383,39 @@ db.collection("blogs").get().then((blogs) => {
     window.visualViewport?.addEventListener('resize', relayoutHomeSections);
 
     applyHomeEntryAfterGridReady();
-})
+}).catch((err) => {
+    console.error('Failed to load home blogs', err);
+    showHomeBlogsLoadFailure(err);
+});
+
+function showHomeBlogsLoadFailure(err) {
+    if (document.getElementById('home-load-failure')) return;
+    const note = document.createElement('div');
+    note.id = 'home-load-failure';
+    note.setAttribute('role', 'alert');
+    note.style.cssText = [
+        'position:fixed',
+        'left:50%',
+        'bottom:max(24px, env(safe-area-inset-bottom, 0px))',
+        'transform:translateX(-50%)',
+        'z-index:200',
+        'max-width:min(420px, calc(100vw - 32px))',
+        'padding:12px 14px',
+        'background:rgba(255,255,255,0.94)',
+        'color:#171717',
+        'font:500 14px/1.4 Helvetica, Arial, sans-serif',
+        'box-shadow:0 8px 24px rgba(0,0,0,0.18)',
+        'text-align:center'
+    ].join(';');
+    const detail = err && err.message ? String(err.message) : 'Couldn’t load posts';
+    note.innerHTML = `
+        <p style="margin:0 0 8px">Couldn’t load posts.</p>
+        <button type="button" id="home-load-retry" style="font:600 13px/1 Helvetica, Arial, sans-serif;padding:8px 12px;border:1px solid rgba(0,0,0,0.25);background:#fff;cursor:pointer">Retry</button>
+        <p style="margin:8px 0 0;font-size:11px;opacity:0.55">${detail.replace(/[<>&]/g, '')}</p>
+    `;
+    document.body.appendChild(note);
+    document.getElementById('home-load-retry')?.addEventListener('click', () => location.reload());
+}
 
 function getHomeLoginUi() {
     if (typeof firebaseui === 'undefined') return null;
@@ -1333,14 +1437,15 @@ function closeHomeLoginOverlay() {
 
 function applyHomeEntryAfterSignIn() {
     const gridReady = !!document.querySelector('.home-main-stage');
+    markHomeEntryDismissed({ hideNow: true });
     try {
-        sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
         if (!gridReady) sessionStorage.setItem(JUST_LOGGED_IN_KEY, '1');
     } catch (e) {}
-    if (topdiv && !topdiv.classList.contains('fade')) {
-        dismissSplashImmediately();
-    }
+    // Only drop splash once posts are on screen — otherwise login left a blank white page.
     if (gridReady) {
+        if (topdiv && !topdiv.classList.contains('fade')) {
+            dismissSplashImmediately();
+        }
         revealHomeTitlesWithEmerge({ instant: true });
     }
 }
@@ -1382,9 +1487,20 @@ function startHomeLoginUi() {
                     if (user && typeof refreshAuthorIdFromToken === 'function') {
                         refreshAuthorIdFromToken(user);
                     }
+                    let next = '';
+                    try {
+                        next = sessionStorage.getItem('homeLoginNext') || '';
+                        sessionStorage.removeItem('homeLoginNext');
+                        if (next !== '/editor' && next !== '/admin') next = '';
+                    } catch (_) {
+                        next = '';
+                    }
                     closeHomeLoginOverlay();
                     applyHomeEntryAfterSignIn();
                     syncAuthControls(user);
+                    if (next) {
+                        window.location.assign(next);
+                    }
                     return false;
                 },
             },
@@ -1403,6 +1519,36 @@ function initHomeLoginOverlay() {
     });
 
     if (typeof initHomeSignupForm === 'function') initHomeSignupForm();
+}
+
+/** Open overlay from /?login=1 (e.g. nav Login). Optional next=/editor|/admin. */
+function consumeHomeLoginQuery() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('login') !== '1') return;
+
+        const next = params.get('next') || '';
+        if (next === '/editor' || next === '/admin') {
+            try {
+                sessionStorage.setItem('homeLoginNext', next);
+            } catch (_) {}
+        }
+
+        params.delete('login');
+        params.delete('next');
+        const cleaned = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', cleaned);
+
+        // After splash skip / paint — open once auth helpers exist.
+        const open = () => {
+            if (typeof openHomeLoginOverlay === 'function') openHomeLoginOverlay();
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => setTimeout(open, 0));
+        } else {
+            setTimeout(open, 0);
+        }
+    } catch (_) {}
 }
 
 function formatTitleForCard(rawTitle) {
@@ -1487,6 +1633,129 @@ function anchorMobilePaneToViewport(card) {
             resolve();
         }, timeoutMs + 40);
     });
+}
+
+/** Preset author avatars — profile picker will choose among these later. */
+const AUTHOR_AVATAR_FILES = Array.isArray(window.AUTHOR_AVATAR_FILES)
+    ? window.AUTHOR_AVATAR_FILES
+    : [
+        'IMG_0633.jpg',
+        'IMG_7131.jpg',
+        'IMG_8737.jpg',
+        'IMG_8739.JPG',
+        'IMG_8740.JPG',
+        'IMG_8741.JPG',
+        'IMG_8743.JPG',
+        'IMG_8744.JPG',
+        'IMG_8745.PNG',
+        'IMG_8747.JPG',
+        'IMG_8748.jpg',
+        'IMG_8749.jpg',
+        'IMG_8750.jpg',
+        'IMG_8751.jpg',
+        'IMG_8753.jpg',
+        'IMG_8755.jpg',
+        'IMG_9128.jpg'
+    ];
+
+/** name → { latestTitle, latestId, latestMs } built while loading blogs. */
+const authorHomeProfiles = Object.create(null);
+
+/** name → avatar url for this page load only (reshuffled on every refresh). */
+const authorAvatarByName = Object.create(null);
+
+function shuffleInPlace(list) {
+    for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = list[i];
+        list[i] = list[j];
+        list[j] = tmp;
+    }
+    return list;
+}
+
+/** Fresh random assignment for all author tags — call once after authors are known. */
+function reshuffleAuthorAvatars(authorNames) {
+    Object.keys(authorAvatarByName).forEach((k) => delete authorAvatarByName[k]);
+    const deck = shuffleInPlace(AUTHOR_AVATAR_FILES.slice());
+    if (!deck.length) return;
+    let i = 0;
+    (authorNames || []).forEach((raw) => {
+        const name = raw || 'Anonymous';
+        if (authorAvatarByName[name]) return;
+        authorAvatarByName[name] = `/pfps/${deck[i % deck.length]}`;
+        i += 1;
+    });
+}
+
+function avatarUrlForAuthor(authorName) {
+    const name = authorName || 'Anonymous';
+    if (authorAvatarByName[name]) return authorAvatarByName[name];
+    // Fallback if called before reshuffle (shouldn't happen on home).
+    const files = AUTHOR_AVATAR_FILES;
+    if (!files.length) return '';
+    const idx = Math.floor(Math.random() * files.length);
+    authorAvatarByName[name] = `/pfps/${files[idx]}`;
+    return authorAvatarByName[name];
+}
+
+function noteAuthorLatestPost(authorName, blog, doc) {
+    const name = authorName || 'Anonymous';
+    const ms =
+        Date.parse(doc.lastModified || '') ||
+        Date.parse(doc.publishedAt || '') ||
+        0;
+    const prev = authorHomeProfiles[name];
+    if (prev && ms < (prev.latestMs || 0)) return;
+    authorHomeProfiles[name] = {
+        latestTitle: (doc.title || 'Untitled').trim() || 'Untitled',
+        latestId: blog.id,
+        latestMs: ms
+    };
+}
+
+function fillAuthorBioPanel(authorName) {
+    const panel = document.querySelector('.bio-panel');
+    if (!panel) return;
+    const name = authorName || 'Anonymous';
+    panel.dataset.author = name;
+
+    const img = document.getElementById('bio-avatar');
+    if (img) {
+        const url = avatarUrlForAuthor(name);
+        if (img.getAttribute('src') !== url) img.src = url;
+        img.alt = `@${name}`;
+    }
+
+    const nameEl = document.getElementById('bio-author-name');
+    if (nameEl) nameEl.textContent = `@${name}`;
+
+    const textEl = document.getElementById('bio-text');
+    if (textEl) {
+        // Placeholder until author profiles / onboarding exist.
+        textEl.textContent = 'No bio yet.';
+    }
+
+    const linksEl = document.getElementById('bio-links');
+    if (linksEl) {
+        linksEl.innerHTML = '';
+        linksEl.hidden = true;
+    }
+
+    const latestWrap = document.getElementById('bio-latest');
+    const latestLink = document.getElementById('bio-latest-link');
+    const profile = authorHomeProfiles[name];
+    if (latestWrap && latestLink) {
+        if (profile && profile.latestId) {
+            latestWrap.hidden = false;
+            latestLink.textContent = profile.latestTitle;
+            latestLink.href = `/${profile.latestId}`;
+        } else {
+            latestWrap.hidden = true;
+            latestLink.removeAttribute('href');
+            latestLink.textContent = '';
+        }
+    }
 }
 
 function createBlogCard(blog, section, sectionIndex) {
@@ -1870,10 +2139,37 @@ function updateAuthControls(user, isRealPerson) {
         if (applyCard) applyCard.style.display = 'none';
     }
 
+    syncSelfAuthorTagLabel(user, isRealPerson);
     layoutAuthControls();
     if (typeof window.matchMedia !== 'undefined' && window.matchMedia(HOME_NARROW_QUERY).matches) {
         relayoutHomeSectionsRef?.();
     }
+}
+
+/** Signed-in authors see their own column tag as "me" (data-author stays the real handle). */
+function syncSelfAuthorTagLabel(user, isRealPerson) {
+    const selfId =
+        isRealPerson && user && typeof getAuthorIdFromUser === 'function'
+            ? String(getAuthorIdFromUser(user) || '').trim().toLowerCase()
+            : '';
+
+    document.querySelectorAll('.blog-card.author-card').forEach((card) => {
+        const name = (card.getAttribute('data-author') || '').trim();
+        if (!name || name.toLowerCase() === 'about') return;
+        const title = card.querySelector('.blog-title');
+        if (!title) return;
+
+        const isSelf = Boolean(selfId) && name.toLowerCase() === selfId;
+        if (isSelf) {
+            title.textContent = 'me';
+            title.setAttribute('data-text', 'me');
+            card.classList.add('author-card-self');
+        } else {
+            title.textContent = `@${name}`;
+            title.setAttribute('data-text', `@${name}`);
+            card.classList.remove('author-card-self');
+        }
+    });
 }
 
 /** Keep author-column LOGIN / EDITOR in sync with Firebase (incl. return from /admin on mobile). */
@@ -2616,13 +2912,16 @@ if (topdiv) {
         document.body.classList.remove('splash-sliding');
         const stage = document.querySelector('.home-main-stage');
         if (stage) stage.style.willChange = 'auto';
-        try {
-            sessionStorage.setItem(HOME_ENTRY_DISMISSED_KEY, '1');
-        } catch (err) {}
+        // Persist + skip-on-reload only after the curtain finishes.
+        markHomeEntryDismissed({ hideNow: true });
     });
 
     topdiv.onclick = () => {
         if (topdiv.classList.contains('fade')) return;
+        // Remember for next visit, but keep splash painted while it slides out.
+        persistHomeEntryDismissed();
+        // Wait for posts — dismissing early left a blank page when the blogs request hung.
+        if (!document.querySelector('.home-main-stage')) return;
         document.body.classList.add('splash-sliding');
         if (navbar) navbar.style.position = 'relative';
         // Same keyed drag curve on both panels (one stone wall)
@@ -2632,3 +2931,202 @@ if (topdiv) {
 }
 
 initHomeLoginOverlay();
+consumeHomeLoginQuery();
+
+const HOME_TEXTURE_KEY = 'homeTextureId';
+const HOME_TEXTURES = {
+    grycon: '/img/stone-grycon7.jpg',
+    stucco: '/img/STUCCO.JPG',
+    stucco8: '/img/STUCCO8.JPG',
+};
+
+function applyHomeTexture(textureId, { persist = true } = {}) {
+    const id = HOME_TEXTURES[textureId] ? textureId : 'grycon';
+    const path = HOME_TEXTURES[id];
+    const cssUrl = `url(${path})`;
+
+    document.documentElement.setAttribute('data-home-texture', id);
+    document.documentElement.style.setProperty('--bg-image', cssUrl);
+
+    // Compositor layers (will-change + filtered background-clip:text) keep stale bitmaps
+    // after url changes. Briefly clear backgrounds / filters so paint rebuilds.
+    document.documentElement.classList.add('home-texture-reflow');
+    document
+        .querySelectorAll('.column-section, #first-container-hold, #top-text, #bottom-text, .blog-title, .blog-overview')
+        .forEach((el) => {
+            el.style.backgroundImage = 'none';
+        });
+    void document.documentElement.offsetHeight;
+
+    document
+        .querySelectorAll('.column-section, #first-container-hold, #top-text, #bottom-text, .blog-title, .blog-overview')
+        .forEach((el) => {
+            el.style.backgroundImage = '';
+        });
+    document.documentElement.classList.remove('home-texture-reflow');
+
+    if (persist) {
+        try {
+            localStorage.setItem(HOME_TEXTURE_KEY, id);
+        } catch (_) {}
+    }
+    document.querySelectorAll('.home-texture-swatch').forEach((btn) => {
+        const on = btn.dataset.texture === id;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+}
+
+function initHomeTextureSwitcher() {
+    const root = document.getElementById('home-texture-switcher');
+    if (!root) return;
+
+    let saved = 'grycon';
+    try {
+        const raw = localStorage.getItem(HOME_TEXTURE_KEY);
+        if (raw && HOME_TEXTURES[raw]) saved = raw;
+    } catch (_) {}
+    applyHomeTexture(saved, { persist: false });
+
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest('.home-texture-swatch');
+        if (!btn || !root.contains(btn)) return;
+        const id = btn.dataset.texture;
+        if (!id || !HOME_TEXTURES[id]) return;
+        applyHomeTexture(id);
+    });
+}
+
+initHomeTextureSwitcher();
+
+function clearAdminActionQuery(extraKeys = ['admin', 'token', 'reason', 'handle']) {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        extraKeys.forEach((key) => params.delete(key));
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', next);
+    } catch (_) {}
+}
+
+function formatAdminHandle(raw) {
+    const cleaned = String(raw || '')
+        .trim()
+        .replace(/^@+/, '')
+        .toLowerCase();
+    if (!cleaned) return '';
+    return `@${cleaned}`;
+}
+
+function ensureHomeAdminBanner() {
+    let banner = document.querySelector('.home-admin-banner');
+    if (banner) return banner;
+    banner = document.createElement('div');
+    banner.className = 'home-admin-banner';
+    banner.setAttribute('aria-live', 'polite');
+    banner.innerHTML = '<p class="home-admin-banner-text"></p>';
+    document.body.appendChild(banner);
+    return banner;
+}
+
+function setHomeAdminBannerText(text) {
+    const banner = ensureHomeAdminBanner();
+    const label = banner.querySelector('.home-admin-banner-text');
+    if (label) {
+        label.textContent = text;
+        label.setAttribute('data-text', text);
+        label.style.animation = 'none';
+        // retrigger enter animation on state change
+        void label.offsetWidth;
+        label.style.animation = '';
+    }
+    banner.classList.add('is-visible');
+    return banner;
+}
+
+function hideHomeAdminBanner(delayMs = 0) {
+    const banner = document.querySelector('.home-admin-banner');
+    if (!banner) return;
+    window.setTimeout(() => {
+        banner.classList.remove('is-visible');
+        window.setTimeout(() => banner.remove(), 420);
+    }, delayMs);
+}
+
+async function runHomeAdminAction({ action, token, handle }) {
+    const who = formatAdminHandle(handle);
+    const pending = who
+        ? action === 'reject'
+            ? `rejecting ${who}...`
+            : `approving ${who}...`
+        : action === 'reject'
+          ? 'rejecting...'
+          : 'approving...';
+    const done = action === 'reject' ? 'rejected' : 'approved';
+    setHomeAdminBannerText(pending);
+    clearAdminActionQuery();
+
+    try {
+        const body = new URLSearchParams();
+        body.set('token', token);
+        const res = await fetch('/api/admin/author-application', {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'fetch',
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            },
+            body: body.toString(),
+            credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            setHomeAdminBannerText('failed');
+            hideHomeAdminBanner(2200);
+            return;
+        }
+        setHomeAdminBannerText(done);
+        if (data && data.setPasswordUrl) {
+            // Rare: welcome mail failed — keep approved on screen a bit longer.
+            hideHomeAdminBanner(3200);
+        } else {
+            hideHomeAdminBanner(1800);
+        }
+    } catch (_) {
+        setHomeAdminBannerText('failed');
+        hideHomeAdminBanner(2200);
+    }
+}
+
+(function consumeAdminActionQuery() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const admin = params.get('admin');
+        if (!admin) return;
+
+        if (admin === 'error') {
+            setHomeAdminBannerText('failed');
+            clearAdminActionQuery();
+            hideHomeAdminBanner(2200);
+            return;
+        }
+
+        if (admin === 'approved' || admin === 'rejected') {
+            setHomeAdminBannerText(admin === 'approved' ? 'approved' : 'rejected');
+            clearAdminActionQuery();
+            hideHomeAdminBanner(1800);
+            return;
+        }
+
+        if (admin === 'approve' || admin === 'reject') {
+            const token = params.get('token') || '';
+            const handle = params.get('handle') || '';
+            if (!token) {
+                setHomeAdminBannerText('failed');
+                clearAdminActionQuery();
+                hideHomeAdminBanner(2200);
+                return;
+            }
+            runHomeAdminAction({ action: admin, token, handle });
+        }
+    } catch (_) {}
+})();

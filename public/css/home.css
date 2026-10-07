@@ -5,12 +5,131 @@
 }
 
 :root {
-    --bg-image: url(https://textures.neocities.org/textures/stone-and-brick/GRYCON7.JPG);
+    --bg-image: url(/img/stone-grycon7.jpg);
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
-    --bioHeight: clamp(36px, 6vh, 78px);
+    --bioStripHeight: clamp(36px, 6vh, 78px);
+    --authorBioHeight: clamp(160px, 24vh, 220px);
+    --bioHeight: var(--bioStripHeight);
     /* One rigid wall — slow, with keyed drag hitch (linear + keyframes) */
     --homeSplashCurtainDuration: 2800ms;
+}
+
+/* Texture packs — letters + ::before need explicit urls (WebKit caches clipped+filtered fills). */
+html[data-home-texture='grycon'] {
+    --bg-image: url(/img/stone-grycon7.jpg);
+}
+html[data-home-texture='stucco'] {
+    --bg-image: url(/img/STUCCO.JPG);
+}
+html[data-home-texture='stucco8'] {
+    --bg-image: url(/img/STUCCO8.JPG);
+}
+
+/* Default stone: clipped texture fill (unchanged recipe). */
+html[data-home-texture='grycon'] #top-text,
+html[data-home-texture='grycon'] #top-text::before,
+html[data-home-texture='grycon'] #bottom-text,
+html[data-home-texture='grycon'] #bottom-text::before,
+html[data-home-texture='grycon'] .blog-title,
+html[data-home-texture='grycon'] .blog-title::before,
+html[data-home-texture='grycon'] .blog-overview,
+html[data-home-texture='grycon'] .blog-overview::before,
+html[data-home-texture='grycon'] .bio-panel .bio-author-name {
+    background-image: url(/img/stone-grycon7.jpg) !important;
+}
+
+/*
+ * Stucco / plaster — original splash carve recipe (auto size + mild ::before).
+ * Grycon above is left alone.
+ */
+html[data-home-texture='stucco'] #top-text,
+html[data-home-texture='stucco'] #top-text::before,
+html[data-home-texture='stucco'] #bottom-text,
+html[data-home-texture='stucco'] #bottom-text::before,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+    background-image: url(/img/STUCCO.JPG) !important;
+    background-size: auto !important;
+    background-position: center !important;
+    background-attachment: scroll !important;
+    mix-blend-mode: normal;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent;
+}
+
+html[data-home-texture='stucco8'] #top-text,
+html[data-home-texture='stucco8'] #top-text::before,
+html[data-home-texture='stucco8'] #bottom-text,
+html[data-home-texture='stucco8'] #bottom-text::before,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+    background-image: url(/img/STUCCO8.JPG) !important;
+    background-size: auto !important;
+    background-position: center !important;
+    background-attachment: scroll !important;
+    mix-blend-mode: normal;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent;
+}
+
+/* Splash carve */
+html[data-home-texture='stucco'] #top-text::before,
+html[data-home-texture='stucco'] #bottom-text::before,
+html[data-home-texture='stucco8'] #top-text::before,
+html[data-home-texture='stucco8'] #bottom-text::before {
+    filter: brightness(0.75) contrast(1.4) blur(0.0005px) !important;
+    text-shadow: 2px 5px 5px rgba(255, 255, 255, 0.3);
+}
+
+/* Home titles — raised emboss; mid-point between solid-bright and full-grain */
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+    top: 1.5px;
+    left: 1.5px;
+    filter: brightness(0.95) contrast(1.18) blur(0.0005px) !important;
+    text-shadow:
+        -1px -1px 0 rgba(255, 252, 248, 0.55),
+        1.5px 1.5px 2px rgba(35, 28, 22, 0.48);
+}
+
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+    top: 1.5px;
+    left: 1.5px;
+    filter: brightness(0.94) contrast(1.18) blur(0.0005px) !important;
+    text-shadow:
+        -1px -1px 0 rgba(255, 252, 248, 0.5),
+        1.5px 1.5px 2px rgba(40, 32, 24, 0.5);
+}
+
+/* Keep non-stone letter styles winning over texture packs */
+html[data-home-texture] .section-heading-card .blog-title,
+html[data-home-texture] .section-heading-card .blog-title::before,
+html[data-home-texture] .blog-card[data-author='about'] .blog-title,
+html[data-home-texture] .blog-card[data-author='about'] .blog-title::before {
+    background-image: none !important;
+}
+
+/* Returning visitors: hide splash before JS runs (see home.html inline script). */
+html.home-entry-skip-splash #first-container {
+    display: none !important;
+}
+
+/* While switching textures, drop filters so clipped letter layers aren't stuck. */
+html.home-texture-reflow #top-text::before,
+html.home-texture-reflow #bottom-text::before,
+html.home-texture-reflow .blog-title::before,
+html.home-texture-reflow .blog-overview::before {
+    filter: none !important;
+}
+
+html.home-texture-reflow .column-section {
+    will-change: auto !important;
 }
 
 @media (max-width: 900px) {
@@ -43,13 +162,22 @@ body{
     background: #ffffff;
     color: #222;
     box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-    transition: transform var(--aboutDuration) ease-in-out;
+    transition: transform var(--aboutDuration) ease-in-out, height var(--aboutDuration) ease-in-out;
     z-index: 2;
-    padding: 8px 12px; /* keep inside var(--bioHeight) */
+    padding: 10px 16px;
     box-sizing: border-box;
-    overflow: hidden; /* ensure content doesn't increase visual height */
+    overflow: hidden;
     display: flex;
     align-items: center;
+}
+
+body.bio-open {
+    --bioHeight: var(--authorBioHeight);
+}
+
+body.search-open,
+body.search-closing {
+    --bioHeight: var(--bioStripHeight);
 }
 
 body.bio-open .bio-panel,
@@ -101,15 +229,128 @@ body.search-open {
     background-size: 3.2px 3.2px;
 }
 
-/* Ink effect inside bio text + search field */
-.bio-panel p,
-.home-search-strip input[type="search"] {
-    font-family: Helvetica, Arial, sans-serif;
-    line-height: 1.65;
-    font-size: 16px;
+.bio-panel-profile {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.bio-avatar {
+    flex: 0 0 auto;
+    width: clamp(120px, calc(var(--authorBioHeight) - 32px), 188px);
+    height: clamp(120px, calc(var(--authorBioHeight) - 32px), 188px);
+    object-fit: cover;
+    object-position: center;
+    display: block;
+    background: #e8e4dc;
+}
+
+.bio-panel-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+}
+
+.bio-author-name {
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.bio-text {
+    margin: 0;
+}
+
+.bio-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    margin-top: 2px;
+}
+
+.bio-links a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.bio-latest {
+    margin: 6px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+}
+
+.bio-latest-label {
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.55;
+}
+
+.bio-latest-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    min-width: 0;
+}
+
+/* Match article body ink type (Georgia + grain); @name tinted via mastheadAuthorColor in JS */
+.bio-panel .bio-author-name,
+.bio-panel .bio-text,
+.bio-panel .bio-latest-label,
+.bio-panel .bio-latest-link,
+.bio-panel .bio-links a {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    line-height: 1.42;
+    font-size: clamp(17px, 1.15vw, 20px);
     color: transparent;
     -webkit-text-fill-color: transparent;
-    /* Match/boost About ink grain */
+    background-image:
+        linear-gradient(#171717, #171717),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 48px 48px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.22px rgba(0, 0, 0, 0.28);
+    text-shadow: 0 0 0.45px rgba(0, 0, 0, 0.32);
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: auto;
+}
+
+.bio-panel .bio-author-name {
+    font-size: clamp(22px, 1.55vw, 28px);
+    line-height: 1.2;
+    font-weight: 600;
+    /* Same stone fill as author-column @tags (color), Georgia like the article */
+    background-image: var(--bg-image);
+    background-position: center;
+    background-blend-mode: normal;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+.bio-panel .bio-latest-label {
+    font-size: clamp(11px, 0.75vw, 13px);
+    line-height: 1.2;
+    font-weight: 400;
+}
+
+.home-search-strip input[type="search"] {
+    font-family: Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+    font-size: 15px;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
     background-image:
         linear-gradient(#171717, #171717),
         url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.8' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.25 -0.12'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
@@ -123,8 +364,8 @@ body.search-open {
     -moz-osx-font-smoothing: auto;
 }
 
-body.search-open #bio-content,
-body.search-closing #bio-content {
+body.search-open .bio-panel-profile,
+body.search-closing .bio-panel-profile {
     display: none;
 }
 
@@ -875,7 +1116,7 @@ body.home-titles-instant .home-main-stage {
     color: black;
 
     background-image: var(--bg-image);
-    /*background-size: cover;*/
+    background-size: 220% auto;
     background-position: center;
     -webkit-background-clip: text;
     background-clip: text;
@@ -897,9 +1138,9 @@ body.home-titles-instant .home-main-stage {
     /*font-size: 11vw;*/
     font-family: 'Impact', sans-serif;
     text-align: inherit; /* match parent alignment (left/right) */
-    background-image: var(--bg-image);
-    /*background-size: cover;*/
-    background-position: center;
+    background-image: inherit;
+    background-size: inherit;
+    background-position: inherit;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -918,7 +1159,7 @@ body.home-titles-instant .home-main-stage {
     color: black;
 
     background-image: var(--bg-image);
-    /*background-size: cover;*/
+    background-size: 220% auto;
     background-position: center;
     -webkit-background-clip: text;
     background-clip: text;
@@ -940,9 +1181,9 @@ body.home-titles-instant .home-main-stage {
     /*font-size: 11vw;*/
     font-family: 'Impact', sans-serif;
     text-align: center;
-    background-image: var(--bg-image);
-    /*background-size: cover;*/
-    background-position: center;
+    background-image: inherit;
+    background-size: inherit;
+    background-position: inherit;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -2169,6 +2410,76 @@ body.search-open .author-section {
     display: none !important;
 }
 
+body.password-reset-page {
+    min-height: 100vh;
+    background-color: #8c8c8c;
+    background-image: var(--bg-image);
+    background-size: auto;
+}
+
+body.password-reset-page .home-login-create-account {
+    display: block;
+    text-align: center;
+    text-decoration: none;
+    margin-top: 10px;
+}
+
+/* Texture switcher — bottom-left swatches */
+.home-texture-switcher {
+    position: fixed;
+    left: max(12px, env(safe-area-inset-left, 0px) + 8px);
+    bottom: max(12px, env(safe-area-inset-bottom, 0px) + 8px);
+    z-index: 40;
+    display: flex;
+    gap: 8px;
+    padding: 6px;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.home-texture-swatch {
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    background-size: cover;
+    background-position: center;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.home-texture-swatch:hover {
+    transform: translateY(-1px);
+}
+
+.home-texture-swatch.is-active {
+    box-shadow: 0 0 0 2px #111;
+}
+
+.home-texture-swatch[data-texture='grycon'] {
+    background-image: url(/img/stone-grycon7.jpg);
+}
+
+.home-texture-swatch[data-texture='stucco'] {
+    background-image: url(/img/STUCCO.JPG);
+}
+
+.home-texture-swatch[data-texture='stucco8'] {
+    background-image: url(/img/STUCCO8.JPG);
+}
+
+@media (max-width: 900px) {
+    .home-texture-switcher {
+        bottom: max(10px, env(safe-area-inset-bottom, 0px) + 6px);
+    }
+    .home-texture-swatch {
+        width: 24px;
+        height: 24px;
+    }
+}
+
 .home-login-backdrop {
     position: absolute;
     inset: 0;
@@ -2179,13 +2490,21 @@ body.search-open .author-section {
 .home-login-panel {
     position: relative;
     z-index: 1;
-    width: min(100%, 320px);
-    max-height: min(90vh, 560px);
+    width: min(100%, 360px);
+    max-height: min(92vh, 640px);
     overflow-y: auto;
     padding: 0;
     background: transparent;
     border: none;
     box-shadow: none;
+}
+
+.home-login-oauth {
+    margin-top: 14px;
+}
+
+.home-login-oauth:empty {
+    display: none;
 }
 
 .home-login-create-account {
@@ -2240,6 +2559,7 @@ body.search-open .author-section {
     font-size: 10px;
     line-height: 1.45;
     color: rgba(255, 255, 255, 0.9);
+    text-align: center;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
@@ -2373,6 +2693,140 @@ body.search-open .author-section {
     background: #4a4a4a;
     border-color: rgba(0, 0, 0, 0.35);
     color: #fff;
+}
+
+.home-apply-avatar-dropdown {
+    position: relative;
+    margin-bottom: 4px;
+}
+
+.home-apply-avatar-trigger {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding: 6px 10px;
+    border: 1px solid rgba(0, 0, 0, 0.22);
+    border-radius: 0;
+    background: linear-gradient(to bottom, #fafafa 0%, #efefef 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    font-family: 'MS Sans Serif', 'Arial', sans-serif;
+    font-size: 13px;
+    color: #111;
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.home-apply-avatar-trigger::after {
+    content: '';
+    margin-left: auto;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #333;
+}
+
+.home-apply-avatar-dropdown.is-open .home-apply-avatar-trigger::after {
+    border-top: none;
+    border-bottom: 6px solid #333;
+}
+
+.home-apply-avatar-trigger-img {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    flex: 0 0 auto;
+    background: #e8e4dc;
+}
+
+.home-apply-avatar-trigger-text {
+    min-width: 0;
+}
+
+.home-apply-avatar-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 5;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    max-height: min(42vh, 280px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    background: #fff;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    box-sizing: border-box;
+}
+
+.home-apply-avatar-menu[hidden] {
+    display: none !important;
+}
+
+.home-apply-avatar-option {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 4px;
+    border: 2px solid transparent;
+    border-radius: 0;
+    background: #f3f1ec;
+    cursor: pointer;
+    overflow: hidden;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.home-apply-avatar-option img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    height: auto;
+    object-fit: cover;
+    object-position: center;
+    background: #e8e4dc;
+    flex: 0 0 auto;
+}
+
+.home-apply-avatar-option-name {
+    display: block;
+    min-width: 0;
+    padding: 0 1px;
+    font-family: 'MS Sans Serif', 'Arial', sans-serif;
+    font-size: 9px;
+    line-height: 1.2;
+    color: #222;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.home-apply-avatar-option:hover,
+.home-apply-avatar-option:focus-visible {
+    border-color: rgba(0, 0, 0, 0.35);
+    outline: none;
+}
+
+.home-apply-avatar-option.is-selected {
+    border-color: #171717;
+    box-shadow: inset 0 0 0 1px #171717;
+}
+
+@media (max-width: 420px) {
+    .home-apply-avatar-menu {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 .home-auth-btn:disabled {
@@ -2509,3 +2963,69 @@ body.home-login-open {
 .home-login-panel .firebaseui-policy-link {
     color: rgba(255, 255, 255, 0.95);
 }
+
+/* Full-screen admin approve/reject status on home */
+.home-admin-banner {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 280ms ease;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.home-admin-banner.is-visible {
+    opacity: 1;
+}
+
+.home-admin-banner-text {
+    margin: 0;
+    max-width: 96vw;
+    position: relative;
+    z-index: 1;
+    font-family: 'Impact', sans-serif;
+    font-size: clamp(64px, 18vw, 220px);
+    line-height: 0.85;
+    letter-spacing: 0.01em;
+    text-align: center;
+    text-transform: lowercase;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    -webkit-text-stroke: 1px #000000;
+    text-shadow: none;
+    animation: home-admin-banner-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.home-admin-banner-text::before {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 0;
+    text-shadow:
+        0 4px 5px rgba(0, 0, 0, 0.7),
+        0 0 3px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes home-admin-banner-in {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+

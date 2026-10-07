@@ -1216,7 +1216,8 @@ function loadExistingBlog() {
 
 window.auth.onAuthStateChanged((user) => {
     if (!user) {
-        location.replace("/admin");
+        // Direct /editor URL while logged out (Editor control is hidden until signed in).
+        location.replace('/?login=1');
     }
 });
 

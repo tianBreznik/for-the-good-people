@@ -25,7 +25,7 @@ auth.onAuthStateChanged((user) => {
     }
     else {
         ul[0].innerHTML +=
-            '<li class="link-item"><a href="/admin" class="link">Login</a></li>';
+            '<li class="link-item"><a href="/?login=1" class="link">Login</a></li>';
 
     }
 })

@@ -1,5 +1,5 @@
 /**
- * Sign-up and author application forms (site UI). Aukjkjkjkthor access is admin-approved via allowlist.
+ * Sign-up and author application forms (site UI). Author access is admin-approved via allowlist.
  */
 (function () {
     const NAME_RE = /^[a-z0-9_]{3,24}$/;
@@ -15,6 +15,12 @@
         signup: 'Create account',
         authorApply: 'Author application',
     };
+
+    let avatarMenuOutsideHandler = null;
+
+    function avatarFiles() {
+        return Array.isArray(window.AUTHOR_AVATAR_FILES) ? window.AUTHOR_AVATAR_FILES : [];
+    }
 
     function normalizeNameInput(raw) {
         return String(raw || '')
@@ -40,10 +46,163 @@
     }
 
     function showHomeSignInView() {
+        closeAvatarMenu();
         showLoginView('signin');
+        const err = document.getElementById('home-signin-error');
+        if (err) {
+            err.hidden = true;
+            err.textContent = '';
+        }
+        const ok = document.getElementById('home-signin-success');
+        if (ok) {
+            ok.hidden = true;
+            ok.textContent = '';
+        }
+        document.getElementById('home-signin-email')?.focus();
+    }
+
+    function setSigninError(message) {
+        const err = document.getElementById('home-signin-error');
+        const ok = document.getElementById('home-signin-success');
+        if (ok && message) {
+            ok.hidden = true;
+            ok.textContent = '';
+        }
+        if (!err) return;
+        err.textContent = message;
+        err.hidden = !message;
+    }
+
+    function setSigninSuccess(message) {
+        const ok = document.getElementById('home-signin-success');
+        const err = document.getElementById('home-signin-error');
+        if (err && message) {
+            err.hidden = true;
+            err.textContent = '';
+        }
+        if (!ok) return;
+        ok.textContent = message;
+        ok.hidden = !message;
+    }
+
+    function setSigninPending(pending) {
+        const form = document.getElementById('home-signin-form');
+        const submit = document.getElementById('home-signin-submit');
+        const forgot = document.getElementById('home-signin-forgot');
+        if (form) form.querySelectorAll('input, button').forEach((el) => { el.disabled = pending; });
+        if (submit) submit.textContent = pending ? 'Signing in…' : 'Sign in';
+        if (forgot) forgot.disabled = pending;
+    }
+
+    const HOME_LOGIN_NEXT_KEY = 'homeLoginNext';
+
+    function consumeHomeLoginNext() {
+        try {
+            const next = sessionStorage.getItem(HOME_LOGIN_NEXT_KEY) || '';
+            sessionStorage.removeItem(HOME_LOGIN_NEXT_KEY);
+            if (next === '/editor' || next === '/admin') return next;
+        } catch (_) {}
+        return '';
+    }
+
+    function finishClientSignIn(user) {
+        if (user && typeof refreshAuthorIdFromToken === 'function') {
+            refreshAuthorIdFromToken(user);
+        }
+        const next = consumeHomeLoginNext();
+        if (typeof closeHomeLoginOverlay === 'function') closeHomeLoginOverlay();
+        if (typeof applyHomeEntryAfterSignIn === 'function') applyHomeEntryAfterSignIn();
+        if (typeof syncAuthControls === 'function') syncAuthControls(user);
+        if (next) {
+            window.location.assign(next);
+        }
+    }
+
+    async function handleHomeSigninSubmit(e) {
+        e.preventDefault();
+        setSigninError('');
+        setSigninSuccess('');
+
+        const email = String(document.getElementById('home-signin-email')?.value || '').trim();
+        const password = String(document.getElementById('home-signin-password')?.value || '');
+
+        if (!email) {
+            setSigninError('Enter your email.');
+            return;
+        }
+        if (!password) {
+            setSigninError('Enter your password.');
+            return;
+        }
+
+        setSigninPending(true);
+        try {
+            const cred = await auth.signInWithEmailAndPassword(email, password);
+            finishClientSignIn(cred.user);
+        } catch (err) {
+            if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-login-credentials' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                setSigninError('Wrong email or password. If you have not registered yet, use Create account.');
+            } else if (err.code === 'auth/too-many-requests') {
+                setSigninError('Too many attempts. Wait a moment and try again.');
+            } else if (err.code === 'auth/invalid-email') {
+                setSigninError('Enter a valid email address.');
+            } else {
+                setSigninError('Could not sign in. Try again.');
+                console.error(err);
+            }
+        } finally {
+            setSigninPending(false);
+        }
+    }
+
+    async function handleHomeForgotPassword(e) {
+        e.preventDefault();
+        setSigninError('');
+        setSigninSuccess('');
+
+        const email = String(document.getElementById('home-signin-email')?.value || '').trim();
+        if (!email) {
+            setSigninError('Enter your email above, then tap Forgot password.');
+            document.getElementById('home-signin-email')?.focus();
+            return;
+        }
+
+        const forgot = document.getElementById('home-signin-forgot');
+        if (forgot) {
+            forgot.disabled = true;
+            forgot.textContent = 'Sending…';
+        }
+        try {
+            const res = await fetch('/api/auth/password-reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (data.error === 'invalid_email') {
+                    setSigninError('Enter a valid email address.');
+                } else if (data.error === 'admin_not_configured') {
+                    setSigninError('Password reset is not configured on the server.');
+                } else {
+                    setSigninError('Could not send reset email. Try again.');
+                }
+                return;
+            }
+            setSigninSuccess('Password reset email sent. Check your inbox (and spam).');
+        } catch (err) {
+            setSigninError('Could not send reset email. Try again.');
+            console.error(err);
+        } finally {
+            if (forgot) {
+                forgot.disabled = false;
+                forgot.textContent = 'Forgot password?';
+            }
+        }
     }
 
     function showHomeSignupView() {
+        closeAvatarMenu();
         showLoginView('signup');
         const err = document.getElementById('home-signup-error');
         if (err) {
@@ -59,6 +218,9 @@
         const user = typeof auth !== 'undefined' ? auth.currentUser : null;
         const nameInput = document.getElementById('home-apply-name');
         const emailInput = document.getElementById('home-apply-email');
+        const passwordFields = document.getElementById('home-apply-password-fields');
+        const passwordInput = document.getElementById('home-apply-password');
+        const passwordConfirm = document.getElementById('home-apply-password-confirm');
 
         if (user) {
             if (emailInput) {
@@ -71,9 +233,186 @@
                     nameInput.value = current;
                 }
             }
-        } else if (emailInput) {
-            emailInput.readOnly = false;
+            if (passwordFields) passwordFields.hidden = true;
+            if (passwordInput) {
+                passwordInput.value = '';
+                passwordInput.required = false;
+            }
+            if (passwordConfirm) {
+                passwordConfirm.value = '';
+                passwordConfirm.required = false;
+            }
+        } else {
+            if (emailInput) emailInput.readOnly = false;
+            if (passwordFields) passwordFields.hidden = false;
+            if (passwordInput) passwordInput.required = true;
+            if (passwordConfirm) passwordConfirm.required = true;
         }
+    }
+
+    async function ensureApplyAuthUser({ email, password, authorName }) {
+        const existing = typeof auth !== 'undefined' ? auth.currentUser : null;
+        if (existing) {
+            const existingEmail = String(existing.email || '').trim().toLowerCase();
+            if (existingEmail && existingEmail !== String(email || '').trim().toLowerCase()) {
+                const err = new Error('email_mismatch');
+                err.code = 'email_mismatch';
+                throw err;
+            }
+            return { user: existing, created: false };
+        }
+
+        let createdUser = null;
+        try {
+            const cred = await auth.createUserWithEmailAndPassword(email, password);
+            createdUser = cred.user;
+            await createdUser.updateProfile({ displayName: authorName });
+            if (typeof cacheAuthorIdForUser === 'function') {
+                cacheAuthorIdForUser(createdUser.uid, authorName);
+            }
+            await completeSignupOnServer(createdUser, authorName);
+            return { user: createdUser, created: true };
+        } catch (err) {
+            if (createdUser) {
+                try {
+                    await createdUser.delete();
+                } catch (_) {}
+            }
+
+            if (err.code === 'auth/email-already-in-use') {
+                try {
+                    const cred = await auth.signInWithEmailAndPassword(email, password);
+                    if (typeof cacheAuthorIdForUser === 'function') {
+                        cacheAuthorIdForUser(cred.user.uid, authorName);
+                    }
+                    return { user: cred.user, created: false };
+                } catch (signInErr) {
+                    if (
+                        signInErr.code === 'auth/wrong-password' ||
+                        signInErr.code === 'auth/invalid-credential' ||
+                        signInErr.code === 'auth/invalid-login-credentials'
+                    ) {
+                        const mismatch = new Error('account_password_mismatch');
+                        mismatch.code = 'account_password_mismatch';
+                        throw mismatch;
+                    }
+                    throw signInErr;
+                }
+            }
+            throw err;
+        }
+    }
+
+    function getSelectedAvatar() {
+        return String(document.getElementById('home-apply-avatar')?.value || '').trim();
+    }
+
+    function setSelectedAvatar(path) {
+        const hidden = document.getElementById('home-apply-avatar');
+        const img = document.getElementById('home-apply-avatar-trigger-img');
+        const text = document.getElementById('home-apply-avatar-trigger-text');
+        const menu = document.getElementById('home-apply-avatar-menu');
+
+        if (hidden) hidden.value = path || '';
+
+        if (path) {
+            if (img) {
+                img.src = path;
+                img.hidden = false;
+            }
+            if (text) text.textContent = 'Selected';
+        } else {
+            if (img) {
+                img.removeAttribute('src');
+                img.hidden = true;
+            }
+            if (text) text.textContent = 'Choose a picture…';
+        }
+
+        if (menu) {
+            menu.querySelectorAll('.home-apply-avatar-option').forEach((el) => {
+                const on = el.dataset.avatar === path;
+                el.classList.toggle('is-selected', on);
+                el.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+        }
+    }
+
+    function closeAvatarMenu() {
+        const menu = document.getElementById('home-apply-avatar-menu');
+        const trigger = document.getElementById('home-apply-avatar-trigger');
+        const wrap = document.getElementById('home-apply-avatar-dropdown');
+        if (menu) menu.hidden = true;
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        if (wrap) wrap.classList.remove('is-open');
+        if (avatarMenuOutsideHandler) {
+            document.removeEventListener('click', avatarMenuOutsideHandler, true);
+            avatarMenuOutsideHandler = null;
+        }
+    }
+
+    function openAvatarMenu() {
+        const menu = document.getElementById('home-apply-avatar-menu');
+        const trigger = document.getElementById('home-apply-avatar-trigger');
+        const wrap = document.getElementById('home-apply-avatar-dropdown');
+        if (!menu || !trigger) return;
+        menu.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+        if (wrap) wrap.classList.add('is-open');
+        if (!avatarMenuOutsideHandler) {
+            avatarMenuOutsideHandler = (e) => {
+                if (e.target.closest && e.target.closest('#home-apply-avatar-dropdown')) return;
+                closeAvatarMenu();
+            };
+            document.addEventListener('click', avatarMenuOutsideHandler, true);
+        }
+    }
+
+    function toggleAvatarMenu() {
+        const menu = document.getElementById('home-apply-avatar-menu');
+        if (!menu) return;
+        if (menu.hidden) openAvatarMenu();
+        else closeAvatarMenu();
+    }
+
+    function renderAvatarMenu() {
+        const menu = document.getElementById('home-apply-avatar-menu');
+        if (!menu) return;
+        menu.innerHTML = '';
+        const selected = getSelectedAvatar();
+        avatarFiles().forEach((file) => {
+            const path = `/pfps/${file}`;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'home-apply-avatar-option';
+            btn.setAttribute('role', 'option');
+            btn.setAttribute('aria-selected', selected === path ? 'true' : 'false');
+            btn.dataset.avatar = path;
+            if (selected === path) btn.classList.add('is-selected');
+
+            const img = document.createElement('img');
+            img.src = path;
+            img.alt = file;
+            img.decoding = 'async';
+            img.loading = 'lazy';
+
+            const label = document.createElement('span');
+            label.className = 'home-apply-avatar-option-name';
+            label.textContent = file;
+
+            btn.appendChild(img);
+            btn.appendChild(label);
+
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedAvatar(path);
+                setApplyError('');
+                closeAvatarMenu();
+            });
+
+            menu.appendChild(btn);
+        });
     }
 
     function showHomeAuthorApplyView() {
@@ -102,11 +441,15 @@
             submit.textContent = 'Submit application';
         }
 
+        setSelectedAvatar('');
+        renderAvatarMenu();
+        closeAvatarMenu();
         prefillAuthorApplyForm();
         document.getElementById('home-apply-name')?.focus();
     }
 
     function resetHomeLoginViews() {
+        closeAvatarMenu();
         showLoginView('signin');
     }
 
@@ -141,8 +484,11 @@
     function setApplyPending(pending) {
         const form = document.getElementById('home-author-apply-form');
         const submit = document.getElementById('home-apply-submit');
+        const trigger = document.getElementById('home-apply-avatar-trigger');
         if (form) form.querySelectorAll('input, button, textarea').forEach((el) => { el.disabled = pending; });
+        if (trigger) trigger.disabled = pending;
         if (submit) submit.textContent = pending ? 'Submitting…' : 'Submit application';
+        if (pending) closeAvatarMenu();
     }
 
     async function completeSignupOnServer(user, authorName) {
@@ -162,8 +508,8 @@
         return data;
     }
 
-    async function submitAuthorApplicationOnServer({ name, email, message }) {
-        const body = { name, email, message };
+    async function submitAuthorApplicationOnServer({ name, email, message, avatar }) {
+        const body = { name, email, message, avatar };
         const user = typeof auth !== 'undefined' ? auth.currentUser : null;
         if (user) body.idToken = await user.getIdToken();
 
@@ -198,7 +544,7 @@
         const password = String(document.getElementById('home-signup-password')?.value || '');
 
         if (!NAME_RE.test(authorName)) {
-            setSignupError('Name: 3–24 characters, letters, numbers, and underscores only.');
+            setSignupError('Username: 3–24 characters, letters, numbers, and underscores only.');
             return;
         }
         if (!email) {
@@ -235,7 +581,7 @@
             if (err.code === 'auth/email-already-in-use') {
                 setSignupError('That email already has an account. Sign in instead.');
             } else if (err.code === 'invalid_author_name') {
-                setSignupError('Name: 3–24 characters, letters, numbers, and underscores only.');
+                setSignupError('Username: 3–24 characters, letters, numbers, and underscores only.');
             } else if (err.code === 'admin_not_configured') {
                 setSignupError('Sign-up is not fully configured on the server. Contact the site admin.');
             } else if (err.code === 'auth/weak-password') {
@@ -255,17 +601,36 @@
         e.preventDefault();
         setApplyError('');
         setApplySuccess('');
+        closeAvatarMenu();
 
         const name = normalizeNameInput(document.getElementById('home-apply-name')?.value);
         const email = String(document.getElementById('home-apply-email')?.value || '').trim();
+        const password = String(document.getElementById('home-apply-password')?.value || '');
+        const passwordConfirm = String(document.getElementById('home-apply-password-confirm')?.value || '');
         const message = String(document.getElementById('home-apply-message')?.value || '').trim();
+        const avatar = getSelectedAvatar();
+        const alreadySignedIn = Boolean(typeof auth !== 'undefined' && auth.currentUser);
 
         if (!NAME_RE.test(name)) {
-            setApplyError('Name: 3–24 characters, letters, numbers, and underscores only.');
+            setApplyError('Username: 3–24 characters, letters, numbers, and underscores only.');
             return;
         }
         if (!email) {
             setApplyError('Enter your email.');
+            return;
+        }
+        if (!alreadySignedIn) {
+            if (password.length < 6) {
+                setApplyError('Password must be at least 6 characters.');
+                return;
+            }
+            if (password !== passwordConfirm) {
+                setApplyError('Passwords do not match.');
+                return;
+            }
+        }
+        if (!avatar) {
+            setApplyError('Choose a profile picture.');
             return;
         }
         if (message.length < 20) {
@@ -275,16 +640,24 @@
 
         setApplyPending(true);
         try {
-            const result = await submitAuthorApplicationOnServer({ name, email, message });
+            const { user } = await ensureApplyAuthUser({ email, password, authorName: name });
+            if (typeof syncAuthControls === 'function') syncAuthControls(user);
+
+            const result = await submitAuthorApplicationOnServer({ name, email, message, avatar });
 
             const form = document.getElementById('home-author-apply-form');
             const submit = document.getElementById('home-apply-submit');
-            if (form) form.hidden = true;
+            if (form) {
+                form.querySelectorAll('input, textarea, button.home-apply-avatar-trigger').forEach((el) => {
+                    if (el.id === 'home-apply-back') return;
+                    el.disabled = true;
+                });
+            }
             if (submit) submit.hidden = true;
 
             if (result.alreadyApproved) {
                 setApplySuccess(
-                    'This email is already on the approved authors list. Sign out and sign back in to refresh your access.'
+                    'This email is already approved. Sign out and sign back in to refresh your access.'
                 );
             } else if (result.duplicate) {
                 setApplySuccess(
@@ -292,14 +665,26 @@
                 );
             } else {
                 setApplySuccess(
-                    'Application received. If approved, your email will be added to the allowed list — then sign in again to open the editor.'
+                    'Application received. If approved, sign in with this email and password to write.'
                 );
             }
         } catch (err) {
-            if (err.code === 'admin_not_configured') {
+            if (err.code === 'email_mismatch') {
+                setApplyError('You’re signed in with a different email. Sign out, then apply again.');
+            } else if (err.code === 'account_password_mismatch') {
+                setApplyError('That email already has an account. Use the correct password, or sign in first.');
+            } else if (err.code === 'auth/email-already-in-use') {
+                setApplyError('That email already has an account. Sign in first, then apply.');
+            } else if (err.code === 'auth/weak-password') {
+                setApplyError('Password is too weak. Use at least 6 characters.');
+            } else if (err.code === 'auth/invalid-email') {
+                setApplyError('Enter a valid email address.');
+            } else if (err.code === 'admin_not_configured') {
                 setApplyError('Applications are not configured on the server yet. Contact the site admin.');
-            } else if (err.code === 'invalid_name') {
-                setApplyError('Name: 3–24 characters, letters, numbers, and underscores only.');
+            } else if (err.code === 'invalid_name' || err.code === 'invalid_author_name') {
+                setApplyError('Username: 3–24 characters, letters, numbers, and underscores only.');
+            } else if (err.code === 'invalid_avatar') {
+                setApplyError('Choose a profile picture from the list.');
             } else if (err.name === 'AbortError') {
                 setApplyError('Request timed out. Your application may still have been saved — try again only if you do not see a confirmation.');
             } else {
@@ -320,6 +705,8 @@
             e.preventDefault();
             showHomeSignInView();
         });
+        document.getElementById('home-signin-form')?.addEventListener('submit', handleHomeSigninSubmit);
+        document.getElementById('home-signin-forgot')?.addEventListener('click', handleHomeForgotPassword);
         document.getElementById('home-signup-form')?.addEventListener('submit', handleHomeSignupSubmit);
 
         document.getElementById('home-login-apply-author')?.addEventListener('click', (e) => {
@@ -335,6 +722,11 @@
             showHomeSignInView();
         });
         document.getElementById('home-author-apply-form')?.addEventListener('submit', handleAuthorApplySubmit);
+        document.getElementById('home-apply-avatar-trigger')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleAvatarMenu();
+        });
     }
 
     window.showHomeSignInView = showHomeSignInView;
