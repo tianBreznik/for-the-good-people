@@ -110,16 +110,138 @@ function applyHomeEntryAfterGridReady() {
 
     if (fromLogin) {
         revealHomeTitlesWithEmerge({ instant: true });
+        revealHomeTextureSwitcher({ delayMs: 900 });
     } else if (entryDismissed || (topdiv && topdiv.classList.contains('fade'))) {
         document.body.classList.add('home-titles-instant');
         document.body.classList.add('home-titles-visible');
+        revealHomeTextureSwitcher({ delayMs: entryDismissed ? 1000 : 700 });
     }
 
     syncAuthControls(auth.currentUser);
 }
 
-// Returning visitors / admin links: skip splash immediately (don't wait for blogs).
-if (hasPendingAdminHomeAction() || isHomeEntryDismissed()) {
+function homeAuthorQueryHandle() {
+    try {
+        const raw = new URLSearchParams(window.location.search).get('author');
+        if (!raw) return '';
+        return String(raw).trim().replace(/^@+/, '');
+    } catch (_) {
+        return '';
+    }
+}
+
+function decodePathSegment(segment) {
+    const raw = String(segment || '');
+    try {
+        return decodeURIComponent(raw);
+    } catch (_) {
+        try {
+            return decodeURI(raw);
+        } catch {
+            return raw;
+        }
+    }
+}
+
+function ensureHomeBioPanel() {
+    let panel = document.querySelector('.bio-panel');
+    if (panel) return panel;
+    panel = document.createElement('section');
+    panel.className = 'bio-panel';
+    panel.innerHTML = `
+        <div class="bio-panel-cards" id="bio-panel-cards">
+            <div class="bio-panel-profile bio-identity-card" id="bio-panel-profile">
+                <div class="bio-card-main">
+                    <div class="bio-card-head">
+                        <div class="bio-avatar-wrap" id="bio-avatar-wrap">
+                            <img class="bio-avatar" id="bio-avatar" src="" alt="" width="168" height="168" decoding="async" />
+                            <button type="button" class="bio-avatar-change bio-edit-only" id="bio-avatar-change" aria-haspopup="listbox" aria-expanded="false">Change</button>
+                            <input type="hidden" id="bio-edit-avatar" value="" />
+                            <div class="bio-avatar-menu" id="bio-avatar-menu" role="listbox" aria-label="Profile pictures" hidden></div>
+                        </div>
+                        <div class="bio-identity-row bio-view-only">
+                            <p class="bio-author-name" id="bio-author-name"></p>
+                        </div>
+                        <div class="bio-identity-row bio-edit-identity bio-edit-only" hidden>
+                            <p class="bio-author-name" id="bio-edit-handle"></p>
+                        </div>
+                    </div>
+                    <div class="bio-actions bio-actions-edit bio-view-only">
+                        <button type="button" class="bio-edit-btn" id="bio-edit-btn" hidden>Edit</button>
+                    </div>
+                    <div class="bio-actions bio-actions-save bio-edit-only" hidden>
+                        <button type="button" class="bio-edit-save" id="bio-edit-save">Save</button>
+                        <button type="button" class="bio-edit-cancel" id="bio-edit-cancel">Cancel</button>
+                    </div>
+                    <p class="bio-text bio-view-only" id="bio-text"></p>
+                    <div class="bio-edit-only bio-edit-bottom" hidden>
+                        <textarea class="bio-inline-input bio-inline-textarea" id="bio-edit-bio" rows="3" maxlength="600" placeholder="Bio"></textarea>
+                        <p class="bio-edit-error" id="bio-edit-error" hidden></p>
+                    </div>
+                    <div class="bio-card-foot bio-view-only" id="bio-view-block">
+                        <ul class="bio-meta" id="bio-meta" hidden></ul>
+                        <div class="bio-links" id="bio-links" hidden></div>
+                    </div>
+                    <div class="bio-card-foot bio-edit-only" id="bio-edit-layout" hidden>
+                        <ul class="bio-meta bio-meta-edit">
+                            <li class="bio-meta-item"><span class="bio-meta-icon" aria-hidden="true">📍</span><input type="text" id="bio-edit-location" maxlength="80" placeholder="Location" /></li>
+                            <li class="bio-meta-item"><span class="bio-meta-icon" aria-hidden="true">🔗</span><input type="url" id="bio-edit-website" maxlength="200" placeholder="Website" /></li>
+                        </ul>
+                        <div class="bio-links bio-links-edit">
+                            <input type="url" id="bio-edit-social-0" maxlength="200" placeholder="Social 1" />
+                            <input type="url" id="bio-edit-social-1" maxlength="200" placeholder="Social 2" />
+                            <input type="url" id="bio-edit-social-2" maxlength="200" placeholder="Social 3" />
+                            <input type="url" id="bio-edit-social-3" maxlength="200" placeholder="Social 4" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <aside class="bio-latest-card bio-identity-card bio-view-only" id="bio-latest-card" hidden>
+                <p class="bio-latest" id="bio-latest">
+                    <span class="bio-latest-label">Latest</span>
+                    <a class="bio-latest-link" id="bio-latest-link" href="#"></a>
+                </p>
+            </aside>
+        </div>
+        <form id="home-search-strip" class="home-search-strip" autocomplete="off" role="search">
+            <input type="search" id="home-search-input" name="q" placeholder="Search titles and authors…" aria-label="Search titles and authors" />
+        </form>
+    `;
+    document.body.appendChild(panel);
+    bindAuthorBioEditor(panel);
+    return panel;
+}
+
+const AUTHOR_AVATAR_FILES = Array.isArray(window.AUTHOR_AVATAR_FILES)
+    ? window.AUTHOR_AVATAR_FILES
+    : [
+        'IMG_0633.jpg',
+        'IMG_7131.jpg',
+        'IMG_8737.jpg',
+        'IMG_8739.JPG',
+        'IMG_8740.JPG',
+        'IMG_8741.JPG',
+        'IMG_8743.JPG',
+        'IMG_8744.JPG',
+        'IMG_8745.PNG',
+        'IMG_8747.JPG',
+        'IMG_8748.jpg',
+        'IMG_8749.jpg',
+        'IMG_8750.jpg',
+        'IMG_8751.jpg',
+        'IMG_8753.jpg',
+        'IMG_8755.jpg',
+        'IMG_9128.jpg'
+    ];
+
+/** name → { latestTitle, latestId, latestMs } built while loading blogs. */
+const authorHomeProfiles = Object.create(null);
+
+/** name → avatar url for this page load only (reshuffled on every refresh). */
+const authorAvatarByName = Object.create(null);
+
+// Returning visitors / admin / author deep-links: skip splash immediately (don't wait for blogs).
+if (hasPendingAdminHomeAction() || isHomeEntryDismissed() || homeAuthorQueryHandle()) {
     markHomeEntryDismissed({ hideNow: true });
     dismissSplashImmediately();
     revealHomeTitlesWithEmerge({ instant: true });
@@ -138,10 +260,161 @@ let popup = null; // The growing popup object
 let physicsActive = false; // Whether physics simulation is running
 let animationFrameId = null; // For the physics animation loop
 let articlePreviewUiBound = false;
-let bioHoverTimer = null; // Author tag → bio strip
+let bioHoverTimer = null; // Author tag click → bio strip (delay)
 let aboutHoverTimer = null; // About card → about panel
-/** Dwell before author bio strip and About panel open on desktop hover. */
+/** Ignore hover open/close while deep-link bio settles (avoids close→reopen double paint). */
+let bioHoverQuietUntil = 0;
+/** Home author-tag click → bio strip (short beat after click). */
+const AUTHOR_BIO_CLICK_DELAY_MS = 200;
+/** @author link from article/comment → bio strip (after home is up). */
+const AUTHOR_BIO_DEEP_LINK_DELAY_MS = 200;
+/** About card hover. */
 const PANEL_HOVER_DWELL_MS = 800;
+
+function isBioHoverQuiet() {
+    return Date.now() < bioHoverQuietUntil;
+}
+
+function quietBioHover(ms = 700) {
+    bioHoverQuietUntil = Date.now() + ms;
+}
+
+/** Desktop: close bio when the pointer leaves the strip for the stone wall. */
+let bioMoveCloser = null;
+let bioMoveCloserArmTimer = null;
+
+function detachBioMoveCloser() {
+    if (bioMoveCloserArmTimer) {
+        clearTimeout(bioMoveCloserArmTimer);
+        bioMoveCloserArmTimer = null;
+    }
+    if (!bioMoveCloser) return;
+    document.removeEventListener('mousemove', bioMoveCloser, true);
+    bioMoveCloser = null;
+}
+
+function clearAuthorBioHighlight() {
+    document.querySelectorAll('.blog-card.author-bio-active').forEach((el) => {
+        el.classList.remove('author-bio-active');
+    });
+    document.querySelectorAll('.blog-card.bio-dim').forEach((el) => {
+        el.classList.remove('bio-dim');
+    });
+}
+
+/** Persist the author-hover look while the bio strip is open. */
+function applyAuthorBioHighlight(authorName) {
+    clearAuthorBioHighlight();
+    const name = String(authorName || '').trim();
+    if (!name) return;
+
+    // Drop transient title↔author hover washes; bio-dim / author-bio-active own the look now.
+    document.querySelectorAll('.blog-card.hover').forEach((el) => {
+        el.classList.remove('hover');
+    });
+
+    document
+        .querySelectorAll('.title-section .cardcontainer[data-author] .blog-card:not(.author-card)')
+        .forEach((card) => {
+            const cardAuthor = card.closest('.cardcontainer')?.getAttribute('data-author') || '';
+            if (cardAuthor !== name) card.classList.add('bio-dim');
+        });
+
+    const esc = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(name) : name.replace(/"/g, '');
+    const authorCard =
+        document.querySelector(`.author-section .blog-card.author-card[data-author="${esc}"]`) ||
+        document.querySelector(`.blog-card.author-card[data-author="${esc}"]`);
+    if (authorCard) authorCard.classList.add('author-bio-active');
+}
+
+let authorBioCloseTimer = null;
+let authorBioCloseSeq = 0;
+/** Resolves when the wall has finished sliding shut after a bio close. */
+let authorBioClosePromise = null;
+let authorBioCloseResolve = null;
+
+/** Cancel an in-flight bio wall shut (e.g. reopening another author). */
+function cancelAuthorBioClosing() {
+    authorBioCloseSeq += 1;
+    if (authorBioCloseTimer) {
+        clearTimeout(authorBioCloseTimer);
+        authorBioCloseTimer = null;
+    }
+    document.body.classList.remove('bio-closing');
+    const resolve = authorBioCloseResolve;
+    authorBioCloseResolve = null;
+    authorBioClosePromise = null;
+    if (resolve) resolve();
+}
+
+/**
+ * Close the author bio strip. Uses `bio-closing` (like search) so translate stays
+ * applied while Y animates to 0. Resolves only after the full --aboutDuration.
+ */
+function closeHomeAuthorBio() {
+    if (document.body.classList.contains('bio-closing') && authorBioClosePromise) {
+        return authorBioClosePromise;
+    }
+    if (!document.body.classList.contains('bio-open')) {
+        return Promise.resolve();
+    }
+
+    exitAuthorBioEditMode();
+    clearAuthorBioHighlight();
+    detachBioMoveCloser();
+
+    // Keep translate rule live; drive --wallRevealY to 0 via bio-closing.
+    document.body.classList.add('bio-closing');
+    document.body.classList.remove('bio-open');
+    // Flush so the browser commits open→closing as a real transition, not a snap.
+    void document.querySelector('.column-section')?.offsetHeight;
+
+    const closeSeq = ++authorBioCloseSeq;
+    if (authorBioCloseTimer) {
+        clearTimeout(authorBioCloseTimer);
+        authorBioCloseTimer = null;
+    }
+    // Fixed duration only — transitionend on transform/translate was racing ahead.
+    const waitMs = getAboutDurationMs() + 60;
+    authorBioClosePromise = new Promise((resolve) => {
+        authorBioCloseResolve = resolve;
+        authorBioCloseTimer = setTimeout(() => {
+            if (closeSeq !== authorBioCloseSeq) return;
+            authorBioCloseTimer = null;
+            document.body.classList.remove('bio-closing');
+            authorBioCloseResolve = null;
+            authorBioClosePromise = null;
+            resolve();
+        }, waitMs);
+    });
+    return authorBioClosePromise;
+}
+
+/** Wait until any open/closing author bio wall is fully shut. */
+function ensureAuthorBioClosed() {
+    if (document.body.classList.contains('bio-open')) {
+        return closeHomeAuthorBio();
+    }
+    if (document.body.classList.contains('bio-closing') && authorBioClosePromise) {
+        return authorBioClosePromise;
+    }
+    return Promise.resolve();
+}
+
+function attachBioMoveCloser() {
+    if (!homeFinePointerHoverUi()) return;
+    if (bioMoveCloser || bioMoveCloserArmTimer) return;
+    bioMoveCloserArmTimer = setTimeout(() => {
+        bioMoveCloserArmTimer = null;
+        if (bioMoveCloser) return;
+        bioMoveCloser = (e) => {
+            if (isBioHoverQuiet()) return;
+            if (e.target && e.target.closest && e.target.closest('.bio-panel')) return;
+            closeHomeAuthorBio();
+        };
+        document.addEventListener('mousemove', bioMoveCloser, true);
+    }, 120);
+}
 /** Keeps preview visible until column slabs finish sliding shut (matches --articlePreviewRevealDuration). */
 let articlePreviewClosingTimer = null;
 let articlePreviewCloseSeq = 0;
@@ -395,10 +668,58 @@ function createPreviewNodeFromLine(line) {
         h.textContent = trimmed.slice(marks).trim();
         return h;
     }
-    if (trimmed.startsWith('![')) return null;
+    // Legacy markdown image: ![alt](src)
+    if (trimmed.startsWith('![')) {
+        const close = trimmed.indexOf('](');
+        if (close > 1 && trimmed.endsWith(')')) {
+            const img = document.createElement('img');
+            img.className = 'article-image';
+            img.setAttribute('data-display', 'block');
+            img.alt = trimmed.slice(2, close);
+            img.src = trimmed.slice(close + 2, -1);
+            return img;
+        }
+        return null;
+    }
     const p = document.createElement('p');
     p.textContent = trimmed;
     return p;
+}
+
+function isPreviewImageBlock(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (el.tagName === 'IMG') return true;
+    if (el.tagName === 'FIGURE' || el.tagName === 'P') {
+        const imgs = el.querySelectorAll('img');
+        return imgs.length > 0 && !(el.textContent || '').trim();
+    }
+    return false;
+}
+
+/** Shrink a block image so it can sit on the preview page instead of being dropped. */
+function constrainPreviewImageToBudget(bodyEl, node, budget) {
+    const img = node.tagName === 'IMG' ? node : node.querySelector('img');
+    if (!img || !bodyEl) return false;
+    bodyEl.appendChild(node);
+    void bodyEl.offsetHeight;
+    if (bodyEl.scrollHeight <= budget) return true;
+
+    bodyEl.removeChild(node);
+    void bodyEl.offsetHeight;
+    const remaining = budget - bodyEl.scrollHeight;
+    if (remaining < 56) return false;
+
+    img.style.maxHeight = `${Math.floor(remaining)}px`;
+    img.style.width = 'auto';
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+    img.style.objectFit = 'contain';
+    bodyEl.appendChild(node);
+    void bodyEl.offsetHeight;
+    if (bodyEl.scrollHeight <= budget) return true;
+
+    bodyEl.removeChild(node);
+    return false;
 }
 
 function articleBlocksFromRaw(rawArticle) {
@@ -457,21 +778,118 @@ function wrapSplitParagraphForPreview(p, sourceBlock) {
     return p;
 }
 
-function makePreviewSplitProbe(mid, words, sourceBlock) {
-    const p = document.createElement('p');
-    p.textContent = `${words.slice(0, mid).join(' ')}…`;
-    return wrapSplitParagraphForPreview(p, sourceBlock);
+/** Same band formula as blog.js footnoteBandHeight — reserve even though preview omits the strip. */
+function previewFootnoteBandHeight(pageEl) {
+    const h = pageEl ? pageEl.clientHeight : 0;
+    if (h <= 0) return 112;
+    return Math.min(168, Math.max(96, Math.round(h * 0.155)));
 }
 
-function splitPreviewTextToFit(bodyEl, rawText, sourceBlock) {
-    if (!bodyEl || !rawText) return null;
-    const text = String(rawText).trim().replace(/\s+/g, ' ');
+function previewPageHasFootnoteRefs(bodyEl, extraEl) {
+    if (bodyEl && bodyEl.querySelector && bodyEl.querySelector('.footnote-ref')) return true;
+    if (extraEl && extraEl.querySelector && extraEl.querySelector('.footnote-ref')) return true;
+    return false;
+}
+
+/** Body height budget matching reader page-1 packing (flex leftover minus footnote band when needed). */
+function previewBodyHeightBudget(bodyEl, extraEl) {
+    if (!bodyEl) return 0;
+    void bodyEl.offsetHeight;
+    let budget = bodyEl.clientHeight;
+    if (previewPageHasFootnoteRefs(bodyEl, extraEl)) {
+        const pageEl = bodyEl.closest('.home-preview-page, .article-page');
+        budget -= previewFootnoteBandHeight(pageEl);
+    }
+    return Math.max(32, budget);
+}
+
+function pruneEmptyInlineNodesForPreview(root) {
+    const inlineTags = new Set(['SPAN', 'A', 'EM', 'STRONG', 'B', 'I', 'SUP', 'SUB', 'MARK', 'S', 'U']);
+    const walk = (el) => {
+        for (let i = el.childNodes.length - 1; i >= 0; i--) {
+            const child = el.childNodes[i];
+            if (child.nodeType === Node.ELEMENT_NODE) {
+                walk(child);
+                if (inlineTags.has(child.tagName) && !child.textContent.trim()) {
+                    child.remove();
+                }
+            }
+        }
+    };
+    walk(root);
+}
+
+/** Mirror blog.js splitNodeAtWordBoundary — keep inline markup on the left fragment. */
+function splitPreviewNodeAtWordBoundary(leftRoot, rightRoot, splitWordIndex) {
+    const leftWalker = document.createTreeWalker(leftRoot, NodeFilter.SHOW_TEXT);
+    const rightWalker = document.createTreeWalker(rightRoot, NodeFilter.SHOW_TEXT);
+    let wordCount = 0;
+    const leftNodes = [];
+    const rightNodes = [];
+    let node;
+    while ((node = leftWalker.nextNode())) leftNodes.push(node);
+    while ((node = rightWalker.nextNode())) rightNodes.push(node);
+
+    let splitDone = false;
+    for (let i = 0; i < leftNodes.length; i++) {
+        const ln = leftNodes[i];
+        const rn = rightNodes[i];
+        if (splitDone) {
+            ln.textContent = '';
+            continue;
+        }
+        const nodeWords = ln.textContent.split(/(\s+)/);
+        let nodeWordIdx = 0;
+        let leftText = '';
+        let rightText = '';
+        let inRight = false;
+        for (const token of nodeWords) {
+            if (/\S/.test(token)) {
+                if (!inRight && wordCount + nodeWordIdx >= splitWordIndex) {
+                    inRight = true;
+                }
+                nodeWordIdx++;
+            }
+            if (inRight) rightText += token;
+            else leftText += token;
+        }
+        if (inRight) {
+            ln.textContent = leftText;
+            rn.textContent = rightText;
+            splitDone = true;
+            wordCount += nodeWordIdx;
+        } else {
+            rn.textContent = '';
+            wordCount += nodeWordIdx;
+        }
+    }
+
+    pruneEmptyInlineNodesForPreview(leftRoot);
+}
+
+/**
+ * Split a paragraph/blockquote like the reader: no ellipsis, same word thresholds,
+ * probe with plain text then apply a markup-preserving cut.
+ */
+function splitPreviewBlockToFit(bodyEl, sourceBlock) {
+    if (!bodyEl || !sourceBlock) return null;
+
+    let paragraphEl = null;
+    if (sourceBlock.tagName === 'P') {
+        paragraphEl = sourceBlock;
+    } else if (sourceBlock.tagName === 'BLOCKQUOTE') {
+        paragraphEl =
+            sourceBlock.querySelector('p:not([data-variant="attribution"])') ||
+            sourceBlock.querySelector('p');
+    }
+    if (!paragraphEl || paragraphEl.tagName !== 'P') return null;
+
+    const text = (paragraphEl.textContent || '').trim();
     if (!text) return null;
     const words = text.split(/\s+/);
-    if (words.length < 8) return null;
+    if (words.length < 12) return null;
 
-    void bodyEl.offsetHeight;
-    const budget = bodyEl.clientHeight;
+    const budget = previewBodyHeightBudget(bodyEl, sourceBlock);
     if (budget < 32) return null;
 
     let low = 1;
@@ -480,11 +898,13 @@ function splitPreviewTextToFit(bodyEl, rawText, sourceBlock) {
 
     while (low <= high) {
         const mid = Math.floor((low + high) / 2);
-        const probe = makePreviewSplitProbe(mid, words, sourceBlock);
-        bodyEl.appendChild(probe);
+        const probe = document.createElement('p');
+        probe.textContent = words.slice(0, mid).join(' ');
+        const wrapped = wrapSplitParagraphForPreview(probe, sourceBlock);
+        bodyEl.appendChild(wrapped);
         void bodyEl.offsetHeight;
         const fits = bodyEl.scrollHeight <= budget;
-        bodyEl.removeChild(probe);
+        bodyEl.removeChild(wrapped);
         if (fits) {
             best = mid;
             low = mid + 1;
@@ -493,44 +913,72 @@ function splitPreviewTextToFit(bodyEl, rawText, sourceBlock) {
         }
     }
 
-    if (best < 4) return null;
-    const p = document.createElement('p');
-    p.textContent = `${words.slice(0, best).join(' ')}…`;
-    return wrapSplitParagraphForPreview(p, sourceBlock);
-}
+    if (best <= 3 || best >= words.length - 3) return null;
 
-function textForPreviewSplit(node) {
-    if (!node) return '';
-    if (node.tagName === 'P') return (node.textContent || '').trim();
-    if (node.tagName === 'BLOCKQUOTE') {
-        const mainP = node.querySelector('p:not([data-variant="attribution"])');
-        if (mainP) return (mainP.textContent || '').trim();
+    if (sourceBlock.tagName === 'P') {
+        const leftPart = sourceBlock.cloneNode(true);
+        const rightPart = sourceBlock.cloneNode(true);
+        splitPreviewNodeAtWordBoundary(leftPart, rightPart, best);
+        return leftPart;
     }
-    const innerP = node.querySelector && node.querySelector('p:not([data-variant="attribution"])');
-    if (innerP) return (innerP.textContent || '').trim();
-    const anyP = node.querySelector && node.querySelector('p');
-    if (anyP) return (anyP.textContent || '').trim();
-    return (node.textContent || '').trim();
+
+    // Blockquote: cut the main paragraph; drop attribution on the preview fragment.
+    const leftQuote = sourceBlock.cloneNode(false);
+    const leftP = paragraphEl.cloneNode(true);
+    const rightP = paragraphEl.cloneNode(true);
+    splitPreviewNodeAtWordBoundary(leftP, rightP, best);
+    leftQuote.appendChild(leftP);
+    return leftQuote;
 }
 
 function fitPreviewBlocksToPage(bodyEl, blocks) {
     if (!bodyEl) return;
     bodyEl.innerHTML = '';
     void bodyEl.offsetHeight;
-    const budget = bodyEl.clientHeight;
-    if (budget < 32) return;
 
     for (let i = 0; i < blocks.length; i++) {
         const node = blocks[i].cloneNode(true);
+        const budget = previewBodyHeightBudget(bodyEl, null);
+
+        if (isPreviewImageBlock(node)) {
+            // Images can't be word-split; scale to fit or skip and keep packing text.
+            if (!constrainPreviewImageToBudget(bodyEl, node, budget)) continue;
+            continue;
+        }
+
         bodyEl.appendChild(node);
         void bodyEl.offsetHeight;
         if (bodyEl.scrollHeight <= budget) continue;
 
         bodyEl.removeChild(node);
-        const split = splitPreviewTextToFit(bodyEl, textForPreviewSplit(blocks[i]), blocks[i]);
+        const split = splitPreviewBlockToFit(bodyEl, blocks[i]);
         if (split) bodyEl.appendChild(split);
         break;
     }
+}
+
+function prefetchPreviewBlockImages(blocks) {
+    const urls = new Set();
+    (blocks || []).forEach((block) => {
+        if (!block) return;
+        if (block.tagName === 'IMG' && block.src) urls.add(block.src);
+        else if (block.querySelectorAll) {
+            block.querySelectorAll('img').forEach((img) => {
+                if (img.src) urls.add(img.src);
+            });
+        }
+    });
+    if (!urls.size) return Promise.resolve();
+    return Promise.all(
+        [...urls].map(
+            (src) =>
+                new Promise((resolve) => {
+                    const im = new Image();
+                    im.onload = im.onerror = () => resolve();
+                    im.src = src;
+                })
+        )
+    );
 }
 
 function renderFirstPagePreview(panelEl, payload, onReady) {
@@ -600,14 +1048,16 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
     mount.appendChild(page);
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            fitPreviewBlocksToPage(body, blocks);
-            if (typeof onReady === 'function') {
-                requestAnimationFrame(() => {
-                    void panelEl.offsetHeight;
-                    panelEl.classList.remove('article-preview-layout');
-                    onReady();
-                });
-            }
+            prefetchPreviewBlockImages(blocks).finally(() => {
+                fitPreviewBlocksToPage(body, blocks);
+                if (typeof onReady === 'function') {
+                    requestAnimationFrame(() => {
+                        void panelEl.offsetHeight;
+                        panelEl.classList.remove('article-preview-layout');
+                        onReady();
+                    });
+                }
+            });
         });
     });
 }
@@ -1055,6 +1505,8 @@ db.collection("blogs").get().then((blogs) => {
 
     const stage = document.createElement('div');
     stage.className = 'home-main-stage';
+    // Hide until cards are absolutely positioned — avoids a flow→absolute jump (titles “move up”).
+    stage.style.visibility = 'hidden';
     const track = document.createElement('div');
     track.className = 'home-main-track';
 
@@ -1073,6 +1525,7 @@ db.collection("blogs").get().then((blogs) => {
             overflow-y: auto;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
+            scrollbar-gutter: stable;
         `;
         const pane = document.createElement('div');
         pane.className = 'home-main-pane';
@@ -1082,6 +1535,11 @@ db.collection("blogs").get().then((blogs) => {
         sections[i] = section;
     }
     stage.appendChild(track);
+    // Returning visits: lock final stage pose before first paint of the grid.
+    if (isHomeEntryDismissed() || hasPendingAdminHomeAction()) {
+        document.body.classList.add('home-titles-instant');
+        document.body.classList.add('home-titles-visible');
+    }
     document.body.appendChild(stage);
     initHomeActiveColumnFromScroll(track);
     const authorSection = sections[5];
@@ -1089,8 +1547,9 @@ db.collection("blogs").get().then((blogs) => {
         createSectionTitleCard(sections[i], SECTION_LABELS[i]);
     }
     
+    const pathBlogId = decodePathSegment(location.pathname.split('/').filter(Boolean).pop() || '');
     blogs.forEach(blog => {
-        if(blog.id != decodeURI(location.pathname.split("/").pop())){
+        if (blog.id != pathBlogId) {
             const doc = blog.data();
             const authorName = doc.author ? doc.author.split('@')[0] : 'Anonymous';
             noteAuthorLatestPost(authorName, blog, doc);
@@ -1109,7 +1568,7 @@ db.collection("blogs").get().then((blogs) => {
     // Create author cards in the author section
     const uniqueAuthors = new Set();
     blogs.forEach(blog => {
-        if(blog.id != decodeURI(location.pathname.split("/").pop())){
+        if (blog.id != pathBlogId) {
             const authorName = blog.data().author ? blog.data().author.split('@')[0] : 'Anonymous';
             if (!uniqueAuthors.has(authorName)) {
                 uniqueAuthors.add(authorName);
@@ -1124,8 +1583,23 @@ db.collection("blogs").get().then((blogs) => {
         uniqueAuthors.add('Anonymous');
     }
 
-    // New random avatars every page refresh (until profile picker exists).
+    // Random avatars for authors without a saved profile picture.
     reshuffleAuthorAvatars(Array.from(uniqueAuthors));
+    // Warm author profile cache (emoji on tags, saved avatars, faster bio open).
+    Array.from(uniqueAuthors).forEach((name) => {
+        fetchAuthorProfile(name).then((profile) => {
+            syncAuthorCardEmoji(name);
+            const avatar = normalizeClientAvatarPath(profile.avatar);
+            if (avatar) {
+                authorAvatarByName[name] = avatar;
+                const panel = document.querySelector('.bio-panel');
+                if (panel && panel.dataset.author === name) {
+                    const img = document.getElementById('bio-avatar');
+                    if (img && img.getAttribute('src') !== avatar) img.src = avatar;
+                }
+            }
+        });
+    });
 
     // Desktop search control under author tags (hidden on mobile via CSS)
     createSearchCard(authorSection);
@@ -1144,27 +1618,8 @@ db.collection("blogs").get().then((blogs) => {
         </div>`;
     document.body.appendChild(aboutPanel);
 
-    // Create top bio / search strip (initially hidden above viewport)
-    const bioPanel = document.createElement('section');
-    bioPanel.className = 'bio-panel';
-    bioPanel.innerHTML = `
-        <div class="bio-panel-profile" id="bio-panel-profile">
-            <img class="bio-avatar" id="bio-avatar" src="" alt="" width="168" height="168" decoding="async" />
-            <div class="bio-panel-copy">
-                <p class="bio-author-name" id="bio-author-name"></p>
-                <p class="bio-text" id="bio-text"></p>
-                <div class="bio-links" id="bio-links" hidden></div>
-                <p class="bio-latest" id="bio-latest" hidden>
-                    <span class="bio-latest-label">Latest</span>
-                    <a class="bio-latest-link" id="bio-latest-link" href="#"></a>
-                </p>
-            </div>
-        </div>
-        <form id="home-search-strip" class="home-search-strip" autocomplete="off" role="search">
-            <input type="search" id="home-search-input" name="q" placeholder="Search titles and authors…" aria-label="Search titles and authors" />
-        </form>
-    `;
-    document.body.appendChild(bioPanel);
+    // Create top bio / search strip (reuse if author deep-link mounted it early)
+    const bioPanel = ensureHomeBioPanel();
 
     // Article preview: real stone columns slide apart to reveal panel underneath (see home.css)
     const articlePanel = document.createElement('section');
@@ -1177,19 +1632,45 @@ db.collection("blogs").get().then((blogs) => {
     ensureMobileReaderShell();
 
     console.log('Created author cards for:', Array.from(uniqueAuthors));
-    
-    // Position cards in all columns
-    for (let i = 1; i <= 4; i++) {
-        positionCardsInSection(sections[i]);
-    }
-    const alignedAuthorStartY = getFirstContentRowTop(sections);
-    positionCardsInSection(authorSection, { startY: alignedAuthorStartY });
-    
+
+    // Auth controls before first layout so author-column measure is final.
+    createAuthControls(authorSection);
+
+    const layoutHomeColumns = () => {
+        for (let i = 1; i <= 4; i++) {
+            positionCardsInSection(sections[i]);
+        }
+        positionCardsInSection(authorSection, { startY: getFirstContentRowTop(sections) });
+        layoutAuthControls();
+        syncHomeActiveColumnRef?.();
+    };
+
+    let stageRevealed = false;
+    const revealLaidOutStage = () => {
+        if (stageRevealed) {
+            layoutHomeColumns();
+            return;
+        }
+        stageRevealed = true;
+        layoutHomeColumns();
+        stage.style.visibility = '';
+        // Open author bio only once the grid is actually visible.
+        consumeHomeAuthorQuery();
+    };
+
+    // Prefer fonts.ready so Impact metrics don’t shift titles after first paint.
+    const fontsReady = document.fonts && document.fonts.ready
+        ? document.fonts.ready.catch(() => {})
+        : Promise.resolve();
+    fontsReady.then(() => {
+        revealLaidOutStage();
+        requestAnimationFrame(layoutHomeColumns);
+    });
+    // Fallback if fonts.ready hangs — never leave the grid invisible.
+    setTimeout(revealLaidOutStage, 480);
+
     // Add hover interactions after positioning (disable popup/physics in new design)
     setupHoverInteractions();
-    
-    // Create auth controls in bottom-right of authors column
-    createAuthControls(authorSection);
 
     const aboutCard = document.getElementById('about-card');
     if (aboutCard) {
@@ -1252,78 +1733,58 @@ db.collection("blogs").get().then((blogs) => {
     );
     const bioEl = document.querySelector('.bio-panel');
     if (bioEl && authorCardsForBio.length) {
-        if (homeFinePointerHoverUi()) {
-            let bioCloser = null;
-            const detachBioMoveCloser = () => {
-                if (!bioCloser) return;
-                document.removeEventListener('mousemove', bioCloser, true);
-                bioCloser = null;
-            };
-            const attachBioMoveCloser = () => {
-                if (bioCloser) return;
-                setTimeout(() => {
-                    if (bioCloser) return;
-                    bioCloser = (e) => {
-                        if (e.target && e.target.closest && e.target.closest('.bio-panel')) return;
-                        document.body.classList.remove('bio-open');
-                        detachBioMoveCloser();
-                    };
-                    document.addEventListener('mousemove', bioCloser, true);
-                }, 120);
-            };
-            const openBio = (authorName) => {
-                closeHomeSearchStrip({ switchToBio: true });
-                fillAuthorBioPanel(authorName);
-                document.body.classList.add('bio-open');
-                attachBioMoveCloser();
-            };
-            bioEl.addEventListener('mouseenter', () => {
+        const openBioFromClick = (authorName) => {
+            if (isBioHoverQuiet()) return;
+            cancelAuthorBioClosing();
+            closeHomeSearchStrip({ switchToBio: true });
+            fillAuthorBioPanel(authorName);
+            clearColumnTransformTransitions();
+            document.body.classList.add('bio-open');
+            applyAuthorBioHighlight(authorName);
+            detachBioMoveCloser();
+        };
+
+        authorCardsForBio.forEach((card) => {
+            const name = card.getAttribute('data-author');
+            card.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isBioHoverQuiet()) return;
+                const alreadyOpen =
+                    document.body.classList.contains('bio-open') &&
+                    bioEl.dataset.author === name;
+                if (alreadyOpen) {
+                    clearBioHoverTimer();
+                    closeHomeAuthorBio();
+                    return;
+                }
                 clearBioHoverTimer();
-                detachBioMoveCloser();
+                bioHoverTimer = setTimeout(() => {
+                    bioHoverTimer = null;
+                    openBioFromClick(name);
+                }, AUTHOR_BIO_CLICK_DELAY_MS);
             });
-            bioEl.addEventListener('mouseleave', () => {
-                document.body.classList.remove('bio-open');
-            });
-            authorCardsForBio.forEach(card => {
-                const name = card.getAttribute('data-author');
-                card.addEventListener('mouseenter', () => {
-                    clearBioHoverTimer();
-                    bioHoverTimer = setTimeout(() => openBio(name), PANEL_HOVER_DWELL_MS);
-                });
-                card.addEventListener('mouseleave', () => clearBioHoverTimer());
-                card.addEventListener('focus', () => {
-                    clearBioHoverTimer();
-                    openBio(name);
-                });
-            });
-        } else {
-            authorCardsForBio.forEach(card => {
-                const name = card.getAttribute('data-author');
-                card.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const open =
-                        document.body.classList.contains('bio-open') &&
-                        bioEl.dataset.author === name;
-                    if (open) {
-                        document.body.classList.remove('bio-open');
-                        return;
-                    }
-                    closeHomeSearchStrip({ switchToBio: true });
-                    fillAuthorBioPanel(name);
-                    document.body.classList.add('bio-open');
-                });
-            });
-            document.addEventListener(
-                'click',
-                (e) => {
-                    if (!document.body.classList.contains('bio-open')) return;
-                    if (e.target.closest('.bio-panel') || e.target.closest('.author-card')) return;
-                    document.body.classList.remove('bio-open');
-                },
-                true
-            );
-        }
+        });
+
+        // Dismiss only on click/tap outside the strip (not on mouseleave).
+        // Title cards own their own sequence (bio shut → then preview open).
+        document.addEventListener(
+            'click',
+            (e) => {
+                if (!document.body.classList.contains('bio-open')) return;
+                if (isBioHoverQuiet()) return;
+                if (e.target.closest('.bio-panel') || e.target.closest('.author-card')) return;
+                if (
+                    e.target.closest(
+                        '.title-section .cardcontainer[data-author] .blog-card:not(.author-card)'
+                    )
+                ) {
+                    return;
+                }
+                closeHomeAuthorBio();
+            },
+            true
+        );
     }
 
     const searchCard = document.getElementById('search-card');
@@ -1367,26 +1828,81 @@ db.collection("blogs").get().then((blogs) => {
 
     // (Reverted) remove title hover article preview behavior
 
-    const relayoutHomeSections = () => {
-        for (let i = 1; i <= 4; i++) {
-            positionCardsInSection(sections[i]);
-        }
-        positionCardsInSection(authorSection, { startY: getFirstContentRowTop(sections) });
-        layoutAuthControls();
-        syncHomeActiveColumnRef?.();
+    relayoutHomeSectionsRef = layoutHomeColumns;
+    const onHomeResize = () => {
+        layoutHomeColumns();
+        if (document.body.classList.contains('bio-open')) fitBioPanelAuthorNames();
     };
-    relayoutHomeSectionsRef = relayoutHomeSections;
-    requestAnimationFrame(() => {
-        requestAnimationFrame(relayoutHomeSections);
-    });
-    window.addEventListener('resize', relayoutHomeSections);
-    window.visualViewport?.addEventListener('resize', relayoutHomeSections);
+    window.addEventListener('resize', onHomeResize);
+    window.visualViewport?.addEventListener('resize', onHomeResize);
 
     applyHomeEntryAfterGridReady();
 }).catch((err) => {
     console.error('Failed to load home blogs', err);
     showHomeBlogsLoadFailure(err);
 });
+
+/** Drop stuck column `transform` transitions so they can’t pin the wall in place. */
+function clearColumnTransformTransitions() {
+    document.querySelectorAll('.column-section').forEach((el) => {
+        try {
+            el.getAnimations?.().forEach((anim) => {
+                if (anim.transitionProperty === 'transform') anim.cancel();
+            });
+        } catch (_) {}
+    });
+}
+
+/** Open author bio panel by handle (desktop uses hover, so deep-links cannot rely on click). */
+function openAuthorBioByHandle(handle, { instant = false } = {}) {
+    const name = String(handle || '').trim().replace(/^@+/, '');
+    if (!name) return false;
+    const esc = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(name) : name.replace(/"/g, '');
+    const authorCard =
+        document.querySelector(`.author-section .blog-card.author-card[data-author="${esc}"]`) ||
+        document.querySelector(`.blog-card.author-card[data-author="${esc}"]`);
+    if (!authorCard) return false;
+    const panel = document.querySelector('.bio-panel');
+    if (
+        document.body.classList.contains('bio-open') &&
+        panel &&
+        panel.dataset.author === name
+    ) {
+        return true;
+    }
+    cancelAuthorBioClosing();
+    if (typeof closeHomeSearchStrip === 'function') {
+        closeHomeSearchStrip({ switchToBio: true });
+    }
+    fillAuthorBioPanel(name);
+    if (instant) quietBioHover(900);
+    clearColumnTransformTransitions();
+    document.body.classList.add('bio-open');
+    applyAuthorBioHighlight(name);
+    detachBioMoveCloser();
+    return true;
+}
+
+/** Open author bio from /?author=handle (content-ref links). */
+function consumeHomeAuthorQuery() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const raw = params.get('author');
+        if (!raw) return;
+        const handle = String(raw).trim().replace(/^@+/, '');
+        if (!handle) return;
+        params.delete('author');
+        const cleaned = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', cleaned);
+        // Short beat after home is up, then wall reveals the bio underneath.
+        quietBioHover(AUTHOR_BIO_DEEP_LINK_DELAY_MS + 900);
+        setTimeout(() => {
+            openAuthorBioByHandle(handle, { instant: true });
+        }, AUTHOR_BIO_DEEP_LINK_DELAY_MS);
+    } catch (err) {
+        console.warn('consumeHomeAuthorQuery', err);
+    }
+}
 
 function showHomeBlogsLoadFailure(err) {
     if (document.getElementById('home-load-failure')) return;
@@ -1447,6 +1963,7 @@ function applyHomeEntryAfterSignIn() {
             dismissSplashImmediately();
         }
         revealHomeTitlesWithEmerge({ instant: true });
+        revealHomeTextureSwitcher({ delayMs: 900 });
     }
 }
 
@@ -1636,34 +2153,6 @@ function anchorMobilePaneToViewport(card) {
 }
 
 /** Preset author avatars — profile picker will choose among these later. */
-const AUTHOR_AVATAR_FILES = Array.isArray(window.AUTHOR_AVATAR_FILES)
-    ? window.AUTHOR_AVATAR_FILES
-    : [
-        'IMG_0633.jpg',
-        'IMG_7131.jpg',
-        'IMG_8737.jpg',
-        'IMG_8739.JPG',
-        'IMG_8740.JPG',
-        'IMG_8741.JPG',
-        'IMG_8743.JPG',
-        'IMG_8744.JPG',
-        'IMG_8745.PNG',
-        'IMG_8747.JPG',
-        'IMG_8748.jpg',
-        'IMG_8749.jpg',
-        'IMG_8750.jpg',
-        'IMG_8751.jpg',
-        'IMG_8753.jpg',
-        'IMG_8755.jpg',
-        'IMG_9128.jpg'
-    ];
-
-/** name → { latestTitle, latestId, latestMs } built while loading blogs. */
-const authorHomeProfiles = Object.create(null);
-
-/** name → avatar url for this page load only (reshuffled on every refresh). */
-const authorAvatarByName = Object.create(null);
-
 function shuffleInPlace(list) {
     for (let i = list.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -1688,8 +2177,22 @@ function reshuffleAuthorAvatars(authorNames) {
     });
 }
 
+function normalizeClientAvatarPath(raw) {
+    const path = String(raw || '').trim();
+    const match = path.match(/^\/pfps\/([A-Za-z0-9_.-]+)$/);
+    if (!match) return '';
+    const file = match[1];
+    if (!AUTHOR_AVATAR_FILES.includes(file)) return '';
+    return `/pfps/${file}`;
+}
+
 function avatarUrlForAuthor(authorName) {
     const name = authorName || 'Anonymous';
+    const fromProfile = normalizeClientAvatarPath(authorProfileCache[authorHandleKey(name)]?.avatar);
+    if (fromProfile) {
+        authorAvatarByName[name] = fromProfile;
+        return fromProfile;
+    }
     if (authorAvatarByName[name]) return authorAvatarByName[name];
     // Fallback if called before reshuffle (shouldn't happen on home).
     const files = AUTHOR_AVATAR_FILES;
@@ -1714,48 +2217,736 @@ function noteAuthorLatestPost(authorName, blog, doc) {
     };
 }
 
-function fillAuthorBioPanel(authorName) {
+/** handle(lower) → profile fields from /api/author-profile */
+const authorProfileCache = Object.create(null);
+let bioEditorBound = false;
+let bioEditSaving = false;
+
+function authorHandleKey(name) {
+    return String(name || '')
+        .trim()
+        .replace(/^@+/, '')
+        .toLowerCase();
+}
+
+function emptyAuthorProfile(name) {
+    return {
+        authorName: authorHandleKey(name),
+        bio: '',
+        location: '',
+        website: '',
+        socialLinks: [],
+        statusEmoji: '',
+        avatar: ''
+    };
+}
+
+function closeBioAvatarMenu() {
+    const menu = document.getElementById('bio-avatar-menu');
+    const btn = document.getElementById('bio-avatar-change');
+    const wrap = document.getElementById('bio-avatar-wrap');
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (wrap) wrap.classList.remove('is-picking');
+}
+
+function setBioAvatarSelection(path, { preview = true } = {}) {
+    const clean = normalizeClientAvatarPath(path);
+    const hidden = document.getElementById('bio-edit-avatar');
+    if (hidden) hidden.value = clean;
+    if (preview && clean) {
+        const img = document.getElementById('bio-avatar');
+        if (img) img.src = clean;
+    }
+    const menu = document.getElementById('bio-avatar-menu');
+    if (menu) {
+        menu.querySelectorAll('.bio-avatar-option').forEach((el) => {
+            const on = el.dataset.avatar === clean;
+            el.classList.toggle('is-selected', on);
+            el.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+    }
+}
+
+function ensureBioAvatarMenu() {
+    const menu = document.getElementById('bio-avatar-menu');
+    if (!menu || menu.childElementCount) return menu;
+    AUTHOR_AVATAR_FILES.forEach((file) => {
+        const path = `/pfps/${file}`;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'bio-avatar-option';
+        btn.role = 'option';
+        btn.dataset.avatar = path;
+        btn.title = file;
+        const img = document.createElement('img');
+        img.src = path;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        btn.appendChild(img);
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setBioAvatarSelection(path);
+            closeBioAvatarMenu();
+        });
+        menu.appendChild(btn);
+    });
+    return menu;
+}
+
+function toggleBioAvatarMenu() {
+    if (!document.body.classList.contains('bio-editing')) return;
+    const menu = ensureBioAvatarMenu();
+    const btn = document.getElementById('bio-avatar-change');
+    const wrap = document.getElementById('bio-avatar-wrap');
+    if (!menu) return;
+    const open = menu.hidden;
+    menu.hidden = !open;
+    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (wrap) wrap.classList.toggle('is-picking', open);
+    if (open) {
+        const current = document.getElementById('bio-edit-avatar')?.value || '';
+        setBioAvatarSelection(current, { preview: false });
+    }
+}
+
+function isViewingOwnAuthorBio(authorName) {
+    const user = typeof auth !== 'undefined' ? auth.currentUser : null;
+    if (!user || typeof getAuthorIdFromUser !== 'function') return false;
+    const self = authorHandleKey(getAuthorIdFromUser(user));
+    const target = authorHandleKey(authorName);
+    return Boolean(self && target && self === target);
+}
+
+async function fetchAuthorProfile(authorName) {
+    const key = authorHandleKey(authorName);
+    if (!key || key === 'anonymous') return emptyAuthorProfile(authorName);
+    if (authorProfileCache[key]) return authorProfileCache[key];
+    try {
+        const res = await fetch(`/api/author-profile/${encodeURIComponent(key)}`);
+        if (!res.ok) {
+            const fallback = emptyAuthorProfile(key);
+            authorProfileCache[key] = fallback;
+            return fallback;
+        }
+        const data = await res.json();
+        const profile = { ...emptyAuthorProfile(key), ...(data.profile || {}) };
+        authorProfileCache[key] = profile;
+        return profile;
+    } catch (_) {
+        const fallback = emptyAuthorProfile(key);
+        authorProfileCache[key] = fallback;
+        return fallback;
+    }
+}
+
+/** Parse a social URL into { platform, username, label } like GitHub profile links. */
+function parseSocialLink(rawUrl) {
+    let href = String(rawUrl || '').trim();
+    if (!href) return null;
+    if (!/^https?:\/\//i.test(href)) href = `https://${href}`;
+    let u;
+    try {
+        u = new URL(href);
+    } catch (_) {
+        return { href, platform: 'link', username: '', label: href };
+    }
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    const parts = u.pathname.split('/').filter(Boolean);
+    const first = decodeURIComponent(parts[0] || '').replace(/^@/, '');
+
+    if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
+        const user = first && !['p', 'reel', 'reels', 'stories', 'explore', 'accounts'].includes(first.toLowerCase())
+            ? first
+            : '';
+        return { href, platform: 'instagram', username: user, label: user || 'Instagram' };
+    }
+    if (host === 'x.com' || host === 'twitter.com' || host.endsWith('.twitter.com')) {
+        const user = first && !['i', 'home', 'explore', 'intent', 'share'].includes(first.toLowerCase())
+            ? first
+            : '';
+        return { href, platform: 'x', username: user, label: user ? `@${user}` : 'X' };
+    }
+    if (host === 'github.com') {
+        const user = first && !['features', 'topics', 'collections', 'events', 'sponsors'].includes(first.toLowerCase())
+            ? first
+            : '';
+        return { href, platform: 'github', username: user, label: user || 'GitHub' };
+    }
+    if (host === 'linkedin.com' || host.endsWith('.linkedin.com')) {
+        let user = '';
+        if (parts[0] === 'in' && parts[1]) user = decodeURIComponent(parts[1]);
+        else if (parts[0] === 'company' && parts[1]) user = decodeURIComponent(parts[1]);
+        return { href, platform: 'linkedin', username: user, label: user || 'LinkedIn' };
+    }
+    if (host === 'youtube.com' || host === 'youtu.be' || host.endsWith('.youtube.com')) {
+        let user = '';
+        if (host === 'youtu.be') user = first || '';
+        else if (first.startsWith('@')) user = first.slice(1);
+        else if (first === 'c' || first === 'user' || first === 'channel') user = decodeURIComponent(parts[1] || '');
+        return { href, platform: 'youtube', username: user, label: user ? `@${user}` : 'YouTube' };
+    }
+    if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+        const user = first.replace(/^@/, '');
+        return { href, platform: 'tiktok', username: user, label: user ? `@${user}` : 'TikTok' };
+    }
+    if (host === 'bsky.app') {
+        const user = parts[0] === 'profile' ? decodeURIComponent(parts[1] || '') : first;
+        return { href, platform: 'bluesky', username: user, label: user || 'Bluesky' };
+    }
+    if (host === 'threads.net' || host.endsWith('.threads.net')) {
+        const user = first.replace(/^@/, '');
+        return { href, platform: 'threads', username: user, label: user ? `@${user}` : 'Threads' };
+    }
+    if (host === 'facebook.com' || host === 'fb.com' || host.endsWith('.facebook.com')) {
+        const user = first && !['profile.php', 'pages', 'groups', 'watch', 'share'].includes(first.toLowerCase())
+            ? first
+            : '';
+        return { href, platform: 'facebook', username: user, label: user || 'Facebook' };
+    }
+    // Mastodon: /@user on instance hosts (incl. mastodon.social and most *.social)
+    const mastodonUser = (parts[0] || '').startsWith('@')
+        ? decodeURIComponent(parts[0]).replace(/^@/, '')
+        : '';
+    if (
+        mastodonUser &&
+        (host.includes('mastodon') ||
+            host.endsWith('.social') ||
+            host.endsWith('.club') ||
+            host === 'mas.to' ||
+            host === 'mstdn.social' ||
+            host === 'fosstodon.org' ||
+            host === 'hachyderm.io')
+    ) {
+        return {
+            href,
+            platform: 'mastodon',
+            username: mastodonUser,
+            label: `@${mastodonUser}`
+        };
+    }
+
+    return { href, platform: 'link', username: '', label: host };
+}
+
+function socialPlatformIconSvg(platform) {
+    const common = 'width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+    switch (platform) {
+        case 'instagram':
+            // Classic 2010–2016 Instagram camera mark
+            return `<img class="bio-social-icon-img" src="/icons/instagram-classic.png" alt="" width="18" height="18" decoding="async" />`;
+        case 'x':
+            return `<svg ${common} fill="#0f1419"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.727-8.835L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/></svg>`;
+        case 'github':
+            return `<svg ${common} fill="#24292f"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 10.0.1.3 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 10.20.0.2.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .10.0.1.5.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`;
+        case 'linkedin':
+            return `<svg ${common} fill="#0a66c2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>`;
+        case 'youtube':
+            return `<svg ${common} fill="#ff0000"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`;
+        case 'tiktok':
+            return `<svg ${common}><path fill="#25F4EE" d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.49v-6.96a8.2 8.2 0 004.74 1.5V6.79c.34.06.68.1 1 .1z" transform="translate(1.2 0)"/><path fill="#000" d="M16.82 7.44a8.2 8.2 0 01-4.74-1.5v9.75a6.34 6.34 0 01-10.86-4.49 6.34 6.34 0 016.34-6.34c.27 0 .53.02.79.05v3.5a2.87 2.87 0 00-.79-.1 2.89 2.89 0 100 5.78 2.89 2.89 0 002.88-2.5V2h3.45v.44a4.83 4.83 0 003.77 4.25c.34.06.68.1 1 .1v3.44a8.16 8.16 0 01-1.84-.79z"/></svg>`;
+        case 'bluesky':
+            return `<svg ${common} fill="#1185fe"><path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.136.02-.275.037-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013.5 6.737-4.02 7.823-6.016.996 1.829 2.43 6.674 7.736 6.016 4.275-1.54 1.367-6.498-2.744-7.078a8.741 8.741 0 01-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.206-.659-.298-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8z"/></svg>`;
+        case 'mastodon':
+            return `<svg ${common} fill="#6364ff"><path d="M23.268 6.087c-.222-1.676-1.634-3.006-3.33-3.278C18.1 2.526 15.287 2.3 12.002 2.3S5.9 2.526 4.063 2.81C2.367 3.08.955 4.41.733 6.087.533 7.606.4 9.328.4 11.176v.855c0 3.633.465 6.46 1.747 8.4 1.324 2.004 3.375 2.95 6.1 3.117 1.462.09 2.77.1 4.035.025v-2.35c-.108.01-.226.02-.348.028-1.97.13-3.747-.168-4.45-1.28-.47-.75-.628-1.96-.628-3.948V11.3h3.51v7.93H15.2V11.3h3.51v5.698c0 1.988-.158 3.198-.628 3.948-.703 1.112-2.48 1.41-4.45 1.28a12.4 12.4 0 01-.348-.028v2.35c1.265.075 2.573.065 4.035-.025 2.725-.167 4.776-1.113 6.1-3.117 1.282-1.94 1.747-4.767 1.747-8.4v-.855c0-1.848-.133-3.57-.333-5.089z"/></svg>`;
+        case 'threads':
+            return `<svg ${common} fill="#000"><path d="M12.186 24h-.007c-3.581-.024-6.334-1.313-8.184-3.83C2.35 18.05 1.49 15.036 1.5 11.34c.01-3.686.87-6.69 2.555-8.92C5.9 1.12 8.622-.05 12.185 0h.014c3.563.05 6.276 1.22 8.066 3.48 1.67 2.11 2.52 5.04 2.53 8.71-.01 3.68-.87 6.69-2.545 8.91C18.51 22.68 15.79 23.97 12.2 24zm3.53-10.64c.12-.14.23-.3.33-.45.72-1.15.97-2.56.7-3.95-.4-2.08-1.86-3.48-4.09-3.92-.56-.11-1.14-.17-1.72-.17h-.04c-2.88.04-4.85 1.7-5.15 4.33-.12 1.05.05 2.07.5 2.96.5.98 1.3 1.74 2.33 2.2-.1.3-.16.6-.18.9-.06.82.14 1.58.58 2.2.68.96 1.85 1.48 3.37 1.5h.05c1.78-.03 3.05-.74 3.78-2.1.28-.53.45-1.14.5-1.8.35.22.67.48.96.78 1.02 1.07 1.53 2.43 1.53 4.05 0 .28-.02.56-.05.84-.5 3.84-3.23 5.9-7.48 5.65-3.6-.22-5.96-2.2-6.42-5.4-.08-.55-.1-1.1-.08-1.65.02-.48.06-.96.14-1.43l-1.8-.28c-.1.55-.15 1.12-.17 1.68-.03.68 0 1.36.1 2.03.58 4.03 3.55 6.52 8.05 6.8h.2c.1 0 .2 0 .3-.01 4.95-.3 8.1-2.9 8.68-7.42.04-.35.06-.7.06-1.05 0-2.05-.68-3.78-2.02-5.16-.5-.52-.98-.9-1.48-1.17z"/></svg>`;
+        case 'facebook':
+            return `<svg ${common} fill="#1877f2"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.43c0-3.007 1.792-4.668 4.533-4.668 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>`;
+        default:
+            return `<svg ${common} fill="#444"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2zm6 8h-2v-2.5c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5V17h-2v-2.5c0-1.93 1.57-3.5 3.5-3.5s3.5 1.57 3.5 3.5V17z"/></svg>`;
+    }
+}
+
+function createSocialLinkEl(rawUrl) {
+    const parsed = parseSocialLink(rawUrl);
+    if (!parsed) return null;
+    const a = document.createElement('a');
+    a.className = `bio-social-link bio-social-${parsed.platform}`;
+    a.dataset.platform = parsed.platform;
+    a.href = parsed.href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = parsed.href;
+
+    const icon = document.createElement('span');
+    icon.className = 'bio-social-icon';
+    icon.innerHTML = socialPlatformIconSvg(parsed.platform);
+    a.appendChild(icon);
+
+    const label = document.createElement('span');
+    label.className = 'bio-social-label';
+    label.textContent = parsed.label;
+    a.appendChild(label);
+    return a;
+}
+
+function exitAuthorBioEditMode() {
+    document.body.classList.remove('bio-editing');
+    closeBioAvatarMenu();
+    const err = document.getElementById('bio-edit-error');
+    if (err) {
+        err.hidden = true;
+        err.textContent = '';
+    }
+    const editBtn = document.getElementById('bio-edit-btn');
+    const panel = document.querySelector('.bio-panel');
+    if (editBtn && panel) {
+        editBtn.hidden = !isViewingOwnAuthorBio(panel.dataset.author || '');
+    }
+}
+
+function enterAuthorBioEditMode(profile) {
+    const panel = document.querySelector('.bio-panel');
+    const author = panel?.dataset.author || '';
+    // Never open editors on someone else's panel.
+    if (!isViewingOwnAuthorBio(author)) {
+        exitAuthorBioEditMode();
+        return;
+    }
+    const p = profile || emptyAuthorProfile('');
+    const setVal = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.value = v || '';
+    };
+    const handleEl = document.getElementById('bio-edit-handle');
+    if (handleEl) {
+        const color = mastheadAuthorColor(author);
+        handleEl.textContent = author;
+        handleEl.style.setProperty('--bio-author-color', color);
+        handleEl.style.color = color;
+    }
+    setVal('bio-edit-bio', p.bio);
+    setVal('bio-edit-location', p.location);
+    setVal('bio-edit-website', p.website);
+    const links = Array.isArray(p.socialLinks) ? p.socialLinks : [];
+    for (let i = 0; i < 4; i++) setVal(`bio-edit-social-${i}`, links[i] || '');
+
+    ensureBioAvatarMenu();
+    const currentAvatar =
+        normalizeClientAvatarPath(p.avatar) ||
+        normalizeClientAvatarPath(document.getElementById('bio-avatar')?.getAttribute('src')) ||
+        avatarUrlForAuthor(author);
+    setBioAvatarSelection(currentAvatar);
+    closeBioAvatarMenu();
+
+    document.body.classList.add('bio-editing');
+    requestAnimationFrame(() => fitBioPanelAuthorNames());
+    document.getElementById('bio-edit-bio')?.focus();
+}
+
+function readBioEditFormValues() {
+    const val = (id) => String(document.getElementById(id)?.value || '').trim();
+    const socialLinks = [0, 1, 2, 3].map((i) => val(`bio-edit-social-${i}`)).filter(Boolean);
+    const avatar = normalizeClientAvatarPath(val('bio-edit-avatar'));
+    const out = {
+        statusEmoji: '',
+        bio: val('bio-edit-bio'),
+        location: val('bio-edit-location'),
+        website: val('bio-edit-website'),
+        socialLinks
+    };
+    if (avatar) out.avatar = avatar;
+    return out;
+}
+
+async function saveAuthorBioEdits(panel) {
+    if (bioEditSaving) return;
+    const errEl = document.getElementById('bio-edit-error');
+    const saveBtn = document.getElementById('bio-edit-save');
+    const user = typeof auth !== 'undefined' ? auth.currentUser : null;
+    if (!user) {
+        if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent = 'Sign in to save your profile.';
+        }
+        return;
+    }
+    bioEditSaving = true;
+    if (saveBtn) saveBtn.disabled = true;
+    if (errEl) {
+        errEl.hidden = true;
+        errEl.textContent = '';
+    }
+    try {
+        const idToken = await user.getIdToken();
+        const profile = readBioEditFormValues();
+        const res = await fetch('/api/author-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken, profile })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'save_failed');
+        }
+        const name = panel.dataset.author || '';
+        const key = authorHandleKey(name);
+        const saved = { ...emptyAuthorProfile(key), ...(data.profile || profile) };
+        authorProfileCache[key] = saved;
+        const savedAvatar = normalizeClientAvatarPath(saved.avatar);
+        if (savedAvatar) authorAvatarByName[name] = savedAvatar;
+        exitAuthorBioEditMode();
+        applyAuthorProfileToPanel(name, saved);
+        syncAuthorCardEmoji(name);
+    } catch (err) {
+        if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent =
+                err && err.message === 'forbidden'
+                    ? 'Only authors can edit their profile.'
+                    : 'Could not save profile. Try again.';
+        }
+    } finally {
+        bioEditSaving = false;
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+function bindAuthorBioEditor(panel) {
+    if (bioEditorBound || !panel) return;
+    bioEditorBound = true;
+
+    document.getElementById('bio-edit-btn')?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const name = panel.dataset.author || '';
+        if (!isViewingOwnAuthorBio(name)) return;
+        const profile = await fetchAuthorProfile(name);
+        enterAuthorBioEditMode(profile);
+    });
+
+    document.getElementById('bio-edit-cancel')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const name = panel.dataset.author || '';
+        exitAuthorBioEditMode();
+        applyAuthorProfileToPanel(
+            name,
+            authorProfileCache[authorHandleKey(name)] || emptyAuthorProfile(name)
+        );
+    });
+
+    document.getElementById('bio-edit-save')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        saveAuthorBioEdits(panel);
+    });
+
+    const avatarChange = document.getElementById('bio-avatar-change');
+    const avatarImg = document.getElementById('bio-avatar');
+    const openPicker = (e) => {
+        if (!document.body.classList.contains('bio-editing')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        toggleBioAvatarMenu();
+    };
+    avatarChange?.addEventListener('click', openPicker);
+    avatarImg?.addEventListener('click', openPicker);
+
+    document.addEventListener(
+        'click',
+        (e) => {
+            const wrap = document.getElementById('bio-avatar-wrap');
+            if (!wrap || !wrap.classList.contains('is-picking')) return;
+            if (e.target.closest && e.target.closest('#bio-avatar-wrap')) return;
+            closeBioAvatarMenu();
+        },
+        true
+    );
+}
+
+/** Author-column tags stay plain (@handle / me) — status emoji is bio-panel only. */
+function syncAuthorCardEmoji(authorName) {
+    const key = authorHandleKey(authorName);
+    document.querySelectorAll('.blog-card.author-card').forEach((card) => {
+        const name = authorHandleKey(card.getAttribute('data-author') || '');
+        if (name !== key) return;
+        const title = card.querySelector('.blog-title');
+        if (!title) return;
+        const handle = card.getAttribute('data-author') || name;
+        const label = card.classList.contains('author-card-self') ? 'me' : `@${handle}`;
+        title.textContent = label;
+        title.setAttribute('data-text', label);
+    });
+}
+
+function visibleBioHandleEl() {
+    const editing = document.body.classList.contains('bio-editing');
+    const nameEl = document.getElementById(editing ? 'bio-edit-handle' : 'bio-author-name');
+    if (!nameEl || nameEl.offsetParent === null) return null;
+    return nameEl;
+}
+
+function measureBioHandleAscent(nameEl) {
+    const fontSize = parseFloat(getComputedStyle(nameEl).fontSize) || 56;
+    let ascent = fontSize * 0.8;
+    try {
+        const cs = getComputedStyle(nameEl);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+            const m = ctx.measureText(nameEl.textContent || 'Hg');
+            if (typeof m.fontBoundingBoxAscent === 'number' && m.fontBoundingBoxAscent > 0) {
+                ascent = m.fontBoundingBoxAscent;
+            } else if (typeof m.actualBoundingBoxAscent === 'number' && m.actualBoundingBoxAscent > 0) {
+                ascent = m.actualBoundingBoxAscent;
+            }
+        }
+    } catch (_) {
+        /* keep fallback */
+    }
+    return Math.max(1, ascent);
+}
+
+/**
+ * Photo edge = handle font-size. Handle sits 4px to the right; its alphabetic
+ * baseline is pinned to the photo’s bottom edge via --bio-handle-bottom.
+ */
+function syncBioAvatarToHandleLine(scale = 1) {
+    const panel = document.querySelector('.bio-panel');
+    if (!panel) return;
+
+    const nameEl = visibleBioHandleEl();
+    const row = nameEl?.closest('.bio-identity-row');
+    const wrap = document.getElementById('bio-avatar-wrap');
+    if (!nameEl || !row || !wrap) {
+        panel.style.removeProperty('--bio-avatar-size');
+        panel.style.removeProperty('--bio-handle-bottom');
+        return;
+    }
+
+    nameEl.style.removeProperty('top');
+    nameEl.style.removeProperty('position');
+
+    const fontSize = parseFloat(getComputedStyle(nameEl).fontSize) || 56;
+    const size = Math.max(24, Math.round(fontSize));
+    panel.style.setProperty('--bio-avatar-size', `${size}px`);
+
+    if (scale > 0 && scale < 0.999) {
+        nameEl.style.transformOrigin = 'left bottom';
+        nameEl.style.transform = `scale(${scale})`;
+    } else {
+        nameEl.style.removeProperty('transform');
+    }
+
+    // Reset bottom, measure baseline, then shift so baseline == photo bottom.
+    panel.style.setProperty('--bio-handle-bottom', '0px');
+    nameEl.offsetHeight;
+    wrap.offsetHeight;
+
+    const ascent = measureBioHandleAscent(nameEl);
+    const nameTop = nameEl.getBoundingClientRect().top;
+    const baselineY = nameTop + ascent * (scale > 0 && scale < 0.999 ? scale : 1);
+    const avatarBottom = wrap.getBoundingClientRect().bottom;
+    // CSS `bottom` grows upward; positive dy (baseline above photo) → negative bottom.
+    const dy = avatarBottom - baselineY;
+    panel.style.setProperty('--bio-handle-bottom', `${-dy}px`);
+}
+
+/** Scale the identity-card handle so the full tag fits on one line (no ellipsis / wrap). */
+function fitBioPanelAuthorNames() {
+    const panel = document.querySelector('.bio-panel');
+    if (!panel) return;
+    panel.querySelectorAll('.bio-author-name').forEach((el) => {
+        if (!el || el.offsetParent === null) return;
+
+        el.style.removeProperty('font-size');
+        el.style.removeProperty('transform');
+        el.style.whiteSpace = 'nowrap';
+        el.style.overflow = 'visible';
+        el.style.textOverflow = 'clip';
+        el.offsetHeight;
+        syncBioAvatarToHandleLine(1);
+
+        const head = el.closest('.bio-card-head');
+        const headW = head?.clientWidth || 0;
+        if (!(headW > 0)) return;
+
+        const avatarSize =
+            parseFloat(panel.style.getPropertyValue('--bio-avatar-size')) ||
+            parseFloat(getComputedStyle(panel).getPropertyValue('--bio-avatar-size')) ||
+            56;
+        const maxW = Math.max(24, headW - avatarSize - 4);
+
+        el.style.width = 'max-content';
+        el.style.maxWidth = 'none';
+        el.offsetHeight;
+
+        let width = el.scrollWidth || el.getBoundingClientRect().width;
+        let scale = 1;
+        if (width > maxW) {
+            const base = parseFloat(getComputedStyle(el).fontSize) || 56;
+            let lo = 10;
+            let hi = base;
+            let best = lo;
+            for (let i = 0; i < 14; i++) {
+                const mid = (lo + hi) / 2;
+                el.style.fontSize = `${mid}px`;
+                el.offsetHeight;
+                width = el.scrollWidth || el.getBoundingClientRect().width;
+                if (width <= maxW) {
+                    best = mid;
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            el.style.fontSize = `${best}px`;
+            el.offsetHeight;
+            width = el.scrollWidth || el.getBoundingClientRect().width;
+            if (width > maxW) scale = Math.max(0.4, maxW / width);
+        }
+        el.style.removeProperty('width');
+        el.style.maxWidth = '100%';
+        syncBioAvatarToHandleLine(scale);
+    });
+}
+
+function applyAuthorProfileToPanel(authorName, profile) {
     const panel = document.querySelector('.bio-panel');
     if (!panel) return;
     const name = authorName || 'Anonymous';
-    panel.dataset.author = name;
+    const p = profile || emptyAuthorProfile(name);
+    const isSelf = isViewingOwnAuthorBio(name);
+
+    // Hard gate: edit UI only while viewing your own panel and explicitly editing.
+    if (!isSelf || panel.dataset.author !== name) {
+        document.body.classList.remove('bio-editing');
+    }
 
     const img = document.getElementById('bio-avatar');
     if (img) {
-        const url = avatarUrlForAuthor(name);
+        const fromProfile = normalizeClientAvatarPath(p.avatar);
+        if (fromProfile) authorAvatarByName[name] = fromProfile;
+        const url = fromProfile || avatarUrlForAuthor(name);
         if (img.getAttribute('src') !== url) img.src = url;
         img.alt = `@${name}`;
     }
 
     const nameEl = document.getElementById('bio-author-name');
-    if (nameEl) nameEl.textContent = `@${name}`;
+    if (nameEl) {
+        const color = mastheadAuthorColor(name);
+        nameEl.textContent = name;
+        nameEl.style.setProperty('--bio-author-color', color);
+        nameEl.style.color = color;
+    }
 
     const textEl = document.getElementById('bio-text');
+    const profileCard = document.getElementById('bio-panel-profile');
+    const bio = String(p.bio || '').trim();
     if (textEl) {
-        // Placeholder until author profiles / onboarding exist.
-        textEl.textContent = 'No bio yet.';
+        textEl.textContent = bio;
+        textEl.hidden = !bio;
+    }
+    if (profileCard) {
+        profileCard.classList.toggle('bio-no-bio', !bio);
+    }
+
+    const metaEl = document.getElementById('bio-meta');
+    if (metaEl) {
+        metaEl.innerHTML = '';
+        const rows = [
+            p.location ? { icon: '📍', text: p.location } : null,
+            p.website
+                ? {
+                      icon: '🔗',
+                      text: p.website.replace(/^https?:\/\//i, ''),
+                      href: p.website
+                  }
+                : null
+        ].filter(Boolean);
+        if (!rows.length) {
+            metaEl.hidden = true;
+            metaEl.setAttribute('hidden', '');
+        } else {
+            metaEl.hidden = false;
+            metaEl.removeAttribute('hidden');
+            rows.forEach((row) => {
+                const li = document.createElement('li');
+                li.className = 'bio-meta-item';
+                const icon = document.createElement('span');
+                icon.className = 'bio-meta-icon';
+                icon.textContent = row.icon;
+                li.appendChild(icon);
+                if (row.href) {
+                    const a = document.createElement('a');
+                    a.className = 'bio-website-link';
+                    a.href = row.href;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    a.textContent = row.text;
+                    li.appendChild(a);
+                } else {
+                    const span = document.createElement('span');
+                    span.textContent = row.text;
+                    li.appendChild(span);
+                }
+                metaEl.appendChild(li);
+            });
+        }
     }
 
     const linksEl = document.getElementById('bio-links');
     if (linksEl) {
         linksEl.innerHTML = '';
-        linksEl.hidden = true;
+        const socials = Array.isArray(p.socialLinks) ? p.socialLinks.filter(Boolean) : [];
+        if (!socials.length) {
+            linksEl.hidden = true;
+            linksEl.setAttribute('hidden', '');
+        } else {
+            linksEl.hidden = false;
+            linksEl.removeAttribute('hidden');
+            socials.forEach((url) => {
+                const a = createSocialLinkEl(url);
+                if (a) linksEl.appendChild(a);
+            });
+        }
     }
 
-    const latestWrap = document.getElementById('bio-latest');
+    const latestCard = document.getElementById('bio-latest-card');
     const latestLink = document.getElementById('bio-latest-link');
-    const profile = authorHomeProfiles[name];
-    if (latestWrap && latestLink) {
-        if (profile && profile.latestId) {
-            latestWrap.hidden = false;
-            latestLink.textContent = profile.latestTitle;
-            latestLink.href = `/${profile.latestId}`;
+    const latest = authorHomeProfiles[name];
+    if (latestCard && latestLink) {
+        if (latest && latest.latestId) {
+            latestCard.hidden = false;
+            latestCard.removeAttribute('hidden');
+            latestLink.textContent = latest.latestTitle;
+            latestLink.href = `/${latest.latestId}`;
         } else {
-            latestWrap.hidden = true;
+            latestCard.hidden = true;
+            latestCard.setAttribute('hidden', '');
             latestLink.removeAttribute('href');
             latestLink.textContent = '';
         }
     }
+
+    const editBtn = document.getElementById('bio-edit-btn');
+    if (editBtn) editBtn.hidden = !isSelf;
+
+    syncAuthorCardEmoji(name);
+    requestAnimationFrame(() => fitBioPanelAuthorNames());
+}
+
+function fillAuthorBioPanel(authorName) {
+    const panel = ensureHomeBioPanel();
+    const name = authorName || 'Anonymous';
+    // Always leave edit mode when switching authors / reopening.
+    document.body.classList.remove('bio-editing');
+    panel.dataset.author = name;
+    exitAuthorBioEditMode();
+    applyAuthorProfileToPanel(name, authorProfileCache[authorHandleKey(name)] || emptyAuthorProfile(name));
+    fetchAuthorProfile(name).then((profile) => {
+        if (panel.dataset.author !== name) return;
+        // Keep editors closed if this isn't your panel (or you weren't editing).
+        if (!isViewingOwnAuthorBio(name)) {
+            document.body.classList.remove('bio-editing');
+        }
+        applyAuthorProfileToPanel(name, profile);
+    });
 }
 
 function createBlogCard(blog, section, sectionIndex) {
@@ -1777,7 +2968,9 @@ function createBlogCard(blog, section, sectionIndex) {
         e.stopPropagation();
         // Mobile narrow: first tap opens in-app reader.
         if (homeDirectArticleTapNav()) {
-            expandArticlePanelAndNavigate(blog.id, card);
+            ensureAuthorBioClosed().then(() => {
+                expandArticlePanelAndNavigate(blog.id, card);
+            });
             return;
         }
         // Desktop: click opens preview; click same title again closes it. Preview click opens article.
@@ -1893,21 +3086,22 @@ function closeHomeSearchStrip(options = {}) {
         return;
     }
 
-    // Keep search content visible while the strip slides shut (avoids bio flash).
+    // Keep search UI painted while the wall slides shut (bio profile stays hidden).
     const closeSeq = ++searchStripCloseSeq;
     document.body.classList.add('search-closing');
-    const panel = document.querySelector('.bio-panel');
+    const wallEl = document.querySelector('.column-section');
     const finish = () => {
         if (closeSeq !== searchStripCloseSeq) return;
         document.body.classList.remove('search-closing');
         searchStripCloseTimer = null;
-        if (panel) panel.removeEventListener('transitionend', onEnd);
+        if (wallEl) wallEl.removeEventListener('transitionend', onEnd);
     };
     const onEnd = (e) => {
-        if (e.target !== panel || e.propertyName !== 'transform') return;
+        if (e.target !== wallEl) return;
+        if (e.propertyName !== 'translate' && e.propertyName !== 'transform') return;
         finish();
     };
-    if (panel) panel.addEventListener('transitionend', onEnd);
+    if (wallEl) wallEl.addEventListener('transitionend', onEnd);
     if (searchStripCloseTimer) clearTimeout(searchStripCloseTimer);
     searchStripCloseTimer = setTimeout(finish, getAboutDurationMs() + 80);
 }
@@ -2165,8 +3359,9 @@ function syncSelfAuthorTagLabel(user, isRealPerson) {
             title.setAttribute('data-text', 'me');
             card.classList.add('author-card-self');
         } else {
-            title.textContent = `@${name}`;
-            title.setAttribute('data-text', `@${name}`);
+            const label = `@${name}`;
+            title.textContent = label;
+            title.setAttribute('data-text', label);
             card.classList.remove('author-card-self');
         }
     });
@@ -2185,10 +3380,27 @@ function syncAuthControls(user) {
             .then((idTokenResult) => {
                 const isRealPerson = idTokenResult.claims.role === 'real person';
                 updateAuthControls(user, isRealPerson);
+                const panel = document.querySelector('.bio-panel');
+                if (panel && document.body.classList.contains('bio-open') && panel.dataset.author) {
+                    applyAuthorProfileToPanel(
+                        panel.dataset.author,
+                        authorProfileCache[authorHandleKey(panel.dataset.author)] ||
+                            emptyAuthorProfile(panel.dataset.author)
+                    );
+                }
             })
             .catch(() => updateAuthControls(user, false));
     } else {
         updateAuthControls(null, false);
+        exitAuthorBioEditMode();
+        const panel = document.querySelector('.bio-panel');
+        if (panel && document.body.classList.contains('bio-open') && panel.dataset.author) {
+            applyAuthorProfileToPanel(
+                panel.dataset.author,
+                authorProfileCache[authorHandleKey(panel.dataset.author)] ||
+                    emptyAuthorProfile(panel.dataset.author)
+            );
+        }
     }
 }
 
@@ -2460,13 +3672,14 @@ function ensureArticlePreviewUi() {
                     title: articlePanel.dataset.handoffTitle || '',
                     author: articlePanel.dataset.handoffAuthor || 'Anonymous',
                     publishedAt: articlePanel.dataset.handoffPublishedAt || '',
-                    article: articlePanel.dataset.handoffArticle || '',
-                    previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
-                    ts: Date.now()
-                };
-                sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
-            } catch (_) {}
-            location.href = `/${id}`;
+                article: articlePanel.dataset.handoffArticle || '',
+                previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
+                previewPageWidth: previewPageRect ? Math.round(previewPageRect.width) : null,
+                ts: Date.now()
+            };
+            sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
+        } catch (_) {}
+        location.href = `/${id}`;
             return;
         }
         playExpandFullscreenThenNavigate(id);
@@ -2503,9 +3716,22 @@ function clearAboutHoverTimer() {
     }
 }
 
-function applyArticlePreviewFromBlogCard(card, seamIndex) {
+let articlePreviewOpenSeq = 0;
+
+async function applyArticlePreviewFromBlogCard(card, seamIndex) {
     const articleEl = document.querySelector('.article-panel');
     if (!articleEl) return;
+    const openSeq = ++articlePreviewOpenSeq;
+    const hadBioWall =
+        document.body.classList.contains('bio-open') ||
+        document.body.classList.contains('bio-closing');
+    // Author wall must finish shutting before slabs part for the preview.
+    await ensureAuthorBioClosed();
+    if (openSeq !== articlePreviewOpenSeq) return;
+    // Hard gate: never start slab motion while bio-closing is still on the body.
+    if (document.body.classList.contains('bio-closing') || document.body.classList.contains('bio-open')) {
+        return;
+    }
     if (articlePreviewClosingTimer) {
         clearTimeout(articlePreviewClosingTimer);
         articlePreviewClosingTimer = null;
@@ -2521,31 +3747,56 @@ function applyArticlePreviewFromBlogCard(card, seamIndex) {
     articleEl.dataset.handoffPublishedAt = publishedAt;
     articleEl.dataset.handoffArticle = rawArticle;
     document.body.classList.remove('article-closing');
-    setActivePreviewSeam(seamIndex);
-    renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
-        document.body.classList.add('article-open');
-    });
+
+    const startPreview = () => {
+        if (openSeq !== articlePreviewOpenSeq) return;
+        setActivePreviewSeam(seamIndex);
+        renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
+            if (openSeq !== articlePreviewOpenSeq) return;
+            if (document.body.classList.contains('bio-closing') || document.body.classList.contains('bio-open')) {
+                return;
+            }
+            document.body.classList.add('article-open');
+        });
+    };
+
+    // After a bio shut, one frame settle so translate is fully at rest before slabs move.
+    if (hadBioWall) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(startPreview);
+        });
+        return;
+    }
+    startPreview();
 }
 
 function setupHoverInteractions() {
     // Cross-highlight author ↔ titles on desktop. Preview still opens on click only.
+    // Frozen while an author bio strip is open — that state owns dim/highlight.
     const blogCards = document.querySelectorAll('.title-section .cardcontainer[data-author] .blog-card:not(.author-card)');
     const authorCards = document.querySelectorAll('.blog-card.author-card');
+    const bioInteractionsLocked = () => document.body.classList.contains('bio-open');
 
     if (homeFinePointerHoverUi()) {
         blogCards.forEach((card) => {
             const authorName = card.closest('.cardcontainer').getAttribute('data-author');
 
             card.addEventListener('mouseenter', () => {
+                if (bioInteractionsLocked()) return;
                 authorCards.forEach((authorCard) => {
                     const authorCardName = authorCard.getAttribute('data-author');
-                    if (authorCardName !== authorName) {
+                    // Don't wash "about" — its meme drop-shadow must stay.
+                    if (
+                        authorCardName !== authorName &&
+                        (authorCardName || '').toLowerCase() !== 'about'
+                    ) {
                         authorCard.classList.add('hover');
                     }
                 });
             });
 
             card.addEventListener('mouseleave', () => {
+                if (bioInteractionsLocked()) return;
                 authorCards.forEach((authorCard) => {
                     authorCard.classList.remove('hover');
                 });
@@ -2556,6 +3807,7 @@ function setupHoverInteractions() {
             const authorName = authorCard.getAttribute('data-author');
 
             authorCard.addEventListener('mouseenter', () => {
+                if (bioInteractionsLocked()) return;
                 if ((authorName || '').toLowerCase() === 'about') return;
                 blogCards.forEach((card) => {
                     const cardAuthorName = card.closest('.cardcontainer').getAttribute('data-author');
@@ -2566,6 +3818,7 @@ function setupHoverInteractions() {
             });
 
             authorCard.addEventListener('mouseleave', () => {
+                if (bioInteractionsLocked()) return;
                 blogCards.forEach((card) => {
                     card.classList.remove('hover');
                 });
@@ -2646,6 +3899,7 @@ function playExpandFullscreenThenNavigate(blogId) {
                 publishedAt: articlePanel.dataset.handoffPublishedAt || '',
                 article: articlePanel.dataset.handoffArticle || '',
                 previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
+                previewPageWidth: previewPageRect ? Math.round(previewPageRect.width) : null,
                 ts: Date.now()
             };
             sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
@@ -2733,6 +3987,7 @@ function playExpandFullscreenThenNavigate(blogId) {
 }
 
 async function expandArticlePanelAndNavigate(blogId, card) {
+    await ensureAuthorBioClosed();
     const title = card.dataset.title || '';
     const rawArticle = card.dataset.article || '';
     const publishedAt = card.dataset.publishedAt || '';
@@ -2914,6 +4169,7 @@ if (topdiv) {
         if (stage) stage.style.willChange = 'auto';
         // Persist + skip-on-reload only after the curtain finishes.
         markHomeEntryDismissed({ hideNow: true });
+        revealHomeTextureSwitcher({ delayMs: 650 });
     });
 
     topdiv.onclick = () => {
@@ -2977,9 +4233,28 @@ function applyHomeTexture(textureId, { persist = true } = {}) {
     });
 }
 
+let homeTextureSwitcherRevealTimer = null;
+
+/** Fade the texture picker in after splash / titles settle — not the instant the curtain lifts. */
+function revealHomeTextureSwitcher({ delayMs = 850 } = {}) {
+    const root = document.getElementById('home-texture-switcher');
+    if (!root || root.classList.contains('is-revealed')) return;
+    if (homeTextureSwitcherRevealTimer) {
+        clearTimeout(homeTextureSwitcherRevealTimer);
+        homeTextureSwitcherRevealTimer = null;
+    }
+    homeTextureSwitcherRevealTimer = setTimeout(() => {
+        homeTextureSwitcherRevealTimer = null;
+        root.classList.add('is-revealed');
+        root.removeAttribute('aria-hidden');
+    }, Math.max(0, delayMs));
+}
+
 function initHomeTextureSwitcher() {
     const root = document.getElementById('home-texture-switcher');
     if (!root) return;
+
+    root.setAttribute('aria-hidden', 'true');
 
     let saved = 'grycon';
     try {

@@ -9,8 +9,11 @@
     --aboutWidth: clamp(220px, 15vw, 360px);
     --aboutDuration: 800ms;
     --bioStripHeight: clamp(36px, 6vh, 78px);
-    --authorBioHeight: clamp(160px, 24vh, 220px);
-    --bioHeight: var(--bioStripHeight);
+    /* Strip tall enough for a business/ID-card proportion identity card */
+    --authorBioHeight: clamp(240px, 34vh, 320px);
+    --bioCardRatio: 3.5 / 2;
+    /* How far the stone wall slides to uncover the strip underneath (panel size is fixed). */
+    --wallRevealY: 0px;
     /* One rigid wall — slow, with keyed drag hitch (linear + keyframes) */
     --homeSplashCurtainDuration: 2800ms;
 }
@@ -34,8 +37,7 @@ html[data-home-texture='grycon'] #bottom-text::before,
 html[data-home-texture='grycon'] .blog-title,
 html[data-home-texture='grycon'] .blog-title::before,
 html[data-home-texture='grycon'] .blog-overview,
-html[data-home-texture='grycon'] .blog-overview::before,
-html[data-home-texture='grycon'] .bio-panel .bio-author-name {
+html[data-home-texture='grycon'] .blog-overview::before {
     background-image: url(/img/stone-grycon7.jpg) !important;
 }
 
@@ -120,6 +122,12 @@ html.home-entry-skip-splash #first-container {
     display: none !important;
 }
 
+/* Returning visits: never park/animate the stage up from below (matches home-titles-instant). */
+html.home-entry-skip-splash .home-main-stage {
+    animation: none !important;
+    transform: translate3d(0, 0, 0) !important;
+}
+
 /* While switching textures, drop filters so clipped letter layers aren't stuck. */
 html.home-texture-reflow #top-text::before,
 html.home-texture-reflow #bottom-text::before,
@@ -151,149 +159,767 @@ body{
     min-height: 100vh;
     transition: background-position var(--aboutDuration) ease-in-out;
 }
-/* Author bio panel (top) */
+/*
+ * Author bio / search strip — same reveal model as article preview:
+ * panel is fixed full size under the stone (never moves, grows, or scales);
+ * only --wallRevealY slides the wall down to uncover it.
+ */
 .bio-panel {
+    --bio-handle-size: clamp(68px, 7.2vw, 120px);
     position: fixed;
     left: 0;
     right: 0;
     top: 0;
-    height: var(--bioHeight);
-    transform: translateY(-100%);
+    height: var(--authorBioHeight);
     background: #ffffff;
     color: #222;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-    transition: transform var(--aboutDuration) ease-in-out, height var(--aboutDuration) ease-in-out;
-    z-index: 2;
-    padding: 10px 16px;
+    box-shadow: none;
+    transition: none;
+    transform: none;
+    z-index: 1;
+    padding: 14px 16px;
     box-sizing: border-box;
     overflow: hidden;
     display: flex;
     align-items: center;
+    justify-content: flex-start;
+    pointer-events: none;
+    contain: strict;
+}
+
+/* Avatar picker drops below the card — float above the wall */
+body.bio-editing .bio-panel {
+    overflow: visible;
+    contain: none;
+    z-index: 40;
 }
 
 body.bio-open {
-    --bioHeight: var(--authorBioHeight);
+    --wallRevealY: var(--authorBioHeight);
 }
 
-body.search-open,
+body.search-open {
+    --wallRevealY: var(--bioStripHeight);
+}
+
+/* While dismissing: keep translate applied and drive Y → 0 so the wall animates shut
+ * (removing bio-open alone drops the translate rule and snaps). */
+body.bio-closing,
 body.search-closing {
-    --bioHeight: var(--bioStripHeight);
+    --wallRevealY: 0px;
 }
 
 body.bio-open .bio-panel,
-body.search-open .bio-panel {
-    transform: translateY(0);
+body.bio-closing .bio-panel,
+body.search-open .bio-panel,
+body.search-closing .bio-panel {
+    pointer-events: auto;
 }
 
-/* Push everything down when bio / search strip opens */
-body.bio-open .title-section,
-body.bio-open .author-section,
-body.search-open .title-section,
-body.search-open .author-section {
-    transform: translateY(var(--bioHeight));
+/* Search only uncovers a short slit — keep the form in that top band */
+body.search-open .bio-panel,
+body.search-closing .bio-panel {
+    align-items: flex-start;
+    padding-top: 0;
+    padding-bottom: 0;
 }
 
-/* Shift stone background vertically as well when top strip opens */
+/*
+ * Wall slides down via `translate` (not `transform`) so we don’t fight article/about
+ * transforms or stuck CSSTransitions left on `transform`.
+ */
+body.bio-open .column-section,
+body.bio-closing .column-section,
+body.search-open .column-section,
+body.search-closing .column-section {
+    translate: 0 var(--wallRevealY);
+}
+
+/* Let clicks in the revealed top strip reach the bio under the stage */
+body.bio-open .home-main-stage .home-main-track,
+body.bio-open .home-main-stage .home-main-pane,
+body.bio-closing .home-main-stage .home-main-track,
+body.bio-closing .home-main-stage .home-main-pane,
+body.search-open .home-main-stage .home-main-track,
+body.search-open .home-main-stage .home-main-pane,
+body.search-closing .home-main-stage .home-main-track,
+body.search-closing .home-main-stage .home-main-pane {
+    pointer-events: none;
+}
+
+body.bio-open .home-main-stage .column-section,
+body.bio-closing .home-main-stage .column-section,
+body.search-open .home-main-stage .column-section,
+body.search-closing .home-main-stage .column-section {
+    pointer-events: auto;
+}
+
+/* Gap under the lowered wall — same white plane as article preview / article page */
 body.bio-open,
-body.search-open {
-    background-position-y: var(--bioHeight);
+body.bio-closing,
+body.search-open,
+body.search-closing {
+    background: #ffffff;
 }
 
-.title-section,
-.author-section {
-    transition: transform var(--aboutDuration) ease-in-out;
+.bio-panel-cards {
+    /* Same shell for every card in the strip */
+    --bio-card-height: calc(var(--authorBioHeight) - 28px);
+    --bio-card-width: min(560px, calc(var(--bio-card-height) * 3.5 / 2));
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 12px;
+    min-width: 0;
+    max-width: 100%;
+    height: var(--bio-card-height);
+    max-height: 100%;
 }
 
-/* Bio panel grain and ink effects (same as About) */
-.bio-panel::after,
-.bio-panel::before {
+/* Identity / latest — identical duplicate shells */
+.bio-identity-card {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    flex: 0 0 var(--bio-card-width);
+    width: var(--bio-card-width);
+    min-width: var(--bio-card-width);
+    max-width: var(--bio-card-width);
+    height: var(--bio-card-height);
+    min-height: var(--bio-card-height);
+    max-height: var(--bio-card-height);
+    padding: 14px 16px;
+    box-sizing: border-box;
+    background: #ffffff;
+    color: #222;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    box-shadow: none;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.bio-latest-card {
+    justify-content: center;
+    align-items: center;
+}
+
+.bio-latest-card .bio-latest {
+    flex: 0 1 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+    height: auto;
+    margin: auto;
+    justify-content: center;
+    align-items: baseline;
+    text-align: center;
+    gap: 0.35em 0.5em;
+}
+
+.bio-latest-card .bio-latest-label,
+.bio-latest-card .bio-latest-link {
+    font-size: clamp(15px, 1.2vw, 18px);
+    line-height: 1.25;
+}
+
+.bio-latest-card .bio-latest-label {
+    letter-spacing: 0.08em;
+    opacity: 0.55;
+}
+
+.bio-latest-card .bio-latest-link {
+    font-weight: 600;
+    text-align: center;
+    white-space: normal;
+    display: inline;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+    text-overflow: clip;
+    max-width: 100%;
+}
+
+/* Same grain as before — layered behind card content, not over it */
+.bio-identity-card::after,
+.bio-identity-card::before {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
     mix-blend-mode: multiply;
+    z-index: 0;
 }
 
-.bio-panel::after {
+.bio-identity-card::after {
     opacity: 0.26;
     background-size: 120px 120px;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-.bio-panel::before {
+.bio-identity-card::before {
     opacity: 0.14;
     background-image: repeating-radial-gradient(
-        rgba(0,0,0,0.14) 0 0.7px,
+        rgba(0, 0, 0, 0.14) 0 0.7px,
         transparent 0.7px 2px
     );
     background-size: 3.2px 3.2px;
 }
 
-.bio-panel-profile {
+.bio-identity-card > * {
     position: relative;
     z-index: 1;
+}
+
+.bio-card-main {
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: 20px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
     min-width: 0;
-    width: 100%;
+    flex: 1 1 auto;
     height: 100%;
 }
 
-.bio-avatar {
+/* No bio copy — drop the photo+handle band to ~60% down the card */
+.bio-panel-profile.bio-no-bio .bio-card-head {
+    margin-top: calc(var(--bio-card-height) * 0.55 - var(--bio-avatar-size, var(--bio-handle-size)) * 0.5);
+}
+
+body.bio-editing .bio-panel-profile.bio-no-bio .bio-card-head {
+    margin-top: 0;
+}
+
+/* Photo + handle: handle is pinned to the photo’s right/bottom edge. */
+.bio-card-head {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: var(--bio-avatar-size, calc(var(--bio-handle-size, 56px) * 1));
+    min-width: 0;
     flex: 0 0 auto;
-    width: clamp(120px, calc(var(--authorBioHeight) - 32px), 188px);
-    height: clamp(120px, calc(var(--authorBioHeight) - 32px), 188px);
+    overflow: visible;
+}
+
+.bio-card-head > .bio-avatar-wrap {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--bio-avatar-size, calc(var(--bio-handle-size, 56px) * 1));
+    height: var(--bio-avatar-size, calc(var(--bio-handle-size, 56px) * 1));
+}
+
+.bio-card-head > .bio-identity-row {
+    position: absolute;
+    left: calc(var(--bio-avatar-size, calc(var(--bio-handle-size, 56px) * 1)) + 4px);
+    right: 0;
+    /* JS sets --bio-handle-bottom so the alphabetic baseline hits the photo edge */
+    bottom: var(--bio-handle-bottom, 0px);
+    margin: 0;
+    min-width: 0;
+    display: block;
+    line-height: 1;
+}
+
+/* Stay pinned to the card corner — not inside the lowered head band */
+.bio-card-main > .bio-actions-edit,
+.bio-card-main > .bio-actions-save {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 3;
+    margin: 0;
+}
+
+.bio-card-main > .bio-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 4px 0 0;
+    width: 100%;
+}
+
+.bio-card-main > .bio-edit-bottom {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.bio-card-foot {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px 14px;
+    min-width: 0;
+    width: 100%;
+    margin-top: auto;
+    padding-top: 4px;
+}
+
+body.bio-editing .bio-identity-card {
+    overflow: visible;
+}
+
+.bio-avatar-wrap {
+    flex: 0 0 auto;
+    width: var(--bio-avatar-size, calc(var(--bio-handle-size, 56px) * 1));
+    height: var(--bio-avatar-size, calc(var(--bio-handle-size, 56px) * 1));
+    max-width: 100%;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.bio-avatar {
+    display: block;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
     object-fit: cover;
     object-position: center;
+    background: #e8e4dc;
+    transition: none;
+    transform: none;
+}
+
+body.bio-editing .bio-avatar-wrap .bio-avatar {
+    cursor: pointer;
+}
+
+body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only {
+    display: block !important;
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    z-index: 2;
+    appearance: none;
+    padding: 4px 10px;
+    min-width: 0;
+    border: 1px solid #808080;
+    border-radius: 0;
+    background: linear-gradient(to bottom, #f0f0f0 0%, #d0d0d0 50%, #b8b8b8 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 0 rgba(0, 0, 0, 0.2);
+    color: #000;
+    font-family: 'MS Sans Serif', 'Arial', sans-serif;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.2;
+    text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:hover {
+    background: linear-gradient(to bottom, #e8e8e8 0%, #c8c8c8 50%, #a8a8a8 100%);
+    border-color: #606060;
+}
+
+body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
+    background: linear-gradient(to bottom, #b8b8b8 0%, #d0d0d0 50%, #f0f0f0 100%);
+    transform: translateX(-50%) translateY(1px);
+}
+
+.bio-avatar-menu {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 6px);
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: min(280px, 70vw);
+    max-height: min(42vh, 240px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    background: #fff;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    box-sizing: border-box;
+}
+
+.bio-avatar-menu[hidden] {
+    display: none !important;
+}
+
+.bio-avatar-option {
     display: block;
+    width: 100%;
+    margin: 0;
+    padding: 3px;
+    border: 2px solid transparent;
+    border-radius: 0;
+    background: #f3f1ec;
+    cursor: pointer;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.bio-avatar-option img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    object-position: center;
     background: #e8e4dc;
 }
 
-.bio-panel-copy {
-    flex: 1 1 auto;
-    min-width: 0;
+.bio-avatar-option:hover,
+.bio-avatar-option:focus-visible {
+    border-color: rgba(0, 0, 0, 0.35);
+    outline: none;
+}
+
+.bio-avatar-option.is-selected {
+    border-color: #171717;
+    box-shadow: inset 0 0 0 1px #171717;
+}
+
+.bio-edit-bottom {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    gap: 4px;
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+}
+
+.bio-identity-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: nowrap;
+    gap: 6px 8px;
+    min-width: 0;
 }
 
 .bio-author-name {
     margin: 0;
     font-weight: 600;
     letter-spacing: 0.01em;
+    flex: 0 1 auto;
+    min-width: 0;
 }
 
 .bio-text {
     margin: 0;
 }
 
-.bio-links {
+.bio-meta {
+    list-style: none;
+    margin: 0;
+    padding: 0;
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px 16px;
-    margin-top: 2px;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 10px 14px;
+    align-items: center;
+    min-width: 0;
+    width: auto;
+    flex: 0 1 auto;
 }
 
-.bio-links a {
-    color: inherit;
+.bio-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: none;
+    min-width: 0;
+    flex: 0 0 auto;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: clamp(12px, 0.9vw, 14px);
+    line-height: 1.25;
+    color: #222;
+}
+
+.bio-meta-item > span:not(.bio-meta-icon),
+.bio-meta-item > a {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+
+.bio-meta-item a,
+.bio-website-link {
+    color: #1565c0;
+    -webkit-text-fill-color: #1565c0;
     text-decoration: underline;
     text-underline-offset: 3px;
 }
 
-.bio-latest {
-    margin: 6px 0 0;
+.bio-meta-item a:hover,
+.bio-website-link:hover {
+    color: #0d47a1;
+    -webkit-text-fill-color: #0d47a1;
+}
+
+.bio-meta-icon {
+    font-size: 0.95em;
+    line-height: 1;
+}
+
+.bio-links {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 10px 14px;
+    margin: 0;
+    align-items: center;
+    min-width: 0;
+    width: auto;
+    flex: 0 1 auto;
+}
+
+.bio-links a,
+.bio-social-link {
+    color: inherit;
+    text-decoration: none;
+    text-underline-offset: 3px;
+}
+
+.bio-social-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+    max-width: none;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: clamp(13px, 0.95vw, 15px);
+    line-height: 1.3;
+    color: #222;
+    -webkit-text-fill-color: #222;
+}
+
+.bio-social-link:hover .bio-social-label {
+    text-decoration: underline;
+}
+
+.bio-social-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    color: #222;
+    -webkit-text-fill-color: #222;
+}
+
+.bio-social-icon svg,
+.bio-social-icon .bio-social-icon-img {
+    display: block;
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+}
+
+.bio-social-label {
+    min-width: 0;
+}
+
+.bio-actions {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.bio-actions-save {
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+.bio-edit-btn,
+.bio-edit-save,
+.bio-edit-cancel {
+    appearance: none;
+    display: inline-block;
+    padding: 6px 12px;
+    min-width: 60px;
+    border: 1px solid #808080;
+    border-radius: 0;
+    background: linear-gradient(to bottom, #f0f0f0 0%, #d0d0d0 50%, #b8b8b8 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 0 rgba(0, 0, 0, 0.2);
+    color: #000;
+    font-family: 'MS Sans Serif', 'Arial', sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.bio-edit-btn:hover,
+.bio-edit-save:hover,
+.bio-edit-cancel:hover {
+    background: linear-gradient(to bottom, #e8e8e8 0%, #c8c8c8 50%, #a8a8a8 100%);
+    border-color: #606060;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.bio-edit-btn:active,
+.bio-edit-save:active,
+.bio-edit-cancel:active {
+    background: linear-gradient(to bottom, #b8b8b8 0%, #d0d0d0 50%, #f0f0f0 100%);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255, 255, 255, 0.1);
+    transform: translateY(1px);
+}
+
+.bio-edit-save:disabled {
+    opacity: 0.45;
+    cursor: default;
+    transform: none;
+}
+
+.bio-edit-error {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: clamp(13px, 0.9vw, 15px);
+    color: #b1123a;
+    -webkit-text-fill-color: #b1123a;
+}
+
+/* In-place editors — same type language as the bio strip */
+.bio-panel .bio-inline-input,
+.bio-panel .bio-meta-edit input,
+.bio-panel .bio-links-edit input {
+    appearance: none;
+    box-sizing: border-box;
+    margin: 0;
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.28);
+    border-radius: 0;
+    background: transparent;
+    color: #171717;
+    -webkit-text-fill-color: #171717;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: clamp(13px, 0.95vw, 16px);
+    line-height: 1.3;
+    padding: 0 0 1px;
+    outline: none;
+    min-width: 0;
+    width: 100%;
+}
+
+.bio-panel .bio-inline-input:focus,
+.bio-panel .bio-meta-edit input:focus,
+.bio-panel .bio-links-edit input:focus {
+    border-bottom-color: rgba(0, 0, 0, 0.55);
+}
+
+.bio-panel .bio-inline-textarea {
+    resize: none;
+    min-height: 2.2em;
+    max-height: 3.6em;
+    line-height: 1.35;
+}
+
+/*
+ * Edit chrome OFF unless body.bio-editing (own profile after Edit).
+ */
+.bio-panel .bio-edit-only {
+    display: none !important;
+}
+
+body.bio-editing .bio-panel .bio-view-only {
+    display: none !important;
+}
+
+body.bio-editing .bio-panel .bio-card-head > .bio-edit-identity.bio-edit-only {
+    display: block !important;
+}
+
+body.bio-editing .bio-panel .bio-card-main > .bio-actions-save.bio-edit-only {
+    display: flex !important;
+}
+
+body.bio-editing .bio-panel .bio-edit-bottom.bio-edit-only {
+    display: flex !important;
+}
+
+body.bio-editing .bio-panel .bio-card-foot.bio-edit-only {
+    display: flex !important;
+}
+
+body.bio-editing .bio-panel .bio-meta-edit {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 8px 12px;
+    margin: 0;
+    min-width: 0;
+}
+
+body.bio-editing .bio-panel .bio-meta-edit .bio-meta-item {
+    width: auto;
+    max-width: none;
+    flex: 1 1 140px;
+}
+
+body.bio-editing .bio-panel .bio-meta-edit input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+}
+
+body.bio-editing .bio-panel .bio-links-edit {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin: 0;
+    min-width: 0;
+}
+
+body.bio-editing .bio-panel .bio-links-edit input {
+    width: auto;
+    flex: 1 1 120px;
+    min-width: 0;
+}
+
+.bio-panel .bio-view-only[hidden],
+.bio-panel #bio-edit-btn[hidden],
+.bio-panel #bio-latest-card[hidden],
+.bio-panel #bio-edit-error[hidden],
+.bio-panel [hidden] {
+    display: none !important;
+}
+
+body.bio-editing .bio-latest-card {
+    display: none !important;
+}
+
+@media (max-width: 820px) {
+    .bio-panel-cards {
+        --bio-card-width: min(
+            calc((100vw - 24px - 12px) / 2),
+            calc(var(--bio-card-height) * 3.5 / 2)
+        );
+        width: min(100%, calc(100vw - 24px));
+        height: var(--bio-card-height);
+    }
+
+}
+
+.bio-latest {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 1px;
+    min-width: 0;
 }
 
 .bio-latest-label {
     letter-spacing: 0.04em;
     text-transform: uppercase;
     opacity: 0.55;
+    flex: 0 0 auto;
 }
 
 .bio-latest-link {
@@ -301,17 +927,18 @@ body.search-open {
     text-decoration: underline;
     text-underline-offset: 3px;
     min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* Match article body ink type (Georgia + grain); @name tinted via mastheadAuthorColor in JS */
-.bio-panel .bio-author-name,
+/* Match article body ink type (Georgia + grain) — not social icon+username rows */
 .bio-panel .bio-text,
-.bio-panel .bio-latest-label,
-.bio-panel .bio-latest-link,
-.bio-panel .bio-links a {
+.bio-panel .bio-latest-label {
     font-family: Georgia, 'Times New Roman', Times, serif;
-    line-height: 1.42;
-    font-size: clamp(17px, 1.15vw, 20px);
+    line-height: 1.35;
+    font-size: clamp(14px, 1vw, 17px);
     color: transparent;
     -webkit-text-fill-color: transparent;
     background-image:
@@ -327,22 +954,97 @@ body.search-open {
     -moz-osx-font-smoothing: auto;
 }
 
-.bio-panel .bio-author-name {
-    font-size: clamp(22px, 1.55vw, 28px);
-    line-height: 1.2;
-    font-weight: 600;
-    /* Same stone fill as author-column @tags (color), Georgia like the article */
-    background-image: var(--bg-image);
-    background-position: center;
-    background-blend-mode: normal;
+/* Latest article title — same ink grain as #article-body .article-page p/h* */
+.bio-panel .bio-latest-card .bio-latest-link {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-image:
+        linear-gradient(#171717, #171717),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 48px 48px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.45);
+    text-shadow: 0 0 0.45px rgba(0, 0, 0, 0.32);
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: auto;
+}
+
+.bio-panel .bio-social-link,
+.bio-panel .bio-social-link .bio-social-label,
+.bio-panel .bio-social-link .bio-social-icon {
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
     -webkit-text-stroke: 0;
     text-shadow: none;
+    color: #222;
+    -webkit-text-fill-color: #222;
+}
+
+/* @name — same stable random hue as article bylines (mastheadAuthorColor) */
+.bio-panel .bio-author-name {
+    display: block;
+    margin: 0;
+    padding: 0;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: var(--bio-handle-size);
+    line-height: 1;
+    font-weight: 600;
+    color: var(--bio-author-color, #171717);
+    -webkit-text-fill-color: var(--bio-author-color, #171717);
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+    hyphens: none;
+    -webkit-hyphens: none;
+    text-box: normal;
+    text-box-trim: none;
+}
+
+.bio-card-foot .bio-meta-item,
+.bio-card-foot .bio-social-link {
+    font-size: clamp(12px, 0.9vw, 14px);
+}
+
+.bio-panel .bio-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    overflow: hidden;
+    max-width: 100%;
 }
 
 .bio-panel .bio-latest-label {
     font-size: clamp(11px, 0.75vw, 13px);
     line-height: 1.2;
     font-weight: 400;
+}
+
+.bio-panel .bio-latest-card .bio-latest-label,
+.bio-panel .bio-latest-card .bio-latest-link {
+    font-size: clamp(15px, 1.2vw, 18px);
+    line-height: 1.25;
+}
+
+.bio-panel .bio-latest-card .bio-latest-label {
+    letter-spacing: 0.08em;
+    font-weight: 400;
+}
+
+.bio-panel .bio-latest-card .bio-latest-link {
+    font-weight: 600;
 }
 
 .home-search-strip input[type="search"] {
@@ -364,8 +1066,8 @@ body.search-open {
     -moz-osx-font-smoothing: auto;
 }
 
-body.search-open .bio-panel-profile,
-body.search-closing .bio-panel-profile {
+body.search-open .bio-panel-cards,
+body.search-closing .bio-panel-cards {
     display: none;
 }
 
@@ -378,11 +1080,17 @@ body.search-open .home-search-strip,
 body.search-closing .home-search-strip {
     display: flex;
     align-items: center;
-    width: 100%;
-    height: 100%;
+    width: min(420px, calc(100% - 8px));
+    height: var(--bioStripHeight);
+    max-height: var(--bioStripHeight);
+    margin: 0;
+    padding: 0 14px;
+    box-sizing: border-box;
     gap: 12px;
     position: relative;
     z-index: 1;
+    background: transparent;
+    box-shadow: none;
 }
 
 .home-search-strip input[type="search"] {
@@ -1014,7 +1722,8 @@ body.home-titles-instant .home-main-stage {
 
 } */
 
-.blog-card:hover .blog-title::before {
+/* Keep about’s meme drop-shadow (::before); hide carved layer on other cards */
+.blog-card:not([data-author="about"]):hover .blog-title::before {
     display: none;
 }
 
@@ -1250,7 +1959,8 @@ body.home-titles-instant .home-main-stage {
     z-index: 2; /* Ensure it's on top of other card content if necessary, same as .blog-title for example */
 }
 
-.blog-card:hover .blog-title {
+/* Pearl glow hover — skip author @tags (they use white-rim + stone fill instead) */
+.blog-card:not(.author-card):hover .blog-title {
     color: #fdf6e3; /* pearl white/beige */
     -webkit-text-fill-color: #fdf6e3;
     text-shadow:
@@ -1262,16 +1972,95 @@ body.home-titles-instant .home-main-stage {
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
-/* Wash non-matching cards when an author (or title) is hovered */
-.blog-card.hover .blog-title {
-    filter: brightness(1.2) !important;
+/* Article titles: thin black edge around glyphs on hover */
+.title-section .blog-card:not(.section-heading-card):hover .blog-title {
+    color: #fdf6e3;
+    -webkit-text-fill-color: #fdf6e3;
+    -webkit-text-stroke: 0.9px #111;
+    paint-order: stroke fill;
+    text-shadow:
+        -0.6px -0.6px 0 #000,
+        0.6px -0.6px 0 #000,
+        -0.6px 0.6px 0 #000,
+        0.6px 0.6px 0 #000;
+    filter: none;
 }
 
-.blog-card.hover .blog-title::before {
+/*
+ * Author @tags: white rim only on hover / bio-active.
+ * Keep the stone/texture clipped fill (transparent text) — do NOT paint solid pearl/white
+ * insides (that was washing the glyphs to neon bright against grycon).
+ * Also override the generic .blog-card:hover pearl glow fill.
+ */
+html[data-home-texture] .author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title,
+html[data-home-texture] .author-section .blog-card.author-card.author-bio-active .blog-title,
+.author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title,
+.author-section .blog-card.author-card.author-bio-active .blog-title {
+    -webkit-text-fill-color: transparent !important;
+    color: transparent;
+    -webkit-text-stroke: 0.9px #fff;
+    paint-order: stroke fill;
+    text-shadow:
+        -0.6px -0.6px 0 #fff,
+        0.6px -0.6px 0 #fff,
+        -0.6px 0.6px 0 #fff,
+        0.6px 0.6px 0 #fff;
+    filter: none;
+}
+
+/* Drop carved ::before so the white rim reads cleanly on the main glyph */
+html[data-home-texture] .author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title::before,
+html[data-home-texture] .author-section .blog-card.author-card.author-bio-active .blog-title::before,
+.author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title::before,
+.author-section .blog-card.author-card.author-bio-active .blog-title::before {
     display: none;
 }
 
-.blog-card.hover:hover .blog-title {
+/*
+ * Search hover: gray letter fill via the same background-clip recipe as stone titles.
+ * Texture packs use !important transparent fill — must override the same way.
+ */
+html[data-home-texture] #search-card:hover .blog-title,
+#search-card:hover .blog-title {
+    background-image: linear-gradient(#2f2f2f, #2f2f2f) !important;
+    background-size: auto !important;
+    background-position: center !important;
+    background-attachment: scroll !important;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    filter: none;
+}
+
+/* Wash non-matching cards when an author (or title) is hovered — never wash about */
+.blog-card.hover:not([data-author="about"]) .blog-title,
+.blog-card.bio-dim .blog-title {
+    filter: brightness(1.2) !important;
+}
+
+.blog-card.hover:not([data-author="about"]) .blog-title::before,
+.blog-card.bio-dim .blog-title::before {
+    display: none;
+}
+
+.blog-card.hover:not([data-author="about"]):hover .blog-title {
+    filter: brightness(1.2) !important;
+}
+
+/* While an author bio is open, unrelated titles can’t be hovered/clicked */
+.blog-card.bio-dim,
+.cardcontainer:has(> .blog-card.bio-dim) {
+    pointer-events: none !important;
+    cursor: default;
+}
+
+body.bio-open .title-section .blog-card.bio-dim:hover .blog-title,
+body.bio-open .title-section .cardcontainer:has(.blog-card.bio-dim):hover .blog-title {
+    -webkit-text-stroke: 0;
+    text-shadow: none;
     filter: brightness(1.2) !important;
 }
 
@@ -1440,13 +2229,18 @@ body.home-titles-instant .home-main-stage {
     overflow: visible;
 }
 
-/* About button hover: use same neutral behavior as others (no blue glow) */
+/* About: go black on direct hover; keep meme drop-shadow */
 .blog-card[data-author="about"]:hover .blog-title {
-    /* inherit default hover behavior, no color override */
-    color: inherit;
-    -webkit-text-fill-color: inherit;
-    text-shadow: inherit;
-    filter: inherit;
+    color: #000000;
+    -webkit-text-fill-color: #000000;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    filter: none;
+    background-image: none;
+}
+
+.blog-card[data-author="about"]:hover .blog-title::before {
+    display: block;
 }
 
 /* ABOUT title: classic meme Impact look (white fill, black outline) */
@@ -1478,34 +2272,46 @@ body.home-titles-instant .home-main-stage {
     z-index: -1; /* render behind the primary text */
 }
 
-/* Auth button hover glows */
-#auth-login-card:hover .blog-title {
-    color: rgb(0, 255, 0);
-    -webkit-text-fill-color: rgb(0, 255, 0);
-    text-shadow:
-        0 0 1px rgb(0, 255, 0),
-        0 0 1px rgb(0, 255, 0),
-        0 0 1px rgb(0, 255, 0),
-        0 0 1.5px rgb(0, 255, 0),
-        0 0 1px rgb(0, 255, 0);
-    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
+/* Auth hovers: same clipped solid fill as search (no glow) */
+html[data-home-texture] #auth-login-card:hover .blog-title,
+#auth-login-card:hover .blog-title,
+html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title,
+#auth-login-card[data-logout="true"]:hover .blog-title,
+html[data-home-texture] #auth-editor-card:hover .blog-title,
+#auth-editor-card:hover .blog-title {
+    background-size: auto !important;
+    background-position: center !important;
+    background-attachment: scroll !important;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    filter: none;
 }
 
-#auth-login-card:hover .blog-title::before {
+#auth-login-card:hover .blog-title::before,
+#auth-editor-card:hover .blog-title::before {
     display: none;
 }
 
-/* Logout button cherry red glow */
+/* Login — was green glow */
+html[data-home-texture] #auth-login-card:hover .blog-title,
+#auth-login-card:hover .blog-title {
+    background-image: linear-gradient(rgb(0, 255, 0), rgb(0, 255, 0)) !important;
+}
+
+/* Logout — was cherry red glow */
+html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title,
 #auth-login-card[data-logout="true"]:hover .blog-title {
-    color: #ff1744;
-    -webkit-text-fill-color: #ff1744;
-    text-shadow:
-        0 0 1px #ff1744,
-        0 0 1px #ff1744,
-        0 0 1px #ff1744,
-        0 0 1.5px #ff1744,
-        0 0 1px #ff1744;
-    filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
+    background-image: linear-gradient(#ff1744, #ff1744) !important;
+}
+
+/* Editor — was pearl hover glow */
+html[data-home-texture] #auth-editor-card:hover .blog-title,
+#auth-editor-card:hover .blog-title {
+    background-image: linear-gradient(#fdf6e3, #fdf6e3) !important;
 }
 
 /* Each column gets a perfectly aligned texture slice.
@@ -1648,7 +2454,7 @@ body.article-open .home-main-stage .column-section {
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.045);
     overflow: hidden;
     /* Exact parity with reader first-page padding. */
-    padding: clamp(96px, 12.8vh, 146px) clamp(28px, 3.3vw, 40px) clamp(24px, 3vh, 34px);
+    padding: clamp(6rem, 12.8vh, 9.125rem) clamp(1.75rem, 3.3vw, 2.5rem) clamp(1.5rem, 3vh, 2.125rem);
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1684,14 +2490,16 @@ body.article-open .home-main-stage .column-section {
 
 .home-preview-masthead {
     flex: 0 0 auto;
-    margin: 0 0 clamp(3px, 0.5vw, 8px);
+    margin: 0 0 clamp(0.1875rem, 0.5vw, 0.5rem);
 }
 
 .home-preview-title {
-    margin: 0 0 clamp(2px, 0.35vw, 5px);
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
     font-family: Georgia, 'Times New Roman', serif;
     font-size: clamp(1.14rem, 1.38vw, 1.42rem);
     line-height: 1.16;
+    font-weight: 700;
+    letter-spacing: normal;
     color: #141414;
     -webkit-text-fill-color: #141414;
     background: none;
@@ -1737,13 +2545,61 @@ body.article-open .home-main-stage .column-section {
     padding-bottom: 0;
 }
 
+/* Match reader image treatment; reset ink-clip styles that would hide imgs inside <p>. */
+.home-preview-body .article-image,
+.home-preview-body img[data-display="block"] {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    margin: clamp(10px, 1.2vw, 16px) 0 clamp(14px, 1.6vw, 22px);
+    object-fit: contain;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    filter: none;
+}
+
+.home-preview-body img[data-display="inline"] {
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 42%;
+    height: auto;
+    margin: 0 0.35rem;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    filter: none;
+}
+
+.home-preview-body p:has(> img:only-child),
+.home-preview-body p:has(> img:only-of-type):not(:has(br)) {
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
 .home-preview-page-number {
     position: absolute;
-    right: clamp(14px, 1.5vw, 20px);
-    bottom: clamp(14px, 1.8vh, 20px);
+    right: clamp(0.875rem, 1.5vw, 1.25rem);
+    bottom: clamp(0.875rem, 1.8vh, 1.25rem);
     text-align: right;
     font-family: Georgia, 'Times New Roman', serif;
-    font-size: clamp(10px, 0.78vw, 11.5px);
+    font-size: clamp(0.625rem, 0.78vw, 0.71875rem);
     line-height: 1;
     color: rgba(0, 0, 0, 0.42);
     -webkit-text-fill-color: rgba(0, 0, 0, 0.42);
@@ -1757,10 +2613,12 @@ body.article-open .home-main-stage .column-section {
 .home-preview-body h2,
 .home-preview-body h3,
 .home-preview-body h4 {
-    margin: clamp(9px, 0.92vw, 12px) 0;
+    margin: clamp(0.5625rem, 0.92vw, 0.75rem) 0;
     font-family: Georgia, 'Times New Roman', serif;
     line-height: 1.42;
-    font-size: clamp(13.6px, 0.84vw, 15.2px);
+    word-break: break-word;
+    /* Print-scale with a light web nudge (~15–17px); matches reader */
+    font-size: clamp(0.9375rem, 1.1vw, 1.0625rem);
     color: transparent;
     -webkit-text-fill-color: transparent;
     background-image: linear-gradient(#171717,#171717), url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
@@ -1773,13 +2631,20 @@ body.article-open .home-main-stage .column-section {
     -webkit-font-smoothing: none;
 }
 
-.home-preview-body h1 { font-size: clamp(1rem, 1.15vw, 1.22rem); line-height: 1.2; }
-.home-preview-body h2 { font-size: clamp(0.95rem, 0.98vw, 1.08rem); line-height: 1.25; }
-.home-preview-body h3 { font-size: clamp(0.9rem, 0.88vw, 0.98rem); line-height: 1.24; }
+.home-preview-body h1 { font-size: clamp(1rem, 1.15vw, 1.22rem); line-height: 1.2; margin-top: 0.35em; font-weight: 700; }
+.home-preview-body h2 { font-size: clamp(0.95rem, 0.98vw, 1.08rem); line-height: 1.25; font-weight: 700; }
+.home-preview-body h3 { font-size: clamp(0.9rem, 0.88vw, 0.98rem); line-height: 1.24; font-weight: 700; }
+.home-preview-body h4 {
+    font-size: clamp(0.92rem, 0.92vw, 1rem);
+    font-weight: 700;
+}
+
+/* Masthead title must stay flush (overrides .home-preview-body h1 margin-top). */
+.home-preview-masthead .home-preview-title { margin-top: 0; }
 
 /* Reader parity: first body block sits slightly closer to masthead. */
 .home-preview-page:has(> .article-inline-masthead) .home-preview-body > :first-child {
-    margin-top: clamp(2px, 0.35vw, 6px);
+    margin-top: clamp(0.125rem, 0.35vw, 0.375rem);
 }
 
 /* Quote / epigraph — match blog reader so preview keeps structure when split */
@@ -1792,7 +2657,7 @@ body.article-open .home-main-stage .column-section {
 }
 
 .home-preview-body blockquote:not([data-variant]) {
-    margin: clamp(8px, 1vh, 12px) 0;
+    margin: clamp(0.5rem, 1vh, 0.75rem) 0;
     padding-left: 1rem;
     border-left: 3px solid rgba(0, 0, 0, 0.22);
 }
@@ -1804,7 +2669,7 @@ body.article-open .home-main-stage .column-section {
 .home-preview-body blockquote[data-variant="quote"] {
     border-left: none;
     padding-left: 0;
-    margin: clamp(8px, 1vh, 12px) 0;
+    margin: clamp(0.5rem, 1vh, 0.75rem) 0;
     font-style: italic;
 }
 
@@ -1883,11 +2748,14 @@ body.article-open:has(.article-panel.expanding-fullscreen) {
     overflow-x: hidden;
 }
 
-/* While preview is open, column motion uses preview timing (bio/about still use --aboutDuration) */
+/* While preview is open, column motion uses preview timing (keep translate so a late
+ * bio wall shut cannot snap when article-open overrides the transition shorthand). */
 body.article-open .column-section,
 body.article-closing .column-section {
     /* Inertial: slow to start, long deceleration at rest — reads as heavy mass */
-    transition: transform var(--articlePreviewRevealDuration) cubic-bezier(0.58, 0.06, 0.22, 0.98);
+    transition:
+        transform var(--articlePreviewRevealDuration) cubic-bezier(0.58, 0.06, 0.22, 0.98),
+        translate var(--aboutDuration) ease-in-out;
 }
 
 /* For article preview: columns move away from active seam as rigid slabs */
@@ -1915,17 +2783,12 @@ body.about-open .author-section {
     transform: translateX(calc(-1 * var(--aboutWidth)));
 }
 
-body.bio-open .title-section,
-body.bio-open .author-section,
-body.search-open .title-section,
-body.search-open .author-section {
-    transform: translateY(var(--bioHeight));
-}
-
-/* Transitions: transform only — animating background-position in tandem can make
+/* Transitions: transform/translate only — animating background-position in tandem can make
    background-clip:text inside columns “crawl” or snap at the end even when bg pos is constant */
 .column-section, .title-section, .author-section { 
-    transition: transform var(--aboutDuration) ease-in-out;
+    transition:
+        transform var(--aboutDuration) ease-in-out,
+        translate var(--aboutDuration) ease-in-out;
 }
 
 /* Five-column layout */
@@ -1966,6 +2829,11 @@ body.search-open .author-section {
     position: absolute;
     inset: 0;
     transform-style: flat;
+}
+
+/* Keep column measure stable so title wrap/height doesn't shift after first paint. */
+.home-main-stage .column-section {
+    scrollbar-gutter: stable;
 }
 
 .home-main-pane {
@@ -2296,13 +3164,13 @@ body.search-open .author-section {
     }
 
     .home-preview-page {
-        width: calc(100% - 10px);
-        min-width: calc(100% - 10px);
-        max-width: calc(100% - 10px);
-        height: min(var(--reader-page-height), calc(100dvh - 20px));
-        min-height: min(var(--reader-page-height), calc(100dvh - 20px));
-        max-height: min(var(--reader-page-height), calc(100dvh - 20px));
-        padding: clamp(68px, 9vh, 92px) clamp(16px, 4.5vw, 22px) clamp(18px, 2.8vh, 24px);
+        width: calc(100% - 0.625rem);
+        min-width: calc(100% - 0.625rem);
+        max-width: calc(100% - 0.625rem);
+        height: min(var(--reader-page-height), calc(100dvh - 1.25rem));
+        min-height: min(var(--reader-page-height), calc(100dvh - 1.25rem));
+        max-height: min(var(--reader-page-height), calc(100dvh - 1.25rem));
+        padding: clamp(4.25rem, 9vh, 5.75rem) clamp(1rem, 4.5vw, 1.375rem) clamp(1.125rem, 2.8vh, 1.5rem);
         margin: 0 auto;
     }
 
@@ -2436,6 +3304,26 @@ body.password-reset-page .home-login-create-account {
     background: rgba(255, 255, 255, 0.55);
     border: 1px solid rgba(0, 0, 0, 0.2);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+    /* Stay out of the way until home titles have settled after splash. */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(10px);
+    transition:
+        opacity 560ms ease,
+        transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s linear 560ms;
+}
+
+.home-texture-switcher.is-revealed {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition:
+        opacity 560ms ease,
+        transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s;
 }
 
 .home-texture-swatch {

@@ -17,9 +17,11 @@ body {
     isolation: isolate;
 }
 
-/* During handoff/bootstrap, never show floating comment UI before article render settles. */
+/* During handoff/bootstrap, never show comment UI before the article layout is ready. */
 body.reader-loading #comment-screen {
-    display: none;
+    display: none !important;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .blog {
@@ -27,8 +29,14 @@ body.reader-loading #comment-screen {
     z-index: 1;
     max-width: min(1340px, calc(100vw - 40px));
     margin: 0 auto;
-    /* Calibrated handoff offset to avoid visible vertical snap. */
-    padding: 9px 20px 56px;
+    /*
+     * Preview centers the page in the viewport (#article-first-page flex).
+     * Match that top inset so the first page doesn't jump up on handoff.
+     */
+    padding:
+        max(0px, calc((100dvh - var(--readerHandoffPageHeight, var(--reader-page-height))) / 2))
+        20px
+        56px;
     box-sizing: border-box;
     background: transparent;
 }
@@ -70,15 +78,16 @@ body.reader-loading #comment-screen {
     --spread-gap: clamp(46px, 6vw, 78px);
     --reader-page-height: calc(100dvh - clamp(30px, 4.8vh, 52px));
     --reader-page-width: min(620px, calc(var(--reader-page-height) / 1.41));
-    --reader-page-pad-inline: clamp(28px, 3.3vw, 40px);
-    --reader-page-pad-block: clamp(24px, 3vh, 34px);
+    --reader-page-pad-inline: clamp(1.75rem, 3.3vw, 2.5rem);
+    --reader-page-pad-block: clamp(1.5rem, 3vh, 2.125rem);
 }
 
 #article-body.article-columns {
     display: flex;
     flex-direction: column;
     gap: clamp(24px, 3.2vh, 42px);
-    padding: 0 clamp(20px, 2.8vw, 30px);
+    /* No horizontal gutter — page width must match home preview measure. */
+    padding: 0;
     box-sizing: border-box;
     background: transparent;
     margin: 0;
@@ -88,7 +97,7 @@ body.reader-loading #comment-screen {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
-    max-width: min(var(--reader-page-width), 100%);
+    max-width: min(var(--readerHandoffPageWidth, var(--reader-page-width)), 100%);
     min-height: var(--reader-page-height);
     margin-inline: auto;
     gap: 0;
@@ -188,7 +197,7 @@ body.reader-loading #comment-screen {
  */
 #article-body .article-page .article-page-footnotes p[data-variant="footnote"] {
     position: static;
-    font-size: clamp(10.5px, 1.12vw, 12.5px);
+    font-size: clamp(0.65625rem, 1.12vw, 0.78125rem);
     line-height: 1.26;
     margin: 0.05em 0;
     padding: 0;
@@ -226,23 +235,27 @@ body.reader-loading #comment-screen {
 }
 
 .article-inline-masthead {
-    margin: 0 0 clamp(3px, 0.5vw, 8px);
+    margin: 0 0 clamp(0.1875rem, 0.5vw, 0.5rem);
 }
 
 #article-body .article-page.article-page-first {
+    width: 100%;
+    max-width: min(var(--readerHandoffPageWidth, var(--reader-page-width)), 100%);
     height: var(--readerHandoffPageHeight, var(--reader-page-height));
-    padding-top: clamp(96px, 12.8vh, 146px);
+    padding-top: clamp(6rem, 12.8vh, 9.125rem);
     min-height: var(--readerHandoffPageHeight, var(--reader-page-height));
     max-height: var(--readerHandoffPageHeight, var(--reader-page-height));
+    margin-inline: auto;
+    box-sizing: border-box;
 }
 
 #article-body .article-page .article-page-number {
     position: absolute;
-    right: clamp(14px, 1.5vw, 20px);
-    bottom: clamp(14px, 1.8vh, 20px);
+    right: clamp(0.875rem, 1.5vw, 1.25rem);
+    bottom: clamp(0.875rem, 1.8vh, 1.25rem);
     text-align: right;
     font-family: Georgia, 'Times New Roman', serif;
-    font-size: clamp(10px, 0.78vw, 11.5px);
+    font-size: clamp(0.625rem, 0.78vw, 0.71875rem);
     line-height: 1;
     color: rgba(0, 0, 0, 0.42);
     -webkit-text-fill-color: rgba(0, 0, 0, 0.42);
@@ -253,10 +266,11 @@ body.reader-loading #comment-screen {
 }
 
 .article-inline-masthead .title {
-    margin: 0 0 clamp(2px, 0.35vw, 5px);
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
 }
 
-/* Masthead: no ink grain — title + byline stay clean vs body columns */
+/* Masthead: no ink grain — title + byline stay clean vs body columns.
+ * Fully override legacy .title (weight/tracking/size) so preview ↔ reader match. */
 #article-body .article-inline-masthead .title {
     color: #141414;
     -webkit-text-fill-color: #141414;
@@ -268,6 +282,10 @@ body.reader-loading #comment-screen {
     text-shadow: none;
     -webkit-font-smoothing: antialiased;
     font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(1.14rem, 1.38vw, 1.42rem);
+    line-height: 1.16;
+    font-weight: 700;
+    letter-spacing: normal;
 }
 
 .article-byline {
@@ -309,7 +327,7 @@ body.reader-loading #comment-screen {
 
 /* First body block after inline masthead: pull text up (margins collapse with masthead bottom). */
 #article-body .article-page:has(> .article-inline-masthead) .article-page-body > :first-child {
-    margin-top: clamp(2px, 0.35vw, 6px);
+    margin-top: clamp(0.125rem, 0.35vw, 0.375rem);
 }
 
 /* Ink type: match .article-panel p / h2 (larger sizes for full reader) */
@@ -323,11 +341,12 @@ body.reader-loading #comment-screen {
     position: relative;
     z-index: 1;
     word-break: break-word;
-    margin: clamp(9px, 0.92vw, 12px) 0;
+    margin: clamp(0.5625rem, 0.92vw, 0.75rem) 0;
     break-inside: avoid;
     font-family: Georgia, "Times New Roman", serif;
     line-height: 1.42;
-    font-size: clamp(13.6px, 0.84vw, 15.2px);
+    /* Print-scale with a light web nudge (~15–17px) */
+    font-size: clamp(0.9375rem, 1.1vw, 1.0625rem);
     color: transparent;
     -webkit-text-fill-color: transparent;
     background-image:
@@ -345,29 +364,41 @@ body.reader-loading #comment-screen {
 #article-body .article-page h1 {
     font-size: clamp(1rem, 1.15vw, 1.22rem);
     line-height: 1.2;
+    font-weight: 700;
+}
+
+/* Body h1 only — must not push the masthead title (preview has margin-top: 0 there). */
+#article-body .article-page-body > h1 {
     margin-top: 0.35em;
 }
 
-/* Inline masthead h1: beat .article-page h1 bottom margin so title sits close to byline. */
+/* Inline masthead h1: beat .article-page h1 + legacy .title so title matches preview. */
 #article-body .article-page .article-inline-masthead h1.title {
     font-size: clamp(1.14rem, 1.38vw, 1.42rem);
     line-height: 1.16;
-    margin-bottom: clamp(2px, 0.35vw, 5px);
+    font-weight: 700;
+    letter-spacing: normal;
+    margin-top: 0;
+    margin-bottom: clamp(0.125rem, 0.35vw, 0.3125rem);
 }
 
 #article-body .article-page h2 {
     font-size: clamp(0.95rem, 0.98vw, 1.08rem);
     line-height: 1.25;
+    font-weight: 700;
 }
 
 #article-body .article-page h3 {
     font-size: clamp(0.9rem, 0.88vw, 0.98rem);
+    line-height: 1.24;
+    font-weight: 700;
 }
 
 #article-body .article-page h4,
 #article-body .article-page h5,
 #article-body .article-page h6 {
     font-size: clamp(0.92rem, 0.92vw, 1rem);
+    font-weight: 700;
 }
 
 #article-body .article-page .article-image {
@@ -459,7 +490,7 @@ body.reader-loading #comment-screen {
 }
 
 #article-body .article-page blockquote:not([data-variant]) {
-    margin: 1rem 0;
+    margin: clamp(0.5rem, 1vh, 0.75rem) 0;
     padding-left: 1rem;
     border-left: 3px solid rgba(0, 0, 0, 0.22);
 }
@@ -471,7 +502,7 @@ body.reader-loading #comment-screen {
 #article-body .article-page blockquote[data-variant="quote"] {
     border-left: none;
     padding-left: 0;
-    margin: 1rem 0;
+    margin: clamp(0.5rem, 1vh, 0.75rem) 0;
     font-style: italic;
 }
 

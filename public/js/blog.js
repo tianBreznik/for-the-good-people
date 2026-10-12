@@ -1,10 +1,58 @@
-let blogId = decodeURI(location.pathname.split("/").pop());
+/** Path may keep %3A etc.; decodeURI leaves those encoded and breaks Firestore lookups. */
+function blogIdFromPath() {
+    const pop = (location.pathname.split('/').filter(Boolean).pop() || '');
+    try {
+        return decodeURIComponent(pop);
+    } catch (_) {
+        try {
+            return decodeURI(pop);
+        } catch {
+            return pop;
+        }
+    }
+}
+let blogId = blogIdFromPath();
 const commentSection = document.querySelector('.comment-section');
 const commentScreenEl = document.getElementById('comment-screen');
 
 let docRef = db.collection("blogs").doc(blogId);
 let commentRef = db.collection("comments").doc(blogId+'_'+0);
 let comments = db.collection("comments");
+
+function setResolvedBlogId(nextId) {
+    const id = String(nextId || '');
+    if (!id || id === blogId) return;
+    blogId = id;
+    docRef = db.collection('blogs').doc(blogId);
+    commentRef = db.collection('comments').doc(`${blogId}_0`);
+    try {
+        const encoded = encodeURIComponent(blogId).replace(/%3A/gi, ':');
+        history.replaceState({}, '', `/${encoded}${location.search}${location.hash}`);
+    } catch (_) {}
+}
+
+/** Exact id, or unique prefix match (truncated #/ refs missing the random suffix). */
+function resolveBlogDocument(id) {
+    const wanted = String(id || '');
+    if (!wanted) return Promise.resolve(null);
+    return db
+        .collection('blogs')
+        .doc(wanted)
+        .get()
+        .then((doc) => {
+            if (doc.exists) return doc;
+            return db.collection('blogs').get().then((snap) => {
+                const matches = snap.docs.filter(
+                    (d) => d.id === wanted || d.id.startsWith(`${wanted}-`)
+                );
+                if (matches.length === 1) {
+                    setResolvedBlogId(matches[0].id);
+                    return matches[0];
+                }
+                return null;
+            });
+        });
+}
 
 let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 let numberofcomments = 0;
@@ -94,7 +142,7 @@ function getAnnotationToolbar() {
     const toolbar = document.createElement('div');
     toolbar.className = 'annotation-toolbar';
     toolbar.hidden = true;
-    toolbar.innerHTML = `<button type="button" class="annotation-add-btn">Add annotation</button>`;
+    toolbar.innerHTML = `<button type="button" class="annotation-add-btn">add annotation</button>`;
     document.body.appendChild(toolbar);
     toolbar.querySelector('.annotation-add-btn')?.addEventListener('click', beginAnnotationComposeFromSelection);
     annotationToolbar = toolbar;
@@ -439,7 +487,7 @@ function renderAnnotationList() {
             <div class="comment-shell">
                 <div class="comment-main">
                     <h1 class="user annotation-user">@${userTag}</h1>
-                    <p class="comment-content annotation-comment">${content}</p>
+                    <p class="comment-content annotation-comment">${formatCommentBodyHtml(content)}</p>
                 </div>
                 <div class="comment-actions">
                     <button class="reply" onclick="event.stopPropagation(); makeAnchor('${userTag}','${item.id}')">reply</button>
@@ -655,10 +703,12 @@ function clearReaderHandoffPayload() {
     try { sessionStorage.removeItem(READER_HANDOFF_KEY); } catch (_) {}
 }
 
+/** Reveal comments only after the final (non-provisional) article layout is ready. */
 function ensureCommentsVisible() {
+    if (!readerReady) return;
     document.body.classList.remove('reader-loading');
     const commentScreen = document.getElementById('comment-screen');
-    if (commentScreen) commentScreen.style.display = 'block';
+    if (commentScreen) commentScreen.style.removeProperty('display');
 }
 
 function renderReaderHandoffIfPresent() {
@@ -668,24 +718,33 @@ function renderReaderHandoffIfPresent() {
     if (Number.isFinite(handoffHeight) && handoffHeight > 100) {
         document.documentElement.style.setProperty('--readerHandoffPageHeight', `${Math.round(handoffHeight)}px`);
     }
+    const handoffWidth = Number(payload.previewPageWidth);
+    if (Number.isFinite(handoffWidth) && handoffWidth > 100) {
+        document.documentElement.style.setProperty('--readerHandoffPageWidth', `${Math.round(handoffWidth)}px`);
+    }
     const titleTag = document.querySelector('title');
     const title = payload.title || '';
     const publishedAt = payload.publishedAt || '';
     const author = payload.author || 'Anonymous';
-    titleTag.textContent = title ? `Blog : ${title}` : 'Blog';
+    titleTag.textContent = title || 'Good People';
     currentBlogMeta = { title, publishedAt, author };
     if (typeof payload.article === 'string' && payload.article.trim()) {
         renderArticleBody(payload.article, { provisional: true });
     }
 }
 
-docRef.get().then((doc) => {
-    if(doc.exists){
-        setupBlog(doc.data());
-    } else{
-        location.replace("/");
-    }
-})
+resolveBlogDocument(blogId)
+    .then((doc) => {
+        if (doc && doc.exists) {
+            setupBlog(doc.data());
+        } else {
+            location.replace('/');
+        }
+    })
+    .catch((err) => {
+        console.error('Failed to load blog', err);
+        location.replace('/');
+    });
 
 commentRef.get().then((comms) => {
     console.log(numberofcomments);
@@ -693,8 +752,8 @@ commentRef.get().then((comms) => {
     if (!comms.exists) {
         console.log("no comments yet");
     }
+    // Attach listener early; keep #comment-screen hidden until readerReady.
     setupCommentSection();
-    ensureCommentsVisible();
 })
 
 
@@ -879,9 +938,10 @@ function renderThreadedComments() {
         const content = String(data.content || '');
         const responseTo = String(data.responseTo || '').trim();
 
-        let contentHtml = content;
+        let contentHtml = formatCommentBodyHtml(content);
         if (responseTo) {
-            contentHtml = `<span class="reply-user">${responseTo}</span> ${content}`;
+            const replyLabel = formatCommentBodyHtml(responseTo);
+            contentHtml = `<span class="reply-user">${replyLabel}</span> ${contentHtml}`;
         }
 
         li.innerHTML = `
@@ -933,21 +993,25 @@ const setupBlog = (data) => {
     const publishedAt = data.publishedAt || '';
     const author = data.author || 'Anonymous';
 
-    titleTag.textContent = title ? `Blog : ${title}` : 'Blog';
+    titleTag.textContent = title || 'Good People';
     currentBlogMeta = { title, publishedAt, author };
 
     numberofcomments = data.numberofcomments;
 
-    try {
+    const render = () => {
         renderArticleBody(data.article);
         setupCommentSection();
+        setupCommentContentRefs();
         attachAnnotationsListener();
         bindAnnotationSelectionUi();
-        bindAnnotationNavigation();
-        clearReaderHandoffPayload();
-    } finally {
-        ensureCommentsVisible();
+    };
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.ensureCatalog) {
+        ContentRefs.ensureCatalog().finally(render);
+    } else {
+        render();
     }
+    bindAnnotationNavigation();
+    clearReaderHandoffPayload();
 }
 
 
@@ -1076,7 +1140,30 @@ function createSpread() {
 function createArticleNode(line) {
     const wrapper = document.createElement('div');
     wrapper.innerHTML = line.trim();
-    return wrapper.firstElementChild || document.createElement('p');
+    const node = wrapper.firstElementChild || document.createElement('p');
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.linkifyElement) {
+        ContentRefs.linkifyElement(node);
+    }
+    return node;
+}
+
+function formatCommentBodyHtml(raw) {
+    const text = String(raw || '');
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.linkifyPlainText) {
+        return ContentRefs.linkifyPlainText(text);
+    }
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function setupCommentContentRefs() {
+    if (typeof ContentRefs === 'undefined' || !ContentRefs.attachToTextField) return;
+    ContentRefs.ensureCatalog();
+    const input = document.getElementById('commentInput');
+    if (input) ContentRefs.attachToTextField(input);
 }
 
 function extractFootnoteDefinitionsFromHtml(html) {
@@ -1095,6 +1182,35 @@ function extractFootnoteDefinitionsFromHtml(html) {
         }
     });
     return { cleanedHtml: container.innerHTML, defMap };
+}
+
+/** Plain/markdown line → block HTML (older posts + handoff payloads). */
+function formatLine(line) {
+    // Handle headings
+    if (line[0] == '#') {
+        let hCount = 0;
+        let i = 0;
+        while (line[i] == '#') {
+            hCount++;
+            i++;
+        }
+        let tag = `h${hCount}`;
+        return `<${tag}>${line.slice(hCount, line.length)}</${tag}>`;
+    }
+    // Handle images
+    if (line[0] == '!' && line[1] == '[') {
+        let seperator;
+        for (let i = 0; i <= line.length; i++) {
+            if (line[i] == ']' && line[i + 1] == '(' && line[line.length - 1] == ')') {
+                seperator = i;
+            }
+        }
+        let alt = line.slice(2, seperator);
+        let src = line.slice(seperator + 2, line.length - 1);
+        return `<img src="${src}" alt="${alt}" class="article-image">`;
+    }
+    // Handle regular text
+    return `<p>${line}</p>`;
 }
 
 function parseArticleBlocks(articleData) {
@@ -1124,7 +1240,7 @@ function parseArticleBlocks(articleData) {
     }
 
     return {
-        blocks: source.split("\n").filter(item => item.length).map(formatLine),
+        blocks: source.split('\n').filter((item) => item.length).map(formatLine),
         footnoteDefs
     };
 }
@@ -1163,66 +1279,25 @@ function collectFootnoteRefIdsUnion(bodyEl, extraEl) {
 }
 
 /**
- * Footnote strip uses much smaller type (~10–12px); using the body chars/line value
- * massively over-counts lines and steals body space (worse with several notes).
+ * Fixed footnote band (px). Body packs above this; notes that don't fit spill to the next page.
+ * Stable when body type changes — no char/line estimates.
  */
-function estimateFootnoteStripCharsPerLine() {
-    const root = document.getElementById('article-body');
-    const vw = window.innerWidth || 800;
-    const w = root && root.clientWidth > 80 ? root.clientWidth : Math.min(1340, vw - 40);
-    const narrow = vw <= 900;
-    let colPx;
-    if (narrow) {
-        const page = root && root.querySelector('.article-page-left');
-        const cw = page && page.clientWidth > 80 ? page.clientWidth : w;
-        const cs = page && window.getComputedStyle ? window.getComputedStyle(page) : null;
-        const pad =
-            cs != null
-                ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
-                : 56;
-        colPx = Math.max(200, cw - pad - 12);
-    } else {
-        const gap = Math.min(100, Math.max(40, Math.round(w * 0.055)));
-        colPx = Math.max(220, (w - gap) * 0.5 - 20);
-    }
-    const approxCharPxFoot = 3.92;
-    return Math.max(48, Math.floor(colPx / approxCharPxFoot));
+function footnoteBandHeight(spreadHeight) {
+    const h = Number(spreadHeight) || 0;
+    if (h <= 0) return 112;
+    return Math.min(168, Math.max(96, Math.round(h * 0.155)));
 }
 
-/**
- * Vertical space to reserve for the footnote strip on this page: depends on how many distinct
- * refs appear on the page and the stored definition HTML length (per note, then summed).
- */
-function footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl) {
-    const ids = collectFootnoteRefIdsUnion(bodyEl, extraEl);
-    if (!ids.length || !defMap || defMap.size === 0) return 0;
-    const ruleGap = 30;
-    const charsPerLine = estimateFootnoteStripCharsPerLine();
-    const lineH = 13;
-    const perNotePad = 3;
-    let totalLines = 0;
-    ids.forEach((id) => {
-        const html = defMap.get(id);
-        if (!html) return;
-        const d = document.createElement('div');
-        d.innerHTML = html;
-        const len = (d.textContent || '').length;
-        totalLines += Math.max(1, Math.ceil(len / charsPerLine));
-    });
-    const textBlock = totalLines * lineH + ids.length * perNotePad;
-    const raw = ruleGap + textBlock;
-    const floor = Math.max(38, Math.round(20 + ids.length * 8));
-    const minBody = 200;
-    const maxReserve = Math.max(floor, spreadHeight - minBody);
-    const padded = Math.ceil(raw * 1.02);
-    const capByViewport = Math.floor(spreadHeight * 0.23);
-    return Math.min(maxReserve, capByViewport, Math.max(floor, padded));
+function pageNeedsFootnoteBand(bodyEl, defMap, extraEl, carryIds) {
+    if (Array.isArray(carryIds) && carryIds.length > 0) return true;
+    if (!defMap || defMap.size === 0) return false;
+    return collectFootnoteRefIdsUnion(bodyEl, extraEl).length > 0;
 }
 
-function footnoteHeightBudget(spreadHeight, bodyEl, defMap, extraEl) {
-    const r = footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl);
-    if (r <= 0) return spreadHeight;
-    return Math.max(180, spreadHeight - r);
+/** Reserve the fixed band when this page has refs or carried notes; else 0. */
+function footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds) {
+    if (!pageNeedsFootnoteBand(bodyEl, defMap, extraEl, carryIds)) return 0;
+    return footnoteBandHeight(spreadHeight);
 }
 
 function elementOuterHeightWithMargins(el) {
@@ -1245,8 +1320,8 @@ function pageVerticalInsets(pageEl) {
     return pt + pb + bt + bb;
 }
 
-function pageBodyHeightBudget(pageEl, bodyEl, spreadHeight, defMap, extraEl) {
-    const footReserve = footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl);
+function pageBodyHeightBudget(pageEl, bodyEl, spreadHeight, defMap, extraEl, carryIds) {
+    const footReserve = footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds);
     const masthead = pageEl ? pageEl.querySelector('.article-inline-masthead') : null;
     const mastheadReserve = masthead ? elementOuterHeightWithMargins(masthead) : 0;
     const pageInsets = pageVerticalInsets(pageEl);
@@ -1270,15 +1345,41 @@ function footnoteSuperscriptNumberForId(bodyRoot, id) {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function finalizePageFootnotes(pageEl, defMap, assignedAnchors) {
+/**
+ * Pack footnote defs into the fixed band. Carry-in notes first, then refs on this page.
+ * Returns ids that did not fit (spill to the next page's footnote section).
+ */
+function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadHeight) {
     pageEl.querySelector('.article-page-footnotes')?.remove();
     const body = pageEl.querySelector('.article-page-body');
-    if (!body) return;
-    const orderedIds = collectFootnoteRefIdsFromNode(body);
-    if (!orderedIds.length || !defMap || defMap.size === 0) return;
+    const carry = Array.isArray(carryIn) ? carryIn.slice() : [];
+    if (!body || !defMap || defMap.size === 0) return carry;
+
+    const pageRefs = collectFootnoteRefIdsFromNode(body);
+    const queue = [];
+    const seen = new Set();
+    const enqueue = (id) => {
+        if (!id || seen.has(id) || !defMap.has(id)) return;
+        if (assignedAnchors.has(id) && !carry.includes(id)) return;
+        seen.add(id);
+        queue.push(id);
+    };
+    carry.forEach(enqueue);
+    pageRefs.forEach(enqueue);
+    if (!queue.length) return [];
+
+    const band = footnoteBandHeight(spreadHeight);
     const foot = document.createElement('div');
     foot.className = 'article-page-footnotes';
-    orderedIds.forEach((id, index) => {
+    body.appendChild(foot);
+
+    const carryOut = [];
+    let accepting = true;
+    queue.forEach((id, index) => {
+        if (!accepting) {
+            carryOut.push(id);
+            return;
+        }
         const html = defMap.get(id);
         if (!html) return;
         const temp = document.createElement('div');
@@ -1286,18 +1387,37 @@ function finalizePageFootnotes(pageEl, defMap, assignedAnchors) {
         const src = temp.firstElementChild;
         if (!src) return;
         const clone = src.cloneNode(true);
-        const n = footnoteSuperscriptNumberForId(body, id) ?? index + 1;
+        const articleRoot = document.getElementById('article-body');
+        const n =
+            footnoteSuperscriptNumberForId(body, id) ??
+            footnoteSuperscriptNumberForId(articleRoot, id) ??
+            index + 1;
         clone.setAttribute('data-footnote-n', String(n));
         if (!assignedAnchors.has(id)) {
             clone.id = `fn-${id}`;
-            assignedAnchors.add(id);
         } else {
             clone.removeAttribute('id');
         }
+        if (typeof ContentRefs !== 'undefined' && ContentRefs.linkifyElement) {
+            ContentRefs.linkifyElement(clone);
+        }
         foot.appendChild(clone);
+        void foot.offsetHeight;
+        const used = elementOuterHeightWithMargins(foot);
+        if (used > band && foot.childElementCount > 1) {
+            foot.removeChild(clone);
+            carryOut.push(id);
+            accepting = false;
+            return;
+        }
+        // Single note taller than the band: keep it so we never infinite-loop empty pages.
+        assignedAnchors.add(id);
     });
-    if (!foot.childElementCount) return;
-    body.appendChild(foot);
+
+    if (!foot.childElementCount) {
+        foot.remove();
+    }
+    return carryOut;
 }
 
 function splitParagraphToFit(pageBodyEl, paragraphEl, maxBodyScrollHeight) {
@@ -1431,23 +1551,48 @@ function renderArticleSpread(blocks, footnoteDefMap) {
     let currentPageBody = ensureArticlePageBody(currentPage);
 
     const assignedFootnoteAnchors = new Set();
+    let footnoteCarry = [];
 
-    const moveToNextPage = () => {
-        finalizePageFootnotes(currentPage, defMap, assignedFootnoteAnchors);
+    const openFreshPage = () => {
         currentSpread = createSpread();
         articleBody.appendChild(currentSpread.spread);
         currentPage = currentSpread.leftPage;
         currentPageBody = ensureArticlePageBody(currentSpread.leftPage);
     };
 
+    const moveToNextPage = () => {
+        footnoteCarry = finalizePageFootnotes(
+            currentPage,
+            defMap,
+            assignedFootnoteAnchors,
+            footnoteCarry,
+            spreadHeight
+        );
+        openFreshPage();
+    };
+
     blocks.forEach((blockHtml) => {
         const node = createArticleNode(blockHtml);
         currentPageBody.appendChild(node);
 
-        const heightBudget = pageBodyHeightBudget(currentPage, currentPageBody, spreadHeight, defMap);
+        const heightBudget = pageBodyHeightBudget(
+            currentPage,
+            currentPageBody,
+            spreadHeight,
+            defMap,
+            null,
+            footnoteCarry
+        );
         if (currentPageBody.scrollHeight > heightBudget && currentPageBody.childElementCount > 1) {
             currentPageBody.removeChild(node);
-            const splitBudget = pageBodyHeightBudget(currentPage, currentPageBody, spreadHeight, defMap, node);
+            const splitBudget = pageBodyHeightBudget(
+                currentPage,
+                currentPageBody,
+                spreadHeight,
+                defMap,
+                node,
+                footnoteCarry
+            );
             const split = splitParagraphToFit(currentPageBody, node, splitBudget);
             if (split) {
                 currentPageBody.appendChild(split.leftPart);
@@ -1460,7 +1605,27 @@ function renderArticleSpread(blocks, footnoteDefMap) {
         }
     });
 
-    finalizePageFootnotes(currentPage, defMap, assignedFootnoteAnchors);
+    footnoteCarry = finalizePageFootnotes(
+        currentPage,
+        defMap,
+        assignedFootnoteAnchors,
+        footnoteCarry,
+        spreadHeight
+    );
+
+    // Drain spilled notes onto following pages (footnote-only pages if needed).
+    let guard = 0;
+    while (footnoteCarry.length && guard < 40) {
+        guard += 1;
+        openFreshPage();
+        footnoteCarry = finalizePageFootnotes(
+            currentPage,
+            defMap,
+            assignedFootnoteAnchors,
+            footnoteCarry,
+            spreadHeight
+        );
+    }
 
     mountCommentScreenForLayout(currentPage);
 
@@ -1512,36 +1677,6 @@ const renderArticleBody = (articleData, options = {}) => {
 }
 
 renderReaderHandoffIfPresent();
-
-const formatLine = (line) => {
-    // Handle headings
-    if (line[0] == '#') {
-        let hCount = 0;
-        let i = 0;
-        while (line[i] == '#') {
-            hCount++;
-            i++;
-        }
-        let tag = `h${hCount}`;
-        return `<${tag}>${line.slice(hCount, line.length)}</${tag}>`;
-    }
-    // Handle images
-    else if (line[0] == "!" && line[1] == "[") {
-        let seperator;
-        for (let i = 0; i <= line.length; i++) {
-            if (line[i] == "]" && line[i + 1] == "(" && line[line.length - 1] == ")") {
-                seperator = i;
-            }
-        }
-        let alt = line.slice(2, seperator);
-        let src = line.slice(seperator + 2, line.length - 1);
-        return `<img src="${src}" alt="${alt}" class="article-image">`;
-    }
-    // Handle regular text
-    else {
-        return `<p>${line}</p>`;
-    }
-}
 
 const addArticle = (ele, data) => {
     data = data.split("\n").filter(item => item.length);

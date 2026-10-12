@@ -14,8 +14,184 @@ import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2.11.5';
 import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2.11.5';
 import Color from 'https://esm.sh/@tiptap/extension-color@2.11.5';
 import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2.11.5';
-
 // Editor functionality with Tiptap and auto-save
+
+/** Preserve @author / #article ref attributes on links. */
+const ContentRefLink = Link.extend({
+    addAttributes() {
+        return {
+            ...this.parent?.(),
+            class: {
+                default: null,
+                parseHTML: (el) => el.getAttribute('class'),
+                renderHTML: (attrs) => (attrs.class ? { class: attrs.class } : {}),
+            },
+            'data-ref': {
+                default: null,
+                parseHTML: (el) => el.getAttribute('data-ref'),
+                renderHTML: (attrs) => (attrs['data-ref'] ? { 'data-ref': attrs['data-ref'] } : {}),
+            },
+            'data-ref-id': {
+                default: null,
+                parseHTML: (el) => el.getAttribute('data-ref-id'),
+                renderHTML: (attrs) => (attrs['data-ref-id'] ? { 'data-ref-id': attrs['data-ref-id'] } : {}),
+            },
+        };
+    },
+});
+
+const contentRefSuggestKey = new PluginKey('contentRefSuggest');
+
+function createContentRefSuggestExtension() {
+    const CR = typeof window !== 'undefined' ? window.ContentRefs : null;
+    if (!CR) return Extension.create({ name: 'contentRefSuggest' });
+
+    return Extension.create({
+        name: 'contentRefSuggest',
+        addProseMirrorPlugins() {
+            let selectedIndex = 0;
+            let items = [];
+            let active = null;
+
+            const close = () => {
+                CR.destroyMenu();
+                active = null;
+                items = [];
+                selectedIndex = 0;
+            };
+
+            const refresh = (view) => {
+                const { state } = view;
+                const { from } = state.selection;
+                if (!state.selection.empty) {
+                    close();
+                    return;
+                }
+                const scanFrom = Math.max(0, from - 80);
+                const slice = state.doc.textBetween(scanFrom, from, ' ', ' ');
+                const detected = CR.detectQuery(slice, slice.length);
+                if (!detected) {
+                    close();
+                    return;
+                }
+                const absStart = scanFrom + detected.start;
+                const absEnd = scanFrom + detected.end;
+                active = { ...detected, absStart, absEnd };
+                items =
+                    detected.type === 'author'
+                        ? CR.filterAuthors(detected.query)
+                        : CR.filterArticles(detected.query);
+                if (!items.length) {
+                    CR.destroyMenu();
+                    return;
+                }
+                selectedIndex = Math.min(selectedIndex, items.length - 1);
+                const coords = view.coordsAtPos(from);
+                CR.destroyMenu();
+                const wrap = document.createElement('div');
+                wrap.className = 'content-ref-menu';
+                wrap.setAttribute('role', 'listbox');
+                const esc = (s) =>
+                    String(s || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                items.forEach((item, i) => {
+                    const row = document.createElement('button');
+                    row.type = 'button';
+                    row.className = 'content-ref-menu-item' + (i === selectedIndex ? ' is-active' : '');
+                    if (detected.type === 'author') {
+                        row.innerHTML = `<span class="content-ref-menu-primary">@${esc(item)}</span>`;
+                    } else {
+                        row.innerHTML =
+                            `<span class="content-ref-menu-primary">${esc(item.title)}</span>` +
+                            `<span class="content-ref-menu-meta">@${esc(item.author)}</span>`;
+                    }
+                    row.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        applyItem(view, detected.type === 'author' ? { id: item } : item);
+                    });
+                    wrap.appendChild(row);
+                });
+                document.body.appendChild(wrap);
+                CR.setActiveMenu(wrap);
+                const pad = 6;
+                const vw = window.innerWidth || 800;
+                const vh = window.innerHeight || 600;
+                let left = coords.left;
+                let top = coords.bottom + 4;
+                const rect = wrap.getBoundingClientRect();
+                if (left + rect.width > vw - pad) left = Math.max(pad, vw - rect.width - pad);
+                if (top + rect.height > vh - pad) top = Math.max(pad, coords.top - rect.height - 4);
+                wrap.style.left = `${Math.round(left)}px`;
+                wrap.style.top = `${Math.round(top)}px`;
+            };
+
+            const applyItem = (view, item) => {
+                if (!active) return;
+                const html = CR.htmlForSelection(active.type, item) + ' ';
+                const { absStart, absEnd } = active;
+                editor
+                    .chain()
+                    .focus()
+                    .deleteRange({ from: absStart, to: absEnd })
+                    .insertContent(html)
+                    .run();
+                close();
+            };
+
+            return [
+                new Plugin({
+                    key: contentRefSuggestKey,
+                    view(view) {
+                        CR.ensureCatalog();
+                        return {
+                            update(v) {
+                                refresh(v);
+                            },
+                            destroy() {
+                                close();
+                            },
+                        };
+                    },
+                    props: {
+                        handleKeyDown(view, event) {
+                            if (!active || !items.length) return false;
+                            if (event.key === 'ArrowDown') {
+                                event.preventDefault();
+                                selectedIndex = (selectedIndex + 1) % items.length;
+                                refresh(view);
+                                return true;
+                            }
+                            if (event.key === 'ArrowUp') {
+                                event.preventDefault();
+                                selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+                                refresh(view);
+                                return true;
+                            }
+                            if (event.key === 'Enter' || event.key === 'Tab') {
+                                event.preventDefault();
+                                const item =
+                                    active.type === 'author'
+                                        ? { id: items[selectedIndex] }
+                                        : items[selectedIndex];
+                                applyItem(view, item);
+                                return true;
+                            }
+                            if (event.key === 'Escape') {
+                                event.preventDefault();
+                                close();
+                                return true;
+                            }
+                            return false;
+                        },
+                    },
+                }),
+            ];
+        },
+    });
+}
 
 const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
 
@@ -42,6 +218,19 @@ let footnoteDialogInsertAnchor = null;
 let blogID = location.pathname.split("/");
 blogID.shift();
 const isEditing = blogID[0] !== "editor";
+
+function decodePathSegment(segment) {
+    const raw = String(segment || '');
+    try {
+        return decodeURIComponent(raw);
+    } catch (_) {
+        try {
+            return decodeURI(raw);
+        } catch {
+            return raw;
+        }
+    }
+}
 
 function inferContentTypeFromBlogId(blogId) {
     const seeded = Array.from(String(blogId || '')).reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
@@ -576,6 +765,10 @@ function setupFootnoteDialog() {
             editor.chain().focus().run();
         }
     });
+    if (typeof window.ContentRefs !== 'undefined' && window.ContentRefs.attachToTextField) {
+        window.ContentRefs.ensureCatalog();
+        window.ContentRefs.attachToTextField(body);
+    }
 }
 
 const EDITOR_NARROW_QUERY = '(max-width: 900px)';
@@ -721,10 +914,11 @@ function initializeEditor() {
             TextAlign.configure({
                 types: ['heading', 'paragraph']
             }),
-            Link.configure({
+            ContentRefLink.configure({
                 openOnClick: false,
-                autolink: true
+                autolink: true,
             }),
+            createContentRefSuggestExtension(),
             Placeholder.configure({
                 placeholder: '#IKFLY'
             })
@@ -1117,7 +1311,7 @@ async function publishBlog() {
         publishBtn.disabled = true;
         publishBtn.textContent = 'Publishing...';
         
-        const docName = isEditing ? decodeURI(blogID[0]) : generateBlogId();
+        const docName = isEditing ? decodePathSegment(blogID[0]) : generateBlogId();
         const date = new Date();
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         
@@ -1162,7 +1356,7 @@ function generateBlogId() {
 
 async function loadBlogData() {
     try {
-        const docRef = window.db.collection("blogs").doc(decodeURI(blogID[0]));
+        const docRef = window.db.collection("blogs").doc(decodePathSegment(blogID[0]));
         const doc = await docRef.get();
         
         if (!doc.exists) {
@@ -1171,7 +1365,7 @@ async function loadBlogData() {
         }
 
         const data = doc.data();
-        const blogId = decodeURI(blogID[0]);
+        const blogId = decodePathSegment(blogID[0]);
         titleInput.value = data.title || '';
         setContentTypeSelect(data.contentType, blogId);
         isHydratingEditor = true;

@@ -1,0 +1,74 @@
+/* Shared @author / #article mention UI + inline refs */
+
+.content-ref-menu {
+    position: fixed;
+    z-index: 12000;
+    min-width: 180px;
+    max-width: min(320px, calc(100vw - 16px));
+    max-height: 240px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    box-sizing: border-box;
+    background: #f7f7f5;
+    border: 1px solid rgba(0, 0, 0, 0.22);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+}
+
+.content-ref-menu-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    width: 100%;
+    margin: 0;
+    padding: 7px 9px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font: 500 13px/1.25 Georgia, 'Times New Roman', serif;
+    color: #171717;
+}
+
+.content-ref-menu-item:hover,
+.content-ref-menu-item.is-active {
+    background: rgba(0, 0, 0, 0.07);
+}
+
+.content-ref-menu-primary {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.content-ref-menu-meta {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: rgba(0, 0, 0, 0.48);
+}
+
+a.content-ref,
+.content-ref {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: rgba(0, 0, 0, 0.28);
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+a.content-ref:hover {
+    text-decoration-color: rgba(0, 0, 0, 0.55);
+}
+
+a.content-ref-author {
+    font-weight: 600;
+}
+
+/* TipTap editor: refs stay readable while editing */
+.tiptap-editor a.content-ref {
+    color: #1a1a1a;
+}

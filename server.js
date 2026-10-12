@@ -4,7 +4,17 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const fileupload = require('express-fileupload');
-const { getAdmin, completeUserSignup, submitAuthorApplication, approveAuthorApplication, rejectAuthorApplication, normalizeAuthorName, requestPasswordResetEmail } = require('./lib/firebase-admin');
+const {
+    getAdmin,
+    completeUserSignup,
+    submitAuthorApplication,
+    approveAuthorApplication,
+    rejectAuthorApplication,
+    normalizeAuthorName,
+    requestPasswordResetEmail,
+    getAuthorProfile,
+    updateAuthorProfileForUser,
+} = require('./lib/firebase-admin');
 const {
     sendAuthorApplicationNotification,
     isMailConfigured,
@@ -329,6 +339,62 @@ app.post('/api/auth/complete-signup', async (req, res) => {
             return res.status(503).json({ error: 'admin_not_configured' });
         }
         console.error('complete-signup', err);
+        return res.status(500).json({ error: 'server_error' });
+    }
+});
+
+/** Public author profile (bio panel). */
+app.get('/api/author-profile/:name', async (req, res) => {
+    try {
+        const profile = await getAuthorProfile(req.params.name);
+        if (!profile) {
+            return res.status(404).json({ error: 'not_found' });
+        }
+        return res.json({ ok: true, profile });
+    } catch (err) {
+        if (err.message && err.message.includes('Firebase Admin is not configured')) {
+            return res.status(503).json({ error: 'admin_not_configured' });
+        }
+        console.error('author-profile get', err);
+        return res.status(500).json({ error: 'server_error' });
+    }
+});
+
+/** Update own author profile (GitHub-style bio fields). */
+app.post('/api/author-profile', async (req, res) => {
+    try {
+        const { idToken, profile } = req.body || {};
+        if (!idToken) {
+            return res.status(401).json({ error: 'unauthorized' });
+        }
+        const decoded = await getAdmin().auth().verifyIdToken(idToken);
+        let handle = normalizeAuthorName(decoded.authorName || '');
+        if (!handle) {
+            const userSnap = await getAdmin().firestore().collection('users').doc(decoded.uid).get();
+            handle = normalizeAuthorName((userSnap.data() || {}).authorName || '');
+        }
+        const role = decoded.role || decoded.accountRole || '';
+        const isAuthor =
+            role === 'real person' ||
+            decoded.accountRole === 'author' ||
+            Boolean(handle);
+        if (!isAuthor || !handle) {
+            return res.status(403).json({ error: 'forbidden' });
+        }
+        const saved = await updateAuthorProfileForUser({
+            uid: decoded.uid,
+            authorName: handle,
+            profile: profile || {},
+        });
+        return res.json({ ok: true, profile: saved });
+    } catch (err) {
+        if (err.code === 'invalid_author_name') {
+            return res.status(400).json({ error: 'invalid_author_name' });
+        }
+        if (err.message && err.message.includes('Firebase Admin is not configured')) {
+            return res.status(503).json({ error: 'admin_not_configured' });
+        }
+        console.error('author-profile save', err);
         return res.status(500).json({ error: 'server_error' });
     }
 });
