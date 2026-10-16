@@ -13,6 +13,9 @@
 
     let catalogPromise = null;
     let catalog = { authors: [], articles: [], byId: new Map() };
+    /** handle(lower) → /pfps/... */
+    const avatarByHandle = Object.create(null);
+    const avatarFetchInflight = Object.create(null);
 
     function escapeHtml(s) {
         return String(s || '')
@@ -28,6 +31,113 @@
             .replace(/^@+/, '')
             .split('@')[0]
             .replace(/\s+/g, '_');
+    }
+
+    function hashHandle(s) {
+        let h = 0;
+        const str = String(s || '');
+        for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+        return Math.abs(h);
+    }
+
+    function normalizeAvatarPath(path) {
+        const raw = String(path || '').trim();
+        if (!raw) return '';
+        const m = raw.match(/(?:^|\/)pfps\/([^/?#]+)$/i);
+        if (!m) return '';
+        const files = Array.isArray(global.AUTHOR_AVATAR_FILES) ? global.AUTHOR_AVATAR_FILES : [];
+        if (files.length && !files.includes(m[1])) return '';
+        return `/pfps/${m[1]}`;
+    }
+
+    function fallbackAvatarUrl(handle) {
+        const files = Array.isArray(global.AUTHOR_AVATAR_FILES) ? global.AUTHOR_AVATAR_FILES : [];
+        if (!files.length) return '';
+        const key = normalizeAuthor(handle).toLowerCase();
+        return `/pfps/${files[hashHandle(key) % files.length]}`;
+    }
+
+    function cachedAvatarUrl(handle) {
+        const key = normalizeAuthor(handle).toLowerCase();
+        if (!key) return '';
+        if (avatarByHandle[key]) return avatarByHandle[key];
+        return fallbackAvatarUrl(key);
+    }
+
+    function resolveAuthorAvatar(handle) {
+        const key = normalizeAuthor(handle).toLowerCase();
+        if (!key) return Promise.resolve('');
+        if (avatarByHandle[key]) return Promise.resolve(avatarByHandle[key]);
+        if (avatarFetchInflight[key]) return avatarFetchInflight[key];
+        avatarFetchInflight[key] = fetch(`/api/author-profile/${encodeURIComponent(key)}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                const fromProfile = normalizeAvatarPath(data && data.profile && data.profile.avatar);
+                const url = fromProfile || fallbackAvatarUrl(key);
+                avatarByHandle[key] = url;
+                return url;
+            })
+            .catch(() => {
+                const url = fallbackAvatarUrl(key);
+                avatarByHandle[key] = url;
+                return url;
+            })
+            .finally(() => {
+                delete avatarFetchInflight[key];
+            });
+        return avatarFetchInflight[key];
+    }
+
+    /** Rendered author mention: little pfp + handle (no leading @). Homepage wall tags keep @. */
+    function authorRefHtml(handle) {
+        const h = normalizeAuthor(handle);
+        const src = cachedAvatarUrl(h);
+        const img = src
+            ? `<img class="content-ref-author-avatar" src="${escapeHtml(src)}" alt="" width="14" height="14" decoding="async" />`
+            : '';
+        return (
+            `<a class="content-ref content-ref-author" data-ref="author" data-ref-id="${escapeHtml(h)}" href="${authorHref(h)}">` +
+            `${img}<span class="content-ref-author-name">${escapeHtml(h)}</span></a>`
+        );
+    }
+
+    /** Upgrade existing / freshly linkified author refs; hydrate profile avatars. */
+    function enhanceAuthorRefs(root) {
+        if (!root || !root.querySelectorAll) return;
+        const nodes = root.querySelectorAll('a.content-ref-author[data-ref-id]');
+        nodes.forEach((a) => {
+            const handle = normalizeAuthor(a.getAttribute('data-ref-id') || a.textContent);
+            if (!handle) return;
+            a.setAttribute('data-ref-id', handle);
+            a.setAttribute('href', authorHref(handle));
+            let img = a.querySelector('img.content-ref-author-avatar');
+            let nameEl = a.querySelector('.content-ref-author-name');
+            if (!nameEl || !img) {
+                const src = cachedAvatarUrl(handle);
+                a.innerHTML =
+                    (src
+                        ? `<img class="content-ref-author-avatar" src="${escapeHtml(src)}" alt="" width="14" height="14" decoding="async" />`
+                        : '') + `<span class="content-ref-author-name">${escapeHtml(handle)}</span>`;
+                img = a.querySelector('img.content-ref-author-avatar');
+                nameEl = a.querySelector('.content-ref-author-name');
+            } else if (nameEl.textContent !== handle) {
+                nameEl.textContent = handle;
+            }
+            resolveAuthorAvatar(handle).then((url) => {
+                if (!url) return;
+                let el = a.querySelector('img.content-ref-author-avatar');
+                if (!el) {
+                    el = document.createElement('img');
+                    el.className = 'content-ref-author-avatar';
+                    el.alt = '';
+                    el.width = 14;
+                    el.height = 14;
+                    el.decoding = 'async';
+                    a.insertBefore(el, a.firstChild);
+                }
+                if (el.getAttribute('src') !== url) el.src = url;
+            });
+        });
     }
 
     function ensureCatalog() {
@@ -313,8 +423,7 @@
         });
         html = html.replace(
             /(^|[\s([{«"'])@([A-Za-z0-9_]+)/g,
-            (_, pre, handle) =>
-                `${pre}<a class="content-ref content-ref-author" data-ref="author" data-ref-id="${escapeHtml(handle)}" href="${authorHref(handle)}">@${escapeHtml(handle)}</a>`
+            (_, pre, handle) => `${pre}${authorRefHtml(handle)}`
         );
         return html;
     }
@@ -346,6 +455,7 @@
             while (wrap.firstChild) parent.insertBefore(wrap.firstChild, textNode);
             parent.removeChild(textNode);
         });
+        enhanceAuthorRefs(root);
     }
 
     function authorHref(handle) {
@@ -371,8 +481,7 @@
     /** TipTap insert HTML for a selection. */
     function htmlForSelection(type, item) {
         if (type === 'author') {
-            const handle = normalizeAuthor(item.id || item);
-            return `<a class="content-ref content-ref-author" data-ref="author" data-ref-id="${escapeHtml(handle)}" href="${authorHref(handle)}">@${escapeHtml(handle)}</a>`;
+            return authorRefHtml(item.id || item);
         }
         const id = item.id;
         const title = item.title || id;
@@ -390,6 +499,7 @@
         attachToTextField,
         linkifyPlainText,
         linkifyElement,
+        enhanceAuthorRefs,
         htmlForSelection,
         tokenForSelection,
         labelForSelection,

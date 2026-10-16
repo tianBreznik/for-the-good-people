@@ -2035,10 +2035,18 @@ html[data-home-texture] #search-card:hover .blog-title,
     filter: none;
 }
 
-/* Wash non-matching cards when an author (or title) is hovered — never wash about */
+/* Wash non-matching cards when an author (or title) is hovered — never wash about.
+ * grycon: lift toward fog. stucco / stucco8: darken so wash doesn’t outshine the link. */
 .blog-card.hover:not([data-author="about"]) .blog-title,
 .blog-card.bio-dim .blog-title {
     filter: brightness(1.2) !important;
+}
+
+html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]) .blog-title,
+html[data-home-texture='stucco'] .blog-card.bio-dim .blog-title,
+html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]) .blog-title,
+html[data-home-texture='stucco8'] .blog-card.bio-dim .blog-title {
+    filter: brightness(0.78) !important;
 }
 
 .blog-card.hover:not([data-author="about"]) .blog-title::before,
@@ -2048,6 +2056,51 @@ html[data-home-texture] #search-card:hover .blog-title,
 
 .blog-card.hover:not([data-author="about"]):hover .blog-title {
     filter: brightness(1.2) !important;
+}
+
+html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]):hover .blog-title,
+html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]):hover .blog-title {
+    filter: brightness(0.78) !important;
+}
+
+/*
+ * Cross-link highlight: same faint light border glow on BOTH ends
+ * (hovered title + matching author, or hovered author + matching titles).
+ * Must beat title pearl / author white-rim :hover so the pair matches.
+ * Bright textures keep this light glow — unmatched items darken via wash instead.
+ */
+html[data-home-texture] .title-section .blog-card.link-glow .blog-title,
+html[data-home-texture] .title-section .blog-card.link-glow:hover .blog-title,
+html[data-home-texture] .author-section .blog-card.author-card.link-glow .blog-title,
+html[data-home-texture] .author-section .blog-card.author-card.link-glow:hover .blog-title,
+.title-section .blog-card.link-glow .blog-title,
+.title-section .blog-card.link-glow:hover .blog-title,
+.author-section .blog-card.author-card.link-glow .blog-title,
+.author-section .blog-card.author-card.link-glow:hover .blog-title,
+.blog-card.link-glow .blog-title,
+.blog-card.link-glow:hover .blog-title {
+    -webkit-text-fill-color: transparent !important;
+    color: transparent;
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+    text-shadow:
+        0 0 0.5px rgba(255, 255, 255, 0.4),
+        0 0 4px rgba(255, 255, 255, 0.28),
+        0 0 11px rgba(255, 255, 255, 0.16);
+    filter: none !important;
+}
+
+/* Whitest stucco: brighter halo + whisper of dark edge so the link separates from the wall */
+html[data-home-texture='stucco'] .title-section .blog-card.link-glow .blog-title,
+html[data-home-texture='stucco'] .title-section .blog-card.link-glow:hover .blog-title,
+html[data-home-texture='stucco'] .author-section .blog-card.author-card.link-glow .blog-title,
+html[data-home-texture='stucco'] .author-section .blog-card.author-card.link-glow:hover .blog-title {
+    text-shadow:
+        0 0 0.6px rgba(255, 255, 255, 0.95),
+        0 0 5px rgba(255, 255, 255, 0.62),
+        0 0 14px rgba(255, 255, 255, 0.4),
+        0 0 1px rgba(32, 28, 24, 0.32),
+        0 1px 2px rgba(32, 28, 24, 0.2);
 }
 
 /* While an author bio is open, unrelated titles can’t be hovered/clicked */
@@ -2064,9 +2117,21 @@ body.bio-open .title-section .cardcontainer:has(.blog-card.bio-dim):hover .blog-
     filter: brightness(1.2) !important;
 }
 
+html[data-home-texture='stucco'] body.bio-open .title-section .blog-card.bio-dim:hover .blog-title,
+html[data-home-texture='stucco'] body.bio-open .title-section .cardcontainer:has(.blog-card.bio-dim):hover .blog-title,
+html[data-home-texture='stucco8'] body.bio-open .title-section .blog-card.bio-dim:hover .blog-title,
+html[data-home-texture='stucco8'] body.bio-open .title-section .cardcontainer:has(.blog-card.bio-dim):hover .blog-title {
+    filter: brightness(0.78) !important;
+}
+
 /* Wash for non-matching cards during search */
 .blog-card.search-miss .blog-title {
     filter: brightness(1.2) !important;
+}
+
+html[data-home-texture='stucco'] .blog-card.search-miss .blog-title,
+html[data-home-texture='stucco8'] .blog-card.search-miss .blog-title {
+    filter: brightness(0.78) !important;
 }
 
 .blog-card.search-miss .blog-title::before {
@@ -2075,6 +2140,11 @@ body.bio-open .title-section .cardcontainer:has(.blog-card.bio-dim):hover .blog-
 
 .blog-card.search-miss:hover .blog-title {
     filter: brightness(1.2) !important;
+}
+
+html[data-home-texture='stucco'] .blog-card.search-miss:hover .blog-title,
+html[data-home-texture='stucco8'] .blog-card.search-miss:hover .blog-title {
+    filter: brightness(0.78) !important;
 }
 
 .section-heading-card {
@@ -2530,7 +2600,31 @@ body.article-open .home-main-stage .column-section {
 }
 
 .home-preview-byline-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28em;
     font-weight: 600;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.home-preview-byline-author:hover {
+    text-decoration: none;
+}
+
+.home-preview-byline-avatar,
+.home-preview-byline-author .content-ref-author-avatar {
+    display: inline-block;
+    width: 1.05em;
+    height: 1.05em;
+    margin: 0;
+    padding: 0;
+    object-fit: cover;
+    object-position: center;
+    border: 0;
+    border-radius: 0;
+    background: #e8e4dc;
+    flex: 0 0 auto;
 }
 
 .home-preview-byline-date {

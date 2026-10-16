@@ -309,8 +309,23 @@ body.reader-loading #comment-screen {
 }
 
 .article-byline-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28em;
     font-weight: 600;
     font-style: normal;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.article-byline-author:hover {
+    text-decoration: none;
+}
+
+.article-byline-author .content-ref-author-avatar {
+    width: 1.05em;
+    height: 1.05em;
+    vertical-align: middle;
 }
 
 .article-byline-onthe {

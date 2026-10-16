@@ -65,10 +65,32 @@ a.content-ref:hover {
 }
 
 a.content-ref-author {
+    display: inline;
     font-weight: 600;
+    white-space: nowrap;
+}
+
+a.content-ref-author .content-ref-author-avatar {
+    display: inline-block;
+    width: 1.05em;
+    height: 1.05em;
+    margin: 0 0.28em 0 0;
+    padding: 0;
+    vertical-align: -0.18em;
+    object-fit: cover;
+    object-position: center;
+    border: 0;
+    border-radius: 0;
+    background: #e8e4dc;
 }
 
 /* TipTap editor: refs stay readable while editing */
 .tiptap-editor a.content-ref {
     color: #1a1a1a;
+}
+
+.tiptap-editor a.content-ref-author .content-ref-author-avatar {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.15em;
 }

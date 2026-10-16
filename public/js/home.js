@@ -308,9 +308,9 @@ function applyAuthorBioHighlight(authorName) {
     const name = String(authorName || '').trim();
     if (!name) return;
 
-    // Drop transient title↔author hover washes; bio-dim / author-bio-active own the look now.
-    document.querySelectorAll('.blog-card.hover').forEach((el) => {
-        el.classList.remove('hover');
+    // Drop transient title↔author hover washes / link glows; bio-dim / author-bio-active own the look now.
+    document.querySelectorAll('.blog-card.hover, .blog-card.link-glow').forEach((el) => {
+        el.classList.remove('hover', 'link-glow');
     });
 
     document
@@ -1012,11 +1012,50 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
     byWord.textContent = 'by';
     byline.appendChild(byWord);
 
-    const authorEl = document.createElement('span');
-    authorEl.className = 'article-byline-author home-preview-byline-author';
-    authorEl.textContent = `@${author}`;
-    authorEl.style.color = mastheadAuthorColor(author);
+    const handle = String(author || '').replace(/^@+/, '') || 'Anonymous';
+    let authorEl;
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.htmlForSelection) {
+        const tmp = document.createElement('span');
+        tmp.innerHTML = ContentRefs.htmlForSelection('author', { id: handle });
+        authorEl = tmp.firstElementChild || document.createElement('a');
+        authorEl.classList.add('article-byline-author', 'home-preview-byline-author');
+        const img = authorEl.querySelector('.content-ref-author-avatar');
+        const fallback = avatarUrlForAuthor(handle);
+        if (img && fallback && !img.getAttribute('src')) img.src = fallback;
+        else if (!img && fallback) {
+            const avatarImg = document.createElement('img');
+            avatarImg.className = 'content-ref-author-avatar home-preview-byline-avatar';
+            avatarImg.src = fallback;
+            avatarImg.alt = '';
+            avatarImg.width = 14;
+            avatarImg.height = 14;
+            avatarImg.decoding = 'async';
+            authorEl.insertBefore(avatarImg, authorEl.firstChild);
+        }
+    } else {
+        authorEl = document.createElement('span');
+        authorEl.className = 'article-byline-author home-preview-byline-author';
+        const avatarUrl = avatarUrlForAuthor(handle);
+        if (avatarUrl) {
+            const avatarImg = document.createElement('img');
+            avatarImg.className = 'home-preview-byline-avatar';
+            avatarImg.src = avatarUrl;
+            avatarImg.alt = '';
+            avatarImg.width = 14;
+            avatarImg.height = 14;
+            avatarImg.decoding = 'async';
+            authorEl.appendChild(avatarImg);
+        }
+        const authorName = document.createElement('span');
+        authorName.className = 'home-preview-byline-author-name';
+        authorName.textContent = handle;
+        authorEl.appendChild(authorName);
+    }
+    authorEl.style.color = mastheadAuthorColor(handle);
     byline.appendChild(authorEl);
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.enhanceAuthorRefs) {
+        ContentRefs.enhanceAuthorRefs(byline);
+    }
 
     if (published) {
         const onThe = document.createElement('span');
@@ -1050,6 +1089,9 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
         requestAnimationFrame(() => {
             prefetchPreviewBlockImages(blocks).finally(() => {
                 fitPreviewBlocksToPage(body, blocks);
+                if (typeof ContentRefs !== 'undefined' && ContentRefs.linkifyElement) {
+                    ContentRefs.linkifyElement(body);
+                }
                 if (typeof onReady === 'function') {
                     requestAnimationFrame(() => {
                         void panelEl.offsetHeight;
@@ -3772,10 +3814,19 @@ async function applyArticlePreviewFromBlogCard(card, seamIndex) {
 
 function setupHoverInteractions() {
     // Cross-highlight author ↔ titles on desktop. Preview still opens on click only.
-    // Frozen while an author bio strip is open — that state owns dim/highlight.
+    // Wash unrelated; faint glow on the related side. Frozen while bio strip is open.
     const blogCards = document.querySelectorAll('.title-section .cardcontainer[data-author] .blog-card:not(.author-card)');
     const authorCards = document.querySelectorAll('.blog-card.author-card');
     const bioInteractionsLocked = () => document.body.classList.contains('bio-open');
+
+    const clearCrossHighlight = () => {
+        authorCards.forEach((authorCard) => {
+            authorCard.classList.remove('hover', 'link-glow');
+        });
+        blogCards.forEach((card) => {
+            card.classList.remove('hover', 'link-glow');
+        });
+    };
 
     if (homeFinePointerHoverUi()) {
         blogCards.forEach((card) => {
@@ -3783,13 +3834,15 @@ function setupHoverInteractions() {
 
             card.addEventListener('mouseenter', () => {
                 if (bioInteractionsLocked()) return;
+                clearCrossHighlight();
+                // Both ends of the link get the same glow.
+                card.classList.add('link-glow');
                 authorCards.forEach((authorCard) => {
                     const authorCardName = authorCard.getAttribute('data-author');
-                    // Don't wash "about" — its meme drop-shadow must stay.
-                    if (
-                        authorCardName !== authorName &&
-                        (authorCardName || '').toLowerCase() !== 'about'
-                    ) {
+                    if ((authorCardName || '').toLowerCase() === 'about') return;
+                    if (authorCardName === authorName) {
+                        authorCard.classList.add('link-glow');
+                    } else {
                         authorCard.classList.add('hover');
                     }
                 });
@@ -3797,9 +3850,7 @@ function setupHoverInteractions() {
 
             card.addEventListener('mouseleave', () => {
                 if (bioInteractionsLocked()) return;
-                authorCards.forEach((authorCard) => {
-                    authorCard.classList.remove('hover');
-                });
+                clearCrossHighlight();
             });
         });
 
@@ -3809,9 +3860,14 @@ function setupHoverInteractions() {
             authorCard.addEventListener('mouseenter', () => {
                 if (bioInteractionsLocked()) return;
                 if ((authorName || '').toLowerCase() === 'about') return;
+                clearCrossHighlight();
+                // Both ends of the link get the same glow.
+                authorCard.classList.add('link-glow');
                 blogCards.forEach((card) => {
                     const cardAuthorName = card.closest('.cardcontainer').getAttribute('data-author');
-                    if (cardAuthorName !== authorName) {
+                    if (cardAuthorName === authorName) {
+                        card.classList.add('link-glow');
+                    } else {
                         card.classList.add('hover');
                     }
                 });
@@ -3819,9 +3875,7 @@ function setupHoverInteractions() {
 
             authorCard.addEventListener('mouseleave', () => {
                 if (bioInteractionsLocked()) return;
-                blogCards.forEach((card) => {
-                    card.classList.remove('hover');
-                });
+                clearCrossHighlight();
             });
         });
     }

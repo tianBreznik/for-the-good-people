@@ -984,6 +984,14 @@ function renderThreadedComments() {
         annChildren.forEach((child) => childList.appendChild(renderNode(child, 1)));
         annCard.appendChild(childList);
     });
+
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.enhanceAuthorRefs) {
+        ContentRefs.enhanceAuthorRefs(commentList);
+        annotationIds.forEach((annId) => {
+            const annCard = document.getElementById(`annotation-item-${annId}`);
+            if (annCard) ContentRefs.enhanceAuthorRefs(annCard);
+        });
+    }
 }
 
 const setupBlog = (data) => {
@@ -1070,7 +1078,7 @@ function createInlineMasthead(meta) {
     titleEl.className = 'title';
     titleEl.textContent = meta?.title || '';
 
-    const author = (meta?.author || 'Anonymous').trim() || 'Anonymous';
+    const author = String(meta?.author || 'Anonymous').trim().replace(/^@+/, '') || 'Anonymous';
     const publishedRaw = (meta?.publishedAt || '').trim();
 
     const byline = document.createElement('div');
@@ -1080,13 +1088,24 @@ function createInlineMasthead(meta) {
     byWord.className = 'article-byline-by';
     byWord.textContent = 'by';
 
-    const authorEl = document.createElement('span');
-    authorEl.className = 'article-byline-author';
-    authorEl.textContent = `@${author}`;
+    let authorEl;
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.htmlForSelection) {
+        const tmp = document.createElement('span');
+        tmp.innerHTML = ContentRefs.htmlForSelection('author', { id: author });
+        authorEl = tmp.firstElementChild || document.createElement('a');
+        authorEl.classList.add('article-byline-author');
+    } else {
+        authorEl = document.createElement('span');
+        authorEl.className = 'article-byline-author';
+        authorEl.textContent = author;
+    }
     authorEl.style.color = mastheadAuthorColor(author);
 
     byline.appendChild(byWord);
     byline.appendChild(authorEl);
+    if (typeof ContentRefs !== 'undefined' && ContentRefs.enhanceAuthorRefs) {
+        ContentRefs.enhanceAuthorRefs(byline);
+    }
 
     if (publishedRaw) {
         const onThe = document.createElement('span');
