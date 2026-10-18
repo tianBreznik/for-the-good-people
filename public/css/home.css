@@ -274,6 +274,9 @@ body.search-closing {
     max-width: 100%;
     height: var(--bio-card-height);
     max-height: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
 }
 
 /* Identity / latest — identical duplicate shells */
@@ -304,6 +307,311 @@ body.search-closing {
 .bio-latest-card {
     justify-content: center;
     align-items: center;
+}
+
+.bio-latest-card.is-index {
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 0;
+    padding: 14px 16px;
+    overflow: hidden;
+}
+
+.bio-latest-card.is-index.is-solo {
+    justify-content: center;
+    align-items: center;
+}
+
+.bio-latest-card.is-index.is-solo .bio-index {
+    flex: 0 1 auto;
+    width: auto;
+    max-width: 100%;
+}
+
+.bio-latest-card.is-index.is-solo .bio-index-list {
+    overflow: visible;
+}
+
+.bio-index {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+    width: 100%;
+}
+
+.bio-index-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.bio-index-item {
+    display: grid;
+    grid-template-columns: 6.25em minmax(0, 1fr);
+    column-gap: 0.85em;
+    align-items: baseline;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.bio-index-meta {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(13px, 1.05vw, 15px);
+    font-style: normal;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    white-space: nowrap;
+    font-variant-numeric: lining-nums;
+    transition: opacity 0.18s ease;
+}
+
+/* Dated rows: tiny superscript DD.MM.YYYY, revealed on hover */
+.bio-index-item:not(.is-latest) .bio-index-meta {
+    opacity: 0;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 0.58em;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    vertical-align: super;
+    position: relative;
+    top: -0.4em;
+    color: rgba(0, 0, 0, 0.55);
+    font-variant-numeric: tabular-nums lining-nums;
+}
+
+.bio-index-item:not(.is-latest):hover .bio-index-meta,
+.bio-index-item:not(.is-latest):focus-within .bio-index-meta {
+    opacity: 1;
+}
+
+.bio-index-item.is-latest .bio-index-meta {
+    opacity: 1;
+    top: 0;
+    vertical-align: baseline;
+}
+
+.bio-index-link {
+    display: block;
+    min-width: 0;
+    color: #1a1a1a;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(13px, 1.05vw, 15px);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: normal;
+}
+
+.bio-index-link:hover {
+    text-decoration-thickness: 1.5px;
+}
+
+.bio-capture-card {
+    justify-content: stretch;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    background: #111;
+}
+
+.bio-capture-card.is-video {
+    border: 0;
+    background: transparent;
+}
+
+.bio-capture-card.is-video .bio-capture-mount,
+.bio-capture-card.is-video .bio-capture-shell,
+.bio-capture-card.is-video .bio-capture-facade {
+    background: transparent;
+}
+
+.bio-capture-card::before,
+.bio-capture-card::after {
+    /* Keep grain soft over dark media */
+    opacity: 0.08;
+    mix-blend-mode: soft-light;
+}
+
+.bio-capture-card.is-video::before,
+.bio-capture-card.is-video::after {
+    opacity: 0;
+}
+
+.bio-identity-card.bio-capture-card > .bio-capture-mount,
+.bio-identity-card.bio-capture-card > .bio-capture-empty,
+.bio-identity-card.bio-capture-card > .bio-capture-input {
+    position: absolute;
+}
+
+.bio-capture-mount {
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    background: #111;
+}
+
+.bio-capture-media {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #111;
+    object-fit: cover;
+}
+
+.bio-capture-card iframe.bio-capture-media {
+    object-fit: unset;
+}
+
+.bio-capture-shell {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #111;
+}
+
+.bio-capture-yt-host,
+.bio-capture-yt-host > iframe,
+.bio-capture-yt-host > div {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    border: 0;
+    max-width: none !important;
+}
+
+.bio-capture-facade {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+    overflow: hidden;
+}
+
+.bio-capture-shell.is-playing .bio-capture-facade,
+.bio-capture-facade[hidden] {
+    display: none !important;
+}
+
+.bio-capture-poster {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    pointer-events: none;
+    user-select: none;
+}
+
+.bio-capture-play-btn {
+    appearance: none;
+    position: relative;
+    z-index: 1;
+    display: inline-block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: #fff;
+    -webkit-text-fill-color: #fff;
+    font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    font-size: clamp(28px, 3.2vw, 42px);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    -webkit-text-stroke: 1.5px #000;
+    paint-order: stroke fill;
+    text-shadow:
+        -1px -1px 0 #000,
+        1px -1px 0 #000,
+        -1px 1px 0 #000,
+        1px 1px 0 #000;
+    cursor: pointer;
+    transition: transform 0.1s ease, opacity 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.bio-capture-play-btn:hover {
+    transform: scale(1.04);
+}
+
+.bio-capture-play-btn:active {
+    transform: scale(0.98);
+}
+
+.bio-capture-play-btn:disabled,
+.bio-capture-play-btn.is-loading {
+    opacity: 0.45;
+    cursor: wait;
+    transform: none;
+}
+
+.bio-capture-empty {
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 16px 16px 48px;
+    text-align: center;
+    font: 500 13px/1.35 Georgia, 'Times New Roman', serif;
+    letter-spacing: 0.03em;
+    color: rgba(255, 255, 255, 0.72);
+    background: rgba(20, 20, 20, 0.35);
+    pointer-events: none;
+}
+
+.bio-capture-input {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 4;
+    width: auto;
+    min-height: 34px;
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.95);
+    color: #171717;
+    font: 500 12px/1.3 Georgia, 'Times New Roman', serif;
+    box-sizing: border-box;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+.bio-capture-input::placeholder {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+.bio-capture-input:focus {
+    outline: none;
+    border-color: rgba(0, 0, 0, 0.55);
 }
 
 .bio-latest-card .bio-latest {
@@ -603,6 +911,7 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
 
 .bio-text {
     margin: 0;
+    font-style: italic;
 }
 
 .bio-meta {
@@ -811,6 +1120,12 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
     border-bottom-color: rgba(0, 0, 0, 0.55);
 }
 
+/* Capture URL field keeps its own filled chrome on the dark media card */
+.bio-panel .bio-capture-input {
+    appearance: none;
+    -webkit-text-fill-color: #171717;
+}
+
 .bio-panel .bio-inline-textarea {
     resize: none;
     min-height: 2.2em;
@@ -843,6 +1158,16 @@ body.bio-editing .bio-panel .bio-edit-bottom.bio-edit-only {
 
 body.bio-editing .bio-panel .bio-card-foot.bio-edit-only {
     display: flex !important;
+}
+
+body.bio-editing .bio-panel .bio-capture-input.bio-edit-only {
+    display: block !important;
+    visibility: visible !important;
+}
+
+body.bio-editing .bio-panel .bio-capture-empty.bio-edit-only:not([hidden]) {
+    display: flex !important;
+    visibility: visible !important;
 }
 
 body.bio-editing .bio-panel .bio-meta-edit {
@@ -884,6 +1209,7 @@ body.bio-editing .bio-panel .bio-links-edit input {
 .bio-panel .bio-view-only[hidden],
 .bio-panel #bio-edit-btn[hidden],
 .bio-panel #bio-latest-card[hidden],
+.bio-panel #bio-capture-card[hidden],
 .bio-panel #bio-edit-error[hidden],
 .bio-panel [hidden] {
     display: none !important;
@@ -891,6 +1217,11 @@ body.bio-editing .bio-panel .bio-links-edit input {
 
 body.bio-editing .bio-latest-card {
     display: none !important;
+}
+
+/* Keep capture card available while editing even if empty in view */
+body.bio-editing .bio-panel #bio-capture-card {
+    display: flex !important;
 }
 
 @media (max-width: 820px) {
@@ -1024,6 +1355,7 @@ body.bio-editing .bio-latest-card {
     -webkit-line-clamp: 5;
     overflow: hidden;
     max-width: 100%;
+    font-style: italic;
 }
 
 .bio-panel .bio-latest-label {
@@ -1722,8 +2054,11 @@ body.home-titles-instant .home-main-stage {
 
 } */
 
-/* Keep about’s meme drop-shadow (::before); hide carved layer on other cards */
-.blog-card:not([data-author="about"]):hover .blog-title::before {
+/* Keep about’s meme drop-shadow (::before); hide carved layer on title cards.
+ * Do NOT hide on author @tags — their stone face is the ::before; with white-rim
+ * gone, :hover { display:none } made the handle vanish. */
+.blog-card:not(.author-card):not([data-author="about"]):hover .blog-title::before,
+.blog-card.preview-source .blog-title::before {
     display: none;
 }
 
@@ -1972,48 +2307,27 @@ body.home-titles-instant .home-main-stage {
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
 }
 
-/* Article titles: thin black edge around glyphs on hover */
-.title-section .blog-card:not(.section-heading-card):hover .blog-title {
-    color: #fdf6e3;
-    -webkit-text-fill-color: #fdf6e3;
-    -webkit-text-stroke: 0.9px #111;
-    paint-order: stroke fill;
-    text-shadow:
-        -0.6px -0.6px 0 #000,
-        0.6px -0.6px 0 #000,
-        -0.6px 0.6px 0 #000,
-        0.6px 0.6px 0 #000;
+/* Article titles: solid white highlight on hover, or locked while that title’s preview is open */
+.title-section .blog-card:not(.section-heading-card):hover .blog-title,
+.title-section .blog-card.preview-source .blog-title {
+    color: #fff;
+    -webkit-text-fill-color: #fff;
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+    text-shadow: none;
     filter: none;
 }
 
-/*
- * Author @tags: white rim only on hover / bio-active.
- * Keep the stone/texture clipped fill (transparent text) — do NOT paint solid pearl/white
- * insides (that was washing the glyphs to neon bright against grycon).
- * Also override the generic .blog-card:hover pearl glow fill.
- */
-html[data-home-texture] .author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title,
-html[data-home-texture] .author-section .blog-card.author-card.author-bio-active .blog-title,
-.author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title,
-.author-section .blog-card.author-card.author-bio-active .blog-title {
+html[data-home-texture] .title-section .blog-card:not(.section-heading-card):hover .blog-title,
+html[data-home-texture] .title-section .blog-card.preview-source .blog-title {
+    background-image: linear-gradient(#fff, #fff) !important;
+    background-size: auto !important;
+    background-position: center !important;
+    background-attachment: scroll !important;
+    -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent !important;
     color: transparent;
-    -webkit-text-stroke: 0.9px #fff;
-    paint-order: stroke fill;
-    text-shadow:
-        -0.6px -0.6px 0 #fff,
-        0.6px -0.6px 0 #fff,
-        -0.6px 0.6px 0 #fff,
-        0.6px 0.6px 0 #fff;
-    filter: none;
-}
-
-/* Drop carved ::before so the white rim reads cleanly on the main glyph */
-html[data-home-texture] .author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title::before,
-html[data-home-texture] .author-section .blog-card.author-card.author-bio-active .blog-title::before,
-.author-section .blog-card.author-card:not([data-author="about"]):hover .blog-title::before,
-.author-section .blog-card.author-card.author-bio-active .blog-title::before {
-    display: none;
 }
 
 /*
@@ -2036,10 +2350,13 @@ html[data-home-texture] #search-card:hover .blog-title,
 }
 
 /* Wash non-matching cards when an author (or title) is hovered — never wash about.
- * grycon: lift toward fog. stucco / stucco8: darken so wash doesn’t outshine the link. */
+ * grycon: lift toward fog. stucco / stucco8: darken so wash doesn’t outshine the link.
+ * When ::before emboss is hidden, nudge the base glyph so it doesn’t jump.
+ * 3px is empirical (emboss top/left 1–1.5px + shadow extent), not the raw offset. */
 .blog-card.hover:not([data-author="about"]) .blog-title,
 .blog-card.bio-dim .blog-title {
     filter: brightness(1.2) !important;
+    transform: translate(3px, 3px);
 }
 
 html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]) .blog-title,
@@ -2047,20 +2364,24 @@ html[data-home-texture='stucco'] .blog-card.bio-dim .blog-title,
 html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]) .blog-title,
 html[data-home-texture='stucco8'] .blog-card.bio-dim .blog-title {
     filter: brightness(0.78) !important;
+    transform: translate(3px, 3px);
 }
 
 .blog-card.hover:not([data-author="about"]) .blog-title::before,
-.blog-card.bio-dim .blog-title::before {
+.blog-card.bio-dim .blog-title::before,
+.blog-card.author-card.link-glow .blog-title::before {
     display: none;
 }
 
 .blog-card.hover:not([data-author="about"]):hover .blog-title {
     filter: brightness(1.2) !important;
+    transform: translate(3px, 3px);
 }
 
 html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]):hover .blog-title,
 html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]):hover .blog-title {
     filter: brightness(0.78) !important;
+    transform: translate(3px, 3px);
 }
 
 /*
