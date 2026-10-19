@@ -4411,8 +4411,11 @@ function setupHoverInteractions() {
         }, CROSS_HIGHLIGHT_CLEAR_MS);
     };
 
-    /** Sync glow/wash in one pass — no blank “all titles on” frame. */
-    const applyCrossHighlight = (authorName) => {
+    /**
+     * Cross-highlight in one pass — no blank “all titles on” frame.
+     * washOthers: only when hovering an author (not a post title).
+     */
+    const applyCrossHighlight = (authorName, { washOthers = false } = {}) => {
         cancelScheduledCrossHighlightClear();
         const name = String(authorName || '');
         authorCards.forEach((authorCard) => {
@@ -4423,13 +4426,13 @@ function setupHoverInteractions() {
             }
             const match = authorCardName === name;
             authorCard.classList.toggle('link-glow', match);
-            authorCard.classList.toggle('hover', !match);
+            authorCard.classList.toggle('hover', washOthers && !match);
         });
         blogCards.forEach((card) => {
             const cardAuthorName = card.closest('.cardcontainer')?.getAttribute('data-author') || '';
             const match = cardAuthorName === name;
             card.classList.toggle('link-glow', match);
-            card.classList.toggle('hover', !match);
+            card.classList.toggle('hover', washOthers && !match);
         });
     };
 
@@ -4439,7 +4442,8 @@ function setupHoverInteractions() {
 
             card.addEventListener('mouseenter', () => {
                 if (bioInteractionsLocked()) return;
-                applyCrossHighlight(authorName);
+                // Title hover: pair-glow only — do not wash the rest of the wall.
+                applyCrossHighlight(authorName, { washOthers: false });
             });
 
             card.addEventListener('mouseleave', () => {
@@ -4455,7 +4459,7 @@ function setupHoverInteractions() {
                 if (bioInteractionsLocked()) return;
                 if ((authorName || '').toLowerCase() === 'about') return;
                 if (authorCard.id === 'search-card') return;
-                applyCrossHighlight(authorName);
+                applyCrossHighlight(authorName, { washOthers: true });
             });
 
             authorCard.addEventListener('mouseleave', () => {
@@ -4798,6 +4802,43 @@ function handleActionCard(cardId) {
     }
 }
 
+const SPLASH_MID_LINE = 'HAVE GOOD PERSPECTIVES, LETS LINK AND BUILD THROUGH';
+
+function runSplashMidTypewriter(midEl) {
+    return new Promise((resolve) => {
+        if (!midEl) {
+            resolve();
+            return;
+        }
+        let i = 0;
+        const step = () => {
+            i += 1;
+            const slice = SPLASH_MID_LINE.slice(0, i);
+            midEl.textContent = slice;
+            midEl.setAttribute('data-text', slice);
+            if (i >= SPLASH_MID_LINE.length) {
+                resolve();
+                return;
+            }
+            const ch = SPLASH_MID_LINE[i - 1];
+            const delay = ch === ',' ? 520 : ch === ' ' ? 210 : 140;
+            setTimeout(step, delay);
+        };
+        midEl.textContent = '';
+        midEl.setAttribute('data-text', '');
+        setTimeout(step, 320);
+    });
+}
+
+function beginSplashCurtain() {
+    if (!topdiv || topdiv.classList.contains('fade')) return;
+    if (!document.querySelector('.home-main-stage')) return;
+    document.body.classList.add('splash-sliding');
+    if (navbar) navbar.style.position = 'relative';
+    revealHomeTitlesWithEmerge();
+    topdiv.classList.add('fade');
+}
+
 if (topdiv) {
     topdiv.addEventListener('animationend', (e) => {
         if (e.target !== topdiv || e.animationName !== 'home-wall-splash') return;
@@ -4812,16 +4853,18 @@ if (topdiv) {
     });
 
     topdiv.onclick = () => {
-        if (topdiv.classList.contains('fade')) return;
-        // Remember for next visit, but keep splash painted while it slides out.
-        persistHomeEntryDismissed();
+        if (topdiv.classList.contains('fade') || topdiv.classList.contains('splash-typing')) return;
         // Wait for posts — dismissing early left a blank page when the blogs request hung.
         if (!document.querySelector('.home-main-stage')) return;
-        document.body.classList.add('splash-sliding');
-        if (navbar) navbar.style.position = 'relative';
-        // Same keyed drag curve on both panels (one stone wall)
-        revealHomeTitlesWithEmerge();
-        topdiv.classList.add('fade');
+        // Remember for next visit once the user commits to leaving the splash.
+        persistHomeEntryDismissed();
+        const midEl = document.getElementById('mid-text');
+        topdiv.classList.add('splash-typing');
+        runSplashMidTypewriter(midEl).then(() => {
+            setTimeout(() => {
+                beginSplashCurtain();
+            }, 1800);
+        });
     };
 }
 
@@ -4835,6 +4878,53 @@ const HOME_TEXTURES = {
     stucco8: '/img/STUCCO8.JPG',
 };
 
+const SPLASH_CARVE_REFLOW_SEL =
+    '.column-section, #first-container-hold, #top-text, #mid-text, #bottom-text, .blog-title, .blog-overview';
+
+/** Force carve layers to repaint — Safari keeps stale background-clip bitmaps after resize/url change. */
+function reflowHomeCarveLayers() {
+    document.documentElement.classList.add('home-texture-reflow');
+    document.querySelectorAll(SPLASH_CARVE_REFLOW_SEL).forEach((el) => {
+        el.style.backgroundImage = 'none';
+    });
+    void document.documentElement.offsetHeight;
+    document.querySelectorAll(SPLASH_CARVE_REFLOW_SEL).forEach((el) => {
+        el.style.backgroundImage = '';
+    });
+    document.documentElement.classList.remove('home-texture-reflow');
+}
+
+/**
+ * Desktop splash type: size from curtain height (6 lines), cap by width (10.6%).
+ * Skips mobile — that pass comes later with locked breaks + safe-area.
+ */
+function syncSplashTypeSize() {
+    const hold = document.getElementById('first-container-hold');
+    if (!hold) return;
+    if (window.matchMedia('(max-width: 900px)').matches) {
+        hold.style.removeProperty('--splash-type-size');
+        return;
+    }
+    const leading =
+        parseFloat(getComputedStyle(hold).getPropertyValue('--splash-type-leading')) || 0.95;
+    const lines =
+        parseFloat(getComputedStyle(hold).getPropertyValue('--splash-line-count')) || 6;
+    const fromHeight = hold.clientHeight / (lines * leading);
+    const fromWidth = hold.clientWidth * 0.106;
+    if (!(fromHeight > 0) || !(fromWidth > 0)) return;
+    hold.style.setProperty('--splash-type-size', `${Math.min(fromHeight, fromWidth)}px`);
+}
+
+let splashTypeResizeTimer = null;
+function onSplashTypeResize() {
+    if (splashTypeResizeTimer) cancelAnimationFrame(splashTypeResizeTimer);
+    splashTypeResizeTimer = requestAnimationFrame(() => {
+        splashTypeResizeTimer = null;
+        syncSplashTypeSize();
+        reflowHomeCarveLayers();
+    });
+}
+
 function applyHomeTexture(textureId, { persist = true } = {}) {
     const id = HOME_TEXTURES[textureId] ? textureId : 'grycon';
     const path = HOME_TEXTURES[id];
@@ -4845,20 +4935,7 @@ function applyHomeTexture(textureId, { persist = true } = {}) {
 
     // Compositor layers (will-change + filtered background-clip:text) keep stale bitmaps
     // after url changes. Briefly clear backgrounds / filters so paint rebuilds.
-    document.documentElement.classList.add('home-texture-reflow');
-    document
-        .querySelectorAll('.column-section, #first-container-hold, #top-text, #bottom-text, .blog-title, .blog-overview')
-        .forEach((el) => {
-            el.style.backgroundImage = 'none';
-        });
-    void document.documentElement.offsetHeight;
-
-    document
-        .querySelectorAll('.column-section, #first-container-hold, #top-text, #bottom-text, .blog-title, .blog-overview')
-        .forEach((el) => {
-            el.style.backgroundImage = '';
-        });
-    document.documentElement.classList.remove('home-texture-reflow');
+    reflowHomeCarveLayers();
 
     if (persist) {
         try {
@@ -4912,6 +4989,8 @@ function initHomeTextureSwitcher() {
 }
 
 initHomeTextureSwitcher();
+syncSplashTypeSize();
+window.addEventListener('resize', onSplashTypeResize);
 
 function clearAdminActionQuery(extraKeys = ['admin', 'token', 'reason', 'handle']) {
     try {

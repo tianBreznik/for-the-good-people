@@ -32,6 +32,8 @@ html[data-home-texture='stucco8'] {
 /* Default stone: clipped texture fill (unchanged recipe). */
 html[data-home-texture='grycon'] #top-text,
 html[data-home-texture='grycon'] #top-text::before,
+html[data-home-texture='grycon'] #mid-text,
+html[data-home-texture='grycon'] #mid-text::before,
 html[data-home-texture='grycon'] #bottom-text,
 html[data-home-texture='grycon'] #bottom-text::before,
 html[data-home-texture='grycon'] .blog-title,
@@ -47,6 +49,8 @@ html[data-home-texture='grycon'] .blog-overview::before {
  */
 html[data-home-texture='stucco'] #top-text,
 html[data-home-texture='stucco'] #top-text::before,
+html[data-home-texture='stucco'] #mid-text,
+html[data-home-texture='stucco'] #mid-text::before,
 html[data-home-texture='stucco'] #bottom-text,
 html[data-home-texture='stucco'] #bottom-text::before,
 html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
@@ -64,6 +68,8 @@ html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data
 
 html[data-home-texture='stucco8'] #top-text,
 html[data-home-texture='stucco8'] #top-text::before,
+html[data-home-texture='stucco8'] #mid-text,
+html[data-home-texture='stucco8'] #mid-text::before,
 html[data-home-texture='stucco8'] #bottom-text,
 html[data-home-texture='stucco8'] #bottom-text::before,
 html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
@@ -81,8 +87,10 @@ html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([dat
 
 /* Splash carve */
 html[data-home-texture='stucco'] #top-text::before,
+html[data-home-texture='stucco'] #mid-text::before,
 html[data-home-texture='stucco'] #bottom-text::before,
 html[data-home-texture='stucco8'] #top-text::before,
+html[data-home-texture='stucco8'] #mid-text::before,
 html[data-home-texture='stucco8'] #bottom-text::before {
     filter: brightness(0.75) contrast(1.4) blur(0.0005px) !important;
     text-shadow: 2px 5px 5px rgba(255, 255, 255, 0.3);
@@ -130,6 +138,7 @@ html.home-entry-skip-splash .home-main-stage {
 
 /* While switching textures, drop filters so clipped letter layers aren't stuck. */
 html.home-texture-reflow #top-text::before,
+html.home-texture-reflow #mid-text::before,
 html.home-texture-reflow #bottom-text::before,
 html.home-texture-reflow .blog-title::before,
 html.home-texture-reflow .blog-overview::before {
@@ -1730,9 +1739,31 @@ body.home-titles-instant .home-main-stage {
     background-position: 0 0;
     background-repeat: repeat;
     width: 100%;
-    height: 100vh;
+    height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
     z-index: 1000;
     position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    align-items: center;
+    justify-items: center;
+    box-sizing: border-box;
+    padding: 0;
+    /*
+     * Splash type scale (desktop):
+     * 2) height → fill ~6 lines across the curtain
+     * 3) width  → cap so the longest wrap stays inside the edges
+     * (Locked line breaks + mobile safe-area come later.)
+     */
+    --splash-line-count: 6;
+    --splash-type-leading: 0.95;
+    --splash-type-width-cap: 10.6vw;
+    --splash-type-size: min(
+        var(--splash-type-width-cap),
+        calc(100dvh / (var(--splash-line-count) * var(--splash-type-leading)))
+    );
 }
 
 
@@ -1774,9 +1805,13 @@ body.home-titles-instant .home-main-stage {
 
 #top-text {
     position: relative;
+    grid-row: 1;
+    width: 100%;
+    margin: 0;
     text-transform: uppercase;
     font-weight: bold;
-    font-size: 11vw;
+    font-size: var(--splash-type-size);
+    line-height: var(--splash-type-leading);
     font-family: 'Impact', sans-serif;
     text-align: center;
     color: transparent;
@@ -1796,7 +1831,8 @@ body.home-titles-instant .home-main-stage {
     width: 100%;
     height: 100%;
     font-weight: bold;
-    font-size: 11vw;
+    font-size: inherit;
+    line-height: inherit;
     font-family: 'Impact', sans-serif;
     background-image: var(--bg-image);
     background-position: center;
@@ -1806,6 +1842,73 @@ body.home-titles-instant .home-main-stage {
     filter: brightness(0.75) contrast(1.4) blur(0.0005px);
     text-shadow: 2px 5px 5px
     rgba(255, 255, 255, 0.3);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/*
+ * Splash mid-line — same carve + size as top/bottom; typed in on dismiss.
+ * Slot grows between the ends; #mid-text box sizes to glyphs so ::before stays locked.
+ */
+#mid-text-slot {
+    position: relative;
+    grid-row: 2;
+    align-self: stretch;
+    justify-self: stretch;
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+#mid-text {
+    position: relative;
+    width: 100%;
+    margin: 0;
+    padding: 0 0.1em;
+    box-sizing: border-box;
+    text-transform: uppercase;
+    font-weight: bold;
+    font-size: var(--splash-type-size);
+    line-height: var(--splash-type-leading);
+    font-family: 'Impact', sans-serif;
+    text-align: center;
+    color: transparent;
+    white-space: normal;
+    background-image: var(--bg-image);
+    background-position: center;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+#mid-text:empty {
+    visibility: hidden;
+}
+
+#mid-text::before {
+    content: attr(data-text);
+    position: absolute;
+    top: -1.5px;
+    left: -1.5px;
+    width: 100%;
+    height: 100%;
+    font-weight: bold;
+    font-size: inherit;
+    line-height: inherit;
+    font-family: 'Impact', sans-serif;
+    text-align: center;
+    white-space: inherit;
+    background-image: var(--bg-image);
+    background-position: center;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: brightness(0.75) contrast(1.4) blur(0.0005px);
+    text-shadow: 2px 5px 5px rgba(255, 255, 255, 0.3);
     pointer-events: none;
     z-index: 0;
 }
@@ -1837,13 +1940,17 @@ body.home-titles-instant .home-main-stage {
 
 #bottom-text {
     position: relative;
+    grid-row: 3;
+    width: 100%;
+    margin: 0;
     text-transform: uppercase;
     font-weight: bold;
-    font-size: 11vw;
+    font-size: var(--splash-type-size);
+    line-height: var(--splash-type-leading);
     font-family: 'Impact', sans-serif;
     text-align: center;
     color: transparent;
-    top: 55%;
+    top: auto;
 
     background-image: var(--bg-image);
     background-position: center;
@@ -1860,7 +1967,8 @@ body.home-titles-instant .home-main-stage {
     width: 100%;
     height: 100%;
     font-weight: bold;
-    font-size: 11vw;
+    font-size: inherit;
+    line-height: inherit;
     font-family: 'Impact', sans-serif;
     text-align: center;
     background-image: var(--bg-image);
@@ -1900,60 +2008,29 @@ body.home-titles-instant .home-main-stage {
         min-height: 100dvh;
         height: auto;
         box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        align-items: center;
-        padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
         /* Match column stone grid (not cover) so the wall seam stays continuous */
         background-image: var(--bg-image);
         background-size: 50vw auto;
         background-position: 0 0;
         background-repeat: repeat;
-    }
-
-    #top-text {
-        flex: 0 0 auto;
-        align-self: center;
-        margin: 0;
-        width: 100%;
-        max-width: 100%;
-        line-height: 0.95;
-        background-size: cover;
-        background-position: var(--home-mobile-first-slab-bg-x) 0;
-        background-attachment: scroll;
-    }
-
-    #top-text::before {
-        font-size: inherit;
-        background-size: cover;
-        background-position: var(--home-mobile-first-slab-bg-x) 0;
-        background-attachment: scroll;
-    }
-
-    #bottom-text {
-        top: auto;
-        flex: 0 0 auto;
-        align-self: center;
-        margin: 0;
-        width: 100%;
-        max-width: 100%;
-        line-height: 0.95;
-        background-size: cover;
-        background-position: var(--home-mobile-first-slab-bg-x) 0;
-        background-attachment: scroll;
-    }
-
-    #bottom-text::before {
-        font-size: inherit;
-        background-size: cover;
-        background-position: var(--home-mobile-first-slab-bg-x) 0;
-        background-attachment: scroll;
+        --splash-type-size: min(12.5vw, 15.5vh);
+        padding: max(2px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(2px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     }
 
     #top-text,
+    #mid-text,
     #bottom-text {
-        font-size: clamp(3rem, 14vw, 6.75rem);
+        background-size: cover;
+        background-position: var(--home-mobile-first-slab-bg-x) 0;
+        background-attachment: scroll;
+    }
+
+    #top-text::before,
+    #mid-text::before,
+    #bottom-text::before {
+        background-size: cover;
+        background-position: var(--home-mobile-first-slab-bg-x) 0;
+        background-attachment: scroll;
     }
 }
 
@@ -2349,7 +2426,7 @@ html[data-home-texture] #search-card:hover .blog-title,
     filter: none;
 }
 
-/* Wash non-matching cards when an author (or title) is hovered — never wash about.
+/* Wash non-matching cards when an author is hovered — never wash about.
  * grycon: lift toward fog. stucco / stucco8: darken so wash doesn’t outshine the link.
  * When ::before emboss is hidden, nudge the base glyph so it doesn’t jump.
  * 3px is empirical (emboss top/left 1–1.5px + shadow extent), not the raw offset. */

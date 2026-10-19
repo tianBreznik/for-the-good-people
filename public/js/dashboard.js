@@ -41,6 +41,33 @@ function authorIdsForUser(user) {
     return ids.slice(0, 10);
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function blogSortMs(data) {
+    const raw = data?.publishedAt || data?.lastModified || '';
+    const parsed = Date.parse(raw);
+    if (!Number.isNaN(parsed)) return parsed;
+    return 0;
+}
+
+/** Compact left-column date: D.M.YY (billwurtz-style). */
+function formatDashboardDate(data) {
+    const ms = blogSortMs(data);
+    if (!ms) return '—';
+    const d = new Date(ms);
+    const day = d.getDate();
+    const month = d.getMonth() + 1;
+    const year = String(d.getFullYear()).slice(-2);
+    return `${day}.${month}.${year}`;
+}
+
 //fetch user written blogs
 const getUserWrittenBlogs = (user) => {
     const runQuery = () => {
@@ -57,11 +84,13 @@ const getUserWrittenBlogs = (user) => {
             .then((blogs) => {
                 if (blogs.empty) {
                     showEmptyState();
-                } else {
-                    blogs.forEach((blog) => {
-                        createBlog(blog);
-                    });
+                    return;
                 }
+                const rows = [];
+                blogs.forEach((blog) => rows.push(blog));
+                rows.sort((a, b) => blogSortMs(b.data()) - blogSortMs(a.data()));
+                blogsSection.innerHTML = '';
+                rows.forEach((blog) => createBlog(blog));
             })
             .catch((err) => {
                 console.log(err);
@@ -85,20 +114,35 @@ const showEmptyState = () => {
 }
 
 const createBlog = (blog) => {
-    let data = blog.data();
-    blogsSection.innerHTML += `
-    <div class="blog-card">
-        <div class="blog-content">
-            <h1 class="blog-title">${data.title}</h1>
-            <p class="blog-meta">Published: ${data.publishedAt} • ${data.numberofcomments || 0} comments</p>
-        </div>
+    const data = blog.data();
+    const title = data.title || 'Untitled';
+    const safeTitle = escapeHtml(title);
+    const dateLabel = escapeHtml(formatDashboardDate(data));
+    const id = escapeHtml(blog.id);
+
+    blogsSection.insertAdjacentHTML(
+        'beforeend',
+        `
+    <article class="blog-row">
+        <time class="blog-date">${dateLabel}</time>
+        <a class="blog-title" href="/${id}">${safeTitle}</a>
         <div class="blog-actions">
-            <a href="/${blog.id}" class="btn dark">read</a>
-            <a href="/${blog.id}/editor" class="btn grey">edit</a>
-            <a href="#" onclick="deleteBlog('${blog.id}')" class="btn danger">delete</a>
+            <a href="/${id}" class="btn dark">read</a>
+            <a href="/${id}/editor" class="btn grey">edit</a>
+            <button type="button" class="btn danger" data-delete-id="${id}">delete</button>
         </div>
-    </div>
-    `;
+    </article>
+    `
+    );
+}
+
+if (blogsSection) {
+    blogsSection.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-delete-id]');
+        if (!btn || !blogsSection.contains(btn)) return;
+        e.preventDefault();
+        deleteBlog(btn.getAttribute('data-delete-id'));
+    });
 }
 
 const deleteBlog = (id) => {
