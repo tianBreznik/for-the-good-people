@@ -119,16 +119,21 @@ const createBlog = (blog) => {
     const safeTitle = escapeHtml(title);
     const dateLabel = escapeHtml(formatDashboardDate(data));
     const id = escapeHtml(blog.id);
+    const notesOpen = data.notesOpen === true;
+    const editControl = notesOpen
+        ? `<span class="btn grey edit-locked" aria-disabled="true" title="Open for notes — editing locked">edit</span>`
+        : `<a href="/${id}/editor" class="btn grey">edit</a>`;
 
     blogsSection.insertAdjacentHTML(
         'beforeend',
         `
-    <article class="blog-row">
+    <article class="blog-row" data-blog-id="${id}">
         <time class="blog-date">${dateLabel}</time>
         <a class="blog-title" href="/${id}">${safeTitle}</a>
         <div class="blog-actions">
+            <button type="button" class="btn notes-toggle-btn ${notesOpen ? 'is-open' : ''}" data-notes-id="${id}" data-notes-open="${notesOpen ? '1' : '0'}" title="${notesOpen ? 'Close notes to unlock editing' : 'Allow readers to annotate (locks editing)'}">${notesOpen ? 'notes on' : 'open notes'}</button>
             <a href="/${id}" class="btn dark">read</a>
-            <a href="/${id}/editor" class="btn grey">edit</a>
+            ${editControl}
             <button type="button" class="btn danger" data-delete-id="${id}">delete</button>
         </div>
     </article>
@@ -136,8 +141,59 @@ const createBlog = (blog) => {
     );
 }
 
+function syncRowEditLock(row, notesOpen) {
+    if (!row) return;
+    const actions = row.querySelector('.blog-actions');
+    if (!actions) return;
+    const existingEdit = actions.querySelector('a.btn.grey[href*="/editor"], span.edit-locked');
+    const id = row.getAttribute('data-blog-id');
+    if (!id) return;
+    const next = notesOpen
+        ? `<span class="btn grey edit-locked" aria-disabled="true" title="Open for notes — editing locked">edit</span>`
+        : `<a href="/${id}/editor" class="btn grey">edit</a>`;
+    if (existingEdit) {
+        existingEdit.outerHTML = next;
+    }
+}
+
+async function toggleBlogNotes(blogId, currentlyOpen, btn) {
+    const next = !currentlyOpen;
+    btn.disabled = true;
+    try {
+        await db.collection('blogs').doc(blogId).set(
+            {
+                notesOpen: next,
+                notesOpenedAt: next ? new Date().toISOString() : null
+            },
+            { merge: true }
+        );
+        btn.dataset.notesOpen = next ? '1' : '0';
+        btn.textContent = next ? 'notes on' : 'open notes';
+        btn.classList.toggle('is-open', next);
+        btn.title = next ? 'Close notes to unlock editing' : 'Allow readers to annotate (locks editing)';
+        syncRowEditLock(btn.closest('.blog-row'), next);
+    } catch (err) {
+        console.error(err);
+        alert('Could not update notes. Please try again.');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 if (blogsSection) {
     blogsSection.addEventListener('click', (e) => {
+        if (e.target.closest('.edit-locked')) {
+            e.preventDefault();
+            return;
+        }
+        const notesBtn = e.target.closest('[data-notes-id]');
+        if (notesBtn && blogsSection.contains(notesBtn)) {
+            e.preventDefault();
+            const id = notesBtn.getAttribute('data-notes-id');
+            const open = notesBtn.getAttribute('data-notes-open') === '1';
+            toggleBlogNotes(id, open, notesBtn);
+            return;
+        }
         const btn = e.target.closest('[data-delete-id]');
         if (!btn || !blogsSection.contains(btn)) return;
         e.preventDefault();

@@ -68,6 +68,8 @@ let spreadReflowTimer = null;
 let annotationLayoutListenersBound = false;
 let annotationLayoutRaf = null;
 let currentBlogMeta = null;
+/** Author opted in: readers may highlight & annotate this version. */
+let blogNotesOpen = false;
 let footnoteNavAttached = false;
 let annotationsListenerAttached = false;
 let annotationSelectionBound = false;
@@ -533,6 +535,17 @@ function bindAnnotationNavigation() {
     });
 }
 
+function areNotesOpen() {
+    return blogNotesOpen === true;
+}
+
+function syncNotesGateUi() {
+    if (!areNotesOpen()) {
+        hideAnnotationToolbar();
+        if (pendingAnnotationDraft) exitAnnotationComposeMode();
+    }
+}
+
 function bindAnnotationSelectionUi() {
     if (annotationSelectionBound) return;
     annotationSelectionBound = true;
@@ -558,6 +571,16 @@ function bindAnnotationSelectionUi() {
             scheduleHideAnnotationToolbar();
             return;
         }
+
+        // Readers: either annotate UI appears, or selection does nothing special.
+        if (!areNotesOpen()) {
+            pendingAnnotationRange = null;
+            selectionSessionAnnotationIds = null;
+            clearAnnotationToolbarSessionTone();
+            scheduleHideAnnotationToolbar();
+            return;
+        }
+
         if (!selectionSessionAnnotationIds) {
             const createdAtMs = Date.now();
             selectionSessionAnnotationIds = {
@@ -596,6 +619,21 @@ function exitAnnotationComposeMode() {
 }
 
 async function saveAnnotationFromDraft(draft, commentTextTrimmed) {
+    if (!areNotesOpen()) {
+        throw new Error('Notes are not open on this article');
+    }
+    // Re-check live flag in case the author closed notes mid-compose.
+    try {
+        const live = await docRef.get();
+        if (live.exists && live.data()?.notesOpen !== true) {
+            blogNotesOpen = false;
+            syncNotesGateUi();
+            throw new Error('Notes are not open on this article');
+        }
+    } catch (err) {
+        if (String(err?.message || '').includes('Notes are not open')) throw err;
+        console.warn('Could not re-check notesOpen before save:', err);
+    }
     if (!draft.annotationId || !Number.isFinite(draft.createdAtMs)) {
         throw new Error('Annotation draft missing id or timestamp');
     }
@@ -616,6 +654,7 @@ async function saveAnnotationFromDraft(draft, commentTextTrimmed) {
 }
 
 function beginAnnotationComposeFromSelection() {
+    if (!areNotesOpen()) return;
     const root = articleContentRoot();
     if (!root || !pendingAnnotationRange) return;
     const offsets = serializeRangeOffsets(root, pendingAnnotationRange);
@@ -786,6 +825,9 @@ async function submitComment(commentindex) {
             input.value = '';
         } catch (err) {
             console.error(err);
+            if (String(err?.message || '').includes('Notes are not open')) {
+                exitAnnotationComposeMode();
+            }
         }
         return;
     }
@@ -1002,12 +1044,14 @@ const setupBlog = (data) => {
     const author = data.author || 'Anonymous';
 
     titleTag.textContent = title || 'Good People';
-    currentBlogMeta = { title, publishedAt, author };
+    blogNotesOpen = data.notesOpen === true;
+    currentBlogMeta = { title, publishedAt, author, notesOpen: blogNotesOpen };
 
     numberofcomments = data.numberofcomments;
 
     const render = () => {
         renderArticleBody(data.article);
+        syncNotesGateUi();
         setupCommentSection();
         setupCommentContentRefs();
         attachAnnotationsListener();
@@ -1656,6 +1700,7 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 const renderArticleBody = (articleData, options = {}) => {
     articleBlocksCache = parseArticleBlocks(articleData);
     renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
+    syncNotesGateUi();
     if (READER_EMBED) bindCommentInputEmbedFocusFix();
     applyAnnotationHighlights();
     renderAnnotationList();
@@ -1755,3 +1800,4 @@ function scrollToAnchor(scrollid) {
         target.style.borderRadius = '0px';
     },(1500));
 };
+

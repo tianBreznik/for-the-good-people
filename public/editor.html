@@ -31,6 +31,8 @@
                         <option value="opinion">Opinion</option>
                         <option value="ideas">Ideas</option>
                     </select>
+                    <span class="toolbar-divider toolbar-publish-divider" aria-hidden="true"></span>
+                    <button type="button" class="btn dark publish-btn" title="Publish">Publish</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
                     <button class="toolbar-btn" data-action="title-toggle" title="Title toggle (T/p)">T/p</button>
                     <button class="toolbar-btn" data-action="line-break" title="Line break (↵)">↵</button>
@@ -106,10 +108,6 @@
         </div>
 
         <div class="editor-footer">
-            <div class="footer-left">
-                <button class="btn dark publish-btn">Publish</button>
-                <button class="btn grey save-draft-btn">Save Draft</button>
-            </div>
             <div class="footer-right">
                 <a href="/admin" class="btn grey">Dashboard</a>
                 <a href="/" class="btn grey">Home</a>
@@ -190,6 +188,17 @@
             <div class="editor-dialog-actions">
                 <button type="button" class="btn grey" data-leave-cancel>Stay</button>
                 <button type="button" class="btn dark" data-leave-confirm>Leave page</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="publish-confirm-dialog" class="publish-confirm-popover" hidden aria-hidden="true">
+        <div class="publish-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="publish-confirm-title">
+            <p id="publish-confirm-title" class="publish-confirm-hint">if this is your final version, you can open it for notes!</p>
+            <div class="publish-confirm-actions">
+                <button type="button" class="popover-btn" data-publish-open-notes>publish &amp; open notes</button>
+                <button type="button" class="popover-btn" data-publish-only>publish only</button>
+                <button type="button" class="popover-btn" data-publish-cancel>cancel</button>
             </div>
         </div>
     </div>

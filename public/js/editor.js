@@ -197,7 +197,6 @@ const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
 
 const titleInput = document.querySelector('.title-input');
 const publishBtn = document.querySelector('.publish-btn');
-const saveDraftBtn = document.querySelector('.save-draft-btn');
 const contentTypeSelect = document.querySelector('#content-type-select');
 const imageUpload = document.querySelector('#image-upload');
 const autosaveStatus = document.querySelector('#autosave-status');
@@ -206,7 +205,9 @@ let editor = null;
 let autoSaveTimeout;
 let isAutoSaving = false;
 let isHydratingEditor = false;
+let isResolvingDraft = false;
 let hasUnsavedChanges = false;
+let draftResolveAttempted = false;
 let allowImmediateNavigation = false;
 let pendingNavigationAction = null;
 let pendingImageMode = 'block';
@@ -218,6 +219,8 @@ let footnoteDialogInsertAnchor = null;
 let blogID = location.pathname.split("/");
 blogID.shift();
 const isEditing = blogID[0] !== "editor";
+/** When set, Publish updates this blog id (edit URL, or draft continued on /editor). */
+let publishTargetBlogId = isEditing ? decodePathSegment(blogID[0]) : null;
 
 function decodePathSegment(segment) {
     const raw = String(segment || '');
@@ -435,6 +438,12 @@ function setupInsertDialogEscape() {
         if (fd && !fd.hidden) {
             e.preventDefault();
             closeFootnoteDialog();
+            return;
+        }
+        const publishDlg = document.getElementById('publish-confirm-dialog');
+        if (publishDlg && !publishDlg.hidden) {
+            e.preventDefault();
+            closePublishConfirmDialog();
         }
     });
 }
@@ -799,8 +808,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setupFootnoteDialog();
     setupInsertDialogEscape();
     setupLeaveConfirmDialog();
+    setupPublishConfirmDialog();
     setupEventListeners();
-    loadExistingBlog();
+    // New-post drafts: apply local immediately; reconcile with Firestore once auth is ready.
+    if (!isEditing) {
+        applyDraftToEditor(readLocalDraft(), { statusText: 'Draft loaded' });
+    }
 });
 
 function closeLeaveConfirmDialog() {
@@ -948,9 +961,90 @@ function initializeEditor() {
     }
 }
 
+function closePublishConfirmDialog() {
+    const dialog = document.getElementById('publish-confirm-dialog');
+    if (!dialog) return;
+    dialog.hidden = true;
+    dialog.setAttribute('aria-hidden', 'true');
+}
+
+function positionPublishConfirmPopover() {
+    const dialog = document.getElementById('publish-confirm-dialog');
+    const panel = dialog?.querySelector('.publish-confirm-panel');
+    if (!dialog || !panel || dialog.hidden || !publishBtn) return;
+    const rect = publishBtn.getBoundingClientRect();
+    const pad = 8;
+    const popW = dialog.offsetWidth || 320;
+    const popH = dialog.offsetHeight || 80;
+    const btnCenterX = rect.left + rect.width / 2;
+    // Center the popover on Publish; clamp to viewport; keep caret aimed at the button.
+    let left = btnCenterX - popW / 2;
+    let top = rect.bottom + 2;
+    left = Math.min(left, window.innerWidth - popW - pad);
+    left = Math.max(pad, left);
+    if (top + popH > window.innerHeight - pad) {
+        top = Math.max(pad, rect.top - popH - 2);
+    }
+    const caretLeft = Math.min(popW - 14, Math.max(14, btnCenterX - left));
+    dialog.style.left = `${Math.round(left)}px`;
+    dialog.style.top = `${Math.round(top)}px`;
+    panel.style.setProperty('--publish-caret-left', `${Math.round(caretLeft)}px`);
+}
+
+function openPublishConfirmDialog() {
+    const dialog = document.getElementById('publish-confirm-dialog');
+    if (!dialog) return;
+    dialog.hidden = false;
+    dialog.setAttribute('aria-hidden', 'false');
+    positionPublishConfirmPopover();
+    requestAnimationFrame(() => {
+        positionPublishConfirmPopover();
+        dialog.querySelector('[data-publish-open-notes]')?.focus();
+    });
+}
+
+function setupPublishConfirmDialog() {
+    const dialog = document.getElementById('publish-confirm-dialog');
+    if (!dialog) return;
+    dialog.querySelector('[data-publish-cancel]')?.addEventListener('click', closePublishConfirmDialog);
+    dialog.querySelector('[data-publish-open-notes]')?.addEventListener('click', () => {
+        closePublishConfirmDialog();
+        commitPublish({ openNotes: true });
+    });
+    dialog.querySelector('[data-publish-only]')?.addEventListener('click', () => {
+        closePublishConfirmDialog();
+        commitPublish({ openNotes: false });
+    });
+    document.addEventListener('mousedown', (e) => {
+        if (dialog.hidden) return;
+        if (dialog.contains(e.target) || publishBtn?.contains(e.target)) return;
+        closePublishConfirmDialog();
+    });
+    window.addEventListener('resize', () => {
+        if (!dialog.hidden) positionPublishConfirmPopover();
+    });
+    window.addEventListener('scroll', () => {
+        if (!dialog.hidden) positionPublishConfirmPopover();
+    }, true);
+}
+
+/** Validate + show publish confirmation (final / open notes). */
+function requestPublish() {
+    if (!titleInput.value.trim() || !getEditorText()) {
+        alert('Please fill in both title and content');
+        return;
+    }
+    const contentType = getSelectedContentType();
+    if (!contentType) {
+        alert('Please choose which section this article belongs to');
+        contentTypeSelect?.focus();
+        return;
+    }
+    openPublishConfirmDialog();
+}
+
 function setupEventListeners() {
-    publishBtn.addEventListener('click', publishBlog);
-    saveDraftBtn.addEventListener('click', saveDraft);
+    publishBtn.addEventListener('click', requestPublish);
     imageUpload.addEventListener('change', handleImageUpload);
     titleInput.addEventListener('input', triggerAutoSave);
     if (contentTypeSelect) {
@@ -976,8 +1070,18 @@ function triggerAutoSave() {
     }
 }
 
+function currentDraftBlogId() {
+    if (isEditing) return decodePathSegment(blogID[0]) || null;
+    return publishTargetBlogId || null;
+}
+
+function formatPublishedAt(date = new Date()) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 async function saveDraft() {
-    if (isAutoSaving || !editor) return;
+    if (isAutoSaving || isResolvingDraft || !editor) return;
     
     isAutoSaving = true;
     updateAutosaveStatus('Saving...', 'saving');
@@ -989,14 +1093,12 @@ async function saveDraft() {
             contentText: getEditorText(),
             contentType: getSelectedContentType() || null,
             lastSaved: new Date().toISOString(),
-            isDraft: true
+            isDraft: true,
+            // Tag edit drafts so Publish from /editor updates the same doc (no duplicates).
+            blogId: currentDraftBlogId()
         };
         
-        localStorage.setItem('blog_draft', JSON.stringify(draftData));
-        
-        if (window.auth?.currentUser) {
-            await window.db.collection('drafts').doc(window.auth.currentUser.uid).set(draftData);
-        }
+        await mirrorDraft(draftData);
         
         markChangesSaved();
         updateAutosaveStatus('Saved', 'saved');
@@ -1294,7 +1396,7 @@ async function handleImageUpload(event) {
 }
 
 
-async function publishBlog() {
+async function commitPublish({ openNotes = false } = {}) {
     if (!titleInput.value.trim() || !getEditorText()) {
         alert('Please fill in both title and content');
         return;
@@ -1310,20 +1412,53 @@ async function publishBlog() {
     try {
         publishBtn.disabled = true;
         publishBtn.textContent = 'Publishing...';
-        
-        const docName = isEditing ? decodePathSegment(blogID[0]) : generateBlogId();
-        const date = new Date();
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        
+
+        // Prefer edit URL id, then draft-linked id (continues an edit opened via /editor).
+        const candidateId =
+            (isEditing ? decodePathSegment(blogID[0]) : '') ||
+            publishTargetBlogId ||
+            readLocalDraft()?.blogId ||
+            '';
+
+        let docName = candidateId;
+        let prior = null;
+        if (candidateId) {
+            const priorSnap = await window.db.collection('blogs').doc(candidateId).get();
+            if (priorSnap.exists) {
+                prior = priorSnap.data() || {};
+                docName = candidateId;
+                if (prior.notesOpen === true) {
+                    alert('This article is open for notes and locked from editing.');
+                    location.replace(`/${docName}`);
+                    return;
+                }
+            } else if (isEditing) {
+                // Edit URL points at a missing doc — still write that id.
+                docName = candidateId;
+            } else {
+                // Stale draft blogId — create a new post instead of clobbering nothing useful.
+                docName = generateBlogId();
+                publishTargetBlogId = null;
+            }
+        } else {
+            docName = generateBlogId();
+        }
+
+        const notesOpen = openNotes === true || prior?.notesOpen === true;
         const html = getEditorHTML();
         const blogData = {
             title: titleInput.value.trim(),
             article: html,
             articleFormat: 'tiptap-html',
             contentType,
-            publishedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
-            author: getAuthorIdFromUser(window.auth.currentUser),
-            numberofcomments: 0,
+            // Preserve original publish metadata on edit; only bump lastModified.
+            publishedAt: prior?.publishedAt || formatPublishedAt(),
+            author: prior?.author || getAuthorIdFromUser(window.auth.currentUser),
+            numberofcomments: typeof prior?.numberofcomments === 'number' ? prior.numberofcomments : 0,
+            notesOpen,
+            notesOpenedAt: notesOpen
+                ? prior?.notesOpenedAt || new Date().toISOString()
+                : null,
             lastModified: new Date().toISOString()
         };
         
@@ -1354,6 +1489,13 @@ function generateBlogId() {
     return `${blogTitle}-${id}`;
 }
 
+function normalizeDraftBlogId(raw) {
+    const id = String(raw || '').trim();
+    if (!id || id === 'editor') return null;
+    if (id.includes('/')) return null;
+    return id;
+}
+
 async function loadBlogData() {
     try {
         const docRef = window.db.collection("blogs").doc(decodePathSegment(blogID[0]));
@@ -1366,6 +1508,11 @@ async function loadBlogData() {
 
         const data = doc.data();
         const blogId = decodePathSegment(blogID[0]);
+        if (data.notesOpen === true) {
+            // Open for notes ⇒ locked from further edits.
+            location.replace(`/${encodeURIComponent(blogId)}`);
+            return;
+        }
         titleInput.value = data.title || '';
         setContentTypeSelect(data.contentType, blogId);
         isHydratingEditor = true;
@@ -1373,6 +1520,7 @@ async function loadBlogData() {
             preserveWhitespace: 'full'
         });
         isHydratingEditor = false;
+        publishTargetBlogId = blogId;
         markChangesSaved();
     } catch (error) {
         console.error('Error loading blog:', error);
@@ -1380,31 +1528,148 @@ async function loadBlogData() {
     }
 }
 
-function loadExistingBlog() {
-    const savedDraft = localStorage.getItem('blog_draft');
-    if (savedDraft && !isEditing && editor) {
-        try {
-            const draft = JSON.parse(savedDraft);
-            if (draft.title) titleInput.value = draft.title;
-            if (draft.contentType) setContentTypeSelect(draft.contentType);
-            if (draft.contentHtml) {
-                isHydratingEditor = true;
-                editor.commands.setContent(draft.contentHtml, false, {
-                    preserveWhitespace: 'full'
-                });
-                isHydratingEditor = false;
-            } else if (draft.content) {
-                isHydratingEditor = true;
-                editor.commands.setContent(`<p>${draft.content.replace(/</g, '&lt;')}</p>`, false, {
-                    preserveWhitespace: 'full'
-                });
-                isHydratingEditor = false;
-            }
-            markChangesSaved();
-            updateAutosaveStatus('Draft loaded', 'saved');
-        } catch (error) {
-            console.error('Error loading draft:', error);
+function readLocalDraft() {
+    try {
+        const raw = localStorage.getItem('blog_draft');
+        if (!raw) return null;
+        const draft = JSON.parse(raw);
+        return draft && typeof draft === 'object' ? draft : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function draftSavedMs(draft) {
+    if (!draft) return 0;
+    const ms = Date.parse(draft.lastSaved || '');
+    return Number.isNaN(ms) ? 0 : ms;
+}
+
+function draftHasContent(draft) {
+    if (!draft) return false;
+    const title = String(draft.title || '').trim();
+    const html = String(draft.contentHtml || '').trim();
+    const legacy = String(draft.content || '').trim();
+    const text = String(draft.contentText || '').trim();
+    if (title) return true;
+    if (text) return true;
+    if (legacy) return true;
+    if (html && html !== '<p></p>') return true;
+    return false;
+}
+
+/** Pick the newer draft by lastSaved. Ties prefer cloud (shared source of truth). */
+function pickNewerDraft(localDraft, cloudDraft) {
+    const localOk = draftHasContent(localDraft);
+    const cloudOk = draftHasContent(cloudDraft);
+    if (!localOk && !cloudOk) return null;
+    if (!localOk) return cloudDraft;
+    if (!cloudOk) return localDraft;
+    const localMs = draftSavedMs(localDraft);
+    const cloudMs = draftSavedMs(cloudDraft);
+    if (cloudMs > localMs) return cloudDraft;
+    if (localMs > cloudMs) return localDraft;
+    return cloudDraft;
+}
+
+async function mirrorDraft(draft) {
+    if (!draft || typeof draft !== 'object') return;
+    localStorage.setItem('blog_draft', JSON.stringify(draft));
+    if (window.auth?.currentUser) {
+        await window.db.collection('drafts').doc(window.auth.currentUser.uid).set(draft);
+    }
+}
+
+function applyDraftToEditor(draft, { statusText = 'Draft loaded' } = {}) {
+    if (!draft || !editor || isEditing) return false;
+    if (!draftHasContent(draft)) return false;
+    try {
+        if (draft.title) titleInput.value = draft.title;
+        if (draft.contentType) setContentTypeSelect(draft.contentType);
+        if (draft.contentHtml) {
+            isHydratingEditor = true;
+            editor.commands.setContent(draft.contentHtml, false, {
+                preserveWhitespace: 'full'
+            });
+            isHydratingEditor = false;
+        } else if (draft.content) {
+            isHydratingEditor = true;
+            editor.commands.setContent(`<p>${draft.content.replace(/</g, '&lt;')}</p>`, false, {
+                preserveWhitespace: 'full'
+            });
+            isHydratingEditor = false;
         }
+        markChangesSaved();
+        updateAutosaveStatus(statusText, 'saved');
+        setTimeout(() => updateAutosaveStatus('Ready', ''), 2000);
+        return true;
+    } catch (error) {
+        console.error('Error applying draft:', error);
+        isHydratingEditor = false;
+        return false;
+    }
+}
+
+async function fetchCloudDraft(user) {
+    if (!user || !window.db) return null;
+    try {
+        const snap = await window.db.collection('drafts').doc(user.uid).get();
+        if (!snap.exists) return null;
+        const draft = snap.data();
+        return draft && typeof draft === 'object' ? draft : null;
+    } catch (error) {
+        console.error('Error fetching cloud draft:', error);
+        return null;
+    }
+}
+
+/**
+ * New /editor only: reconcile localStorage + Firestore drafts.
+ * Newest lastSaved wins; never clobber in-progress edits; mirror winner to both.
+ * If the winning draft is tied to an existing blog, continue that edit (no duplicate Publish).
+ */
+async function resolveDraftFromLocalAndCloud(user) {
+    if (isEditing || !editor || !user || draftResolveAttempted) return;
+    draftResolveAttempted = true;
+    isResolvingDraft = true;
+    try {
+        const localDraft = readLocalDraft();
+        const cloudDraft = await fetchCloudDraft(user);
+        const winner = pickNewerDraft(localDraft, cloudDraft);
+        if (!winner) return;
+
+        const linkedId = normalizeDraftBlogId(winner.blogId);
+        if (linkedId) {
+            try {
+                const priorSnap = await window.db.collection('blogs').doc(linkedId).get();
+                if (priorSnap.exists) {
+                    // Resume edit on the canonical URL so Publish updates in place.
+                    allowImmediateNavigation = true;
+                    location.replace(`/${encodeURIComponent(linkedId)}/editor`);
+                    return;
+                }
+                // Stale link — treat as a new-post draft.
+                delete winner.blogId;
+                publishTargetBlogId = null;
+            } catch (error) {
+                console.error('Error checking draft blogId:', error);
+            }
+        }
+
+        // User already typed since local hydrate — never clobber the live buffer.
+        // Autosave will push the current editor state to both stores shortly.
+        if (hasUnsavedChanges) return;
+
+        applyDraftToEditor(winner, { statusText: 'Draft loaded' });
+
+        // Keep both stores on the same winning snapshot (same lastSaved).
+        try {
+            await mirrorDraft(winner);
+        } catch (error) {
+            console.error('Error mirroring winning draft:', error);
+        }
+    } finally {
+        isResolvingDraft = false;
     }
 }
 
@@ -1412,6 +1677,10 @@ window.auth.onAuthStateChanged((user) => {
     if (!user) {
         // Direct /editor URL while logged out (Editor control is hidden until signed in).
         location.replace('/?login=1');
+        return;
+    }
+    if (!isEditing) {
+        resolveDraftFromLocalAndCloud(user);
     }
 });
 

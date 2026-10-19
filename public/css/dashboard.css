@@ -100,6 +100,18 @@ body {
     border-bottom: 1px solid #d0d0d0;
 }
 
+.blog-actions .notes-toggle-btn.is-open {
+    color: #007acc;
+    border-color: #007acc;
+}
+
+.blog-actions .edit-locked {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    user-select: none;
+}
+
 .blog-date {
     font-family: 'Times New Roman', Times, serif;
     font-size: clamp(18px, 2.2vw, 26px);
@@ -111,6 +123,8 @@ body {
 
 .blog-title {
     margin: 0;
+    width: fit-content;
+    max-width: 100%;
     font-family: 'Impact', sans-serif;
     font-size: clamp(18px, 2.2vw, 26px);
     font-weight: 900;
@@ -124,10 +138,16 @@ body {
     text-decoration-color: var(--dash-hover);
     text-decoration-thickness: 1.5px;
     text-underline-offset: 0.12em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
 }
 
 .blog-title:hover {
-    text-decoration-thickness: 2px;
+    background: var(--dash-hover);
+    color: #fff;
+    -webkit-text-fill-color: #fff;
+    -webkit-text-stroke-color: #fff;
+    text-decoration-color: #fff;
 }
 
 .blog-actions {
