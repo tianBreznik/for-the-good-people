@@ -97,14 +97,82 @@ if (READER_EMBED) {
     }
 }
 
-function mountCommentScreenForLayout(lastPageEl) {
+/** Last article content page — input lives here until the first comment exists. */
+let lastArticlePageElForComments = null;
+
+function articleHasPostedComments() {
+    return Boolean(commentsState && commentsState.size > 0);
+}
+
+function removeDedicatedCommentsPages(articleBody) {
+    if (!articleBody) return;
+    articleBody.querySelectorAll('.article-page-comments').forEach((page) => {
+        const spread = page.closest('.article-spread');
+        if (spread) spread.remove();
+        else page.remove();
+    });
+}
+
+/**
+ * No comments yet → input on the last article page.
+ * After the first comment is posted → dedicated comments sheet; comments render there.
+ */
+function mountCommentScreenForLayout(lastArticlePageEl) {
     if (!commentScreenEl) return;
+    if (lastArticlePageEl) lastArticlePageElForComments = lastArticlePageEl;
+
     if (READER_EMBED) {
         const blogRoot = document.querySelector('.blog');
         if (blogRoot) blogRoot.appendChild(commentScreenEl);
         return;
     }
-    if (lastPageEl) lastPageEl.appendChild(commentScreenEl);
+
+    const articleBody = document.getElementById('article-body');
+    if (!articleBody) return;
+
+    // Park the screen so tearing down an old comments sheet doesn't destroy it.
+    articleBody.appendChild(commentScreenEl);
+    removeDedicatedCommentsPages(articleBody);
+
+    let anchor =
+        lastArticlePageElForComments && lastArticlePageElForComments.isConnected
+            ? lastArticlePageElForComments
+            : null;
+    if (!anchor) {
+        const articlePages = articleBody.querySelectorAll(
+            '.article-page-left:not(.article-page-comments)'
+        );
+        anchor = articlePages.length ? articlePages[articlePages.length - 1] : null;
+    }
+
+    if (!articleHasPostedComments()) {
+        if (anchor) {
+            // Above the footnote strip when present; otherwise pin to the page foot.
+            // Never sit below footnotes (that reads as page chrome / footer).
+            const footnotes = anchor.querySelector('.article-page-footnotes');
+            const body = anchor.querySelector('.article-page-body');
+            commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
+            if (footnotes && body) {
+                commentScreenEl.classList.add('comment-screen--above-footnotes');
+                footnotes.before(commentScreenEl);
+            } else {
+                commentScreenEl.classList.add('comment-screen--page-foot');
+                anchor.appendChild(commentScreenEl);
+            }
+        }
+        applyPageNumbers(articleBody);
+        return;
+    }
+
+    commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
+
+    const spread = createSpread();
+    articleBody.appendChild(spread.spread);
+    const page = spread.leftPage;
+    page.classList.add('article-page-comments');
+    ensureArticlePageBody(page);
+    page.appendChild(commentScreenEl);
+    applyPageNumbers(articleBody);
 }
 
 function bindCommentInputEmbedFocusFix() {
@@ -602,7 +670,7 @@ function bindAnnotationSelectionUi() {
     });
 }
 
-const DEFAULT_COMMENT_PLACEHOLDER = 'Write a comment...';
+const DEFAULT_COMMENT_PLACEHOLDER = 'so what do you think?';
 const ANNOTATION_COMMENT_PLACEHOLDER = 'Note on the highlighted passage…';
 
 function exitAnnotationComposeMode() {
@@ -946,7 +1014,11 @@ function renderThreadedComments() {
     if (!commentList) return;
     commentList.innerHTML = '';
     document.querySelectorAll('.annotation-card > .comment-children').forEach((el) => el.remove());
-    if (!commentsState.size) return;
+    if (!commentsState.size) {
+        // Back to last article page (input only) when the thread is empty again.
+        mountCommentScreenForLayout(lastArticlePageElForComments);
+        return;
+    }
 
     const childrenByParent = new Map();
     const roots = [];
@@ -1034,6 +1106,9 @@ function renderThreadedComments() {
             if (annCard) ContentRefs.enhanceAuthorRefs(annCard);
         });
     }
+
+    // First comment (or any non-empty thread) → own comments sheet.
+    mountCommentScreenForLayout(lastArticlePageElForComments);
 }
 
 const setupBlog = (data) => {
@@ -1114,14 +1189,7 @@ function formatPublishedReadable(raw) {
     return `${day} of ${month} ${year}`;
 }
 
-function createInlineMasthead(meta) {
-    const wrap = document.createElement('section');
-    wrap.className = 'article-inline-masthead';
-
-    const titleEl = document.createElement('h1');
-    titleEl.className = 'title';
-    titleEl.textContent = meta?.title || '';
-
+function createArticleByline(meta) {
     const author = String(meta?.author || 'Anonymous').trim().replace(/^@+/, '') || 'Anonymous';
     const publishedRaw = (meta?.publishedAt || '').trim();
 
@@ -1168,8 +1236,59 @@ function createInlineMasthead(meta) {
         byline.appendChild(timeEl);
     }
 
+    return byline;
+}
+
+/** Legacy top-of-page masthead (title + byline) when article HTML has no doc-title heading. */
+function createInlineMasthead(meta) {
+    const wrap = document.createElement('section');
+    wrap.className = 'article-inline-masthead';
+
+    const titleEl = document.createElement('h1');
+    titleEl.className = 'title';
+    titleEl.textContent = meta?.title || '';
+
     wrap.appendChild(titleEl);
-    wrap.appendChild(byline);
+    wrap.appendChild(createArticleByline(meta));
+    return wrap;
+}
+
+function blockHtmlIsDocTitle(blockHtml) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = String(blockHtml || '').trim();
+    const el = wrap.firstElementChild;
+    if (!el || !/^H[1-3]$/.test(el.tagName)) return false;
+    if (el.getAttribute('data-doc-title') === 'true') return true;
+    return false;
+}
+
+function blocksIncludeDocTitle(blocks) {
+    return (blocks || []).some((b) => blockHtmlIsDocTitle(b));
+}
+
+function blocksHaveHeadingMatchingTitle(blocks, title) {
+    const metaTitle = String(title || '').replace(/\s+/g, ' ').trim();
+    if (!metaTitle) return false;
+    return (blocks || []).some((blockHtml) => {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = String(blockHtml || '').trim();
+        const el = wrap.firstElementChild;
+        if (!el || !/^H[1-3]$/.test(el.tagName)) return false;
+        return (el.textContent || '').replace(/\s+/g, ' ').trim() === metaTitle;
+    });
+}
+
+/** Title heading + byline as one atomic block so they travel / paginate together. */
+function createTitleBlockNode(blockHtml, meta) {
+    const heading = createArticleNode(blockHtml);
+    if (heading && /^H[1-3]$/.test(heading.tagName)) {
+        heading.classList.add('title');
+        heading.setAttribute('data-doc-title', 'true');
+    }
+    const wrap = document.createElement('header');
+    wrap.className = 'article-title-block';
+    wrap.appendChild(heading);
+    wrap.appendChild(createArticleByline(meta));
     return wrap;
 }
 
@@ -1601,6 +1720,13 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     const defMap = footnoteDefMap instanceof Map ? footnoteDefMap : new Map();
 
+    // Keep #comment-screen alive across reflows (innerHTML would destroy it).
+    if (commentScreenEl) {
+        const blogRoot = document.querySelector('.blog');
+        if (blogRoot) blogRoot.appendChild(commentScreenEl);
+    }
+    lastArticlePageElForComments = null;
+
     articleBody.innerHTML = '';
 
     const spreadHeight = getSpreadTargetHeight();
@@ -1610,11 +1736,21 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     let currentPage = currentSpread.leftPage;
     currentPage.classList.add('article-page-first');
-    currentPage.appendChild(createInlineMasthead(currentBlogMeta));
     let currentPageBody = ensureArticlePageBody(currentPage);
+
+    // Legacy posts: title lives only in meta — keep top masthead.
+    // New posts: title heading is in the body; byline travels with it.
+    const titleInBody =
+        blocksIncludeDocTitle(blocks) ||
+        blocksHaveHeadingMatchingTitle(blocks, currentBlogMeta?.title);
+    if (!titleInBody) {
+        currentPage.appendChild(createInlineMasthead(currentBlogMeta));
+        currentPageBody = ensureArticlePageBody(currentPage);
+    }
 
     const assignedFootnoteAnchors = new Set();
     let footnoteCarry = [];
+    let attachedDocTitle = false;
 
     const openFreshPage = () => {
         currentSpread = createSpread();
@@ -1634,8 +1770,39 @@ function renderArticleSpread(blocks, footnoteDefMap) {
         openFreshPage();
     };
 
+    const isAuthorPageBreakHtml = (html) => {
+        if (!html || typeof html !== 'string') return false;
+        return (
+            /\bdata-page-break\s*=\s*["']true["']/i.test(html) ||
+            /\bdata-variant\s*=\s*["']page-break["']/i.test(html)
+        );
+    };
+
     blocks.forEach((blockHtml) => {
-        const node = createArticleNode(blockHtml);
+        // Author hard break — finish this page; do not render the sentinel.
+        if (isAuthorPageBreakHtml(blockHtml)) {
+            if (currentPageBody && currentPageBody.childElementCount > 0) {
+                moveToNextPage();
+            }
+            return;
+        }
+
+        let node = createArticleNode(blockHtml);
+        if (!attachedDocTitle) {
+            const el = node;
+            const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            const metaTitle = String(currentBlogMeta?.title || '').replace(/\s+/g, ' ').trim();
+            const looksLikeTitle =
+                el &&
+                /^H[1-3]$/.test(el.tagName) &&
+                (el.getAttribute('data-doc-title') === 'true' ||
+                    blockHtmlIsDocTitle(blockHtml) ||
+                    (metaTitle && text === metaTitle));
+            if (looksLikeTitle) {
+                node = createTitleBlockNode(blockHtml, currentBlogMeta);
+                attachedDocTitle = true;
+            }
+        }
         currentPageBody.appendChild(node);
 
         const heightBudget = pageBodyHeightBudget(
@@ -1800,4 +1967,40 @@ function scrollToAnchor(scrollid) {
         target.style.borderRadius = '0px';
     },(1500));
 };
+
+function bindRandomNavHover(selectors) {
+    document.querySelectorAll(selectors).forEach((el) => {
+        el.addEventListener('pointerenter', () => {
+            const hue = Math.floor(Math.random() * 360);
+            el.style.setProperty('color', `hsl(${hue} 72% 48%)`, 'important');
+        });
+        el.addEventListener('pointerleave', () => {
+            el.style.removeProperty('color');
+        });
+    });
+}
+
+/** Dashboard corner control — authors only (`real person` claim). */
+function setupReaderAuthorNav() {
+    bindRandomNavHover('.reader-nav-wall, .reader-nav-dashboard');
+    const dash = document.getElementById('reader-dashboard-btn');
+    if (!dash || !window.auth) return;
+    const setVisible = (on) => {
+        if (on) dash.removeAttribute('hidden');
+        else dash.setAttribute('hidden', '');
+    };
+    window.auth.onAuthStateChanged((user) => {
+        if (!user) {
+            setVisible(false);
+            return;
+        }
+        user.getIdTokenResult()
+            .then((result) => {
+                setVisible(result?.claims?.role === 'real person');
+            })
+            .catch(() => setVisible(false));
+    });
+}
+
+setupReaderAuthorNav();
 

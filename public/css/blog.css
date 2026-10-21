@@ -161,6 +161,17 @@ body.reader-loading #comment-screen {
 
 #article-body .article-page-body {
     min-width: 0;
+    flex: 0 1 auto;
+}
+
+/* Leave room above the page number when comments pin to the foot */
+#article-body .article-page #comment-screen.comment-screen--page-foot {
+    padding-bottom: clamp(1.1rem, 2.2vh, 1.6rem);
+}
+
+/* Dedicated comments sheet — no first-page masthead inset */
+#article-body .article-page.article-page-comments {
+    padding-top: clamp(24px, 2.9vh, 34px);
 }
 
 /*
@@ -236,6 +247,51 @@ body.reader-loading #comment-screen {
 
 .article-inline-masthead {
     margin: 0 0 clamp(0.1875rem, 0.5vw, 0.5rem);
+}
+
+/* Title + byline travel together (editor position → reader / preview). */
+.article-title-block {
+    margin: 0 0 clamp(0.35rem, 0.7vw, 0.65rem);
+    break-inside: avoid;
+}
+
+.article-title-block > .title,
+.article-title-block > h1,
+.article-title-block > h2,
+.article-title-block > h3 {
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
+}
+
+#article-body .article-title-block > .title,
+#article-body .article-title-block > h1[data-doc-title],
+#article-body .article-title-block > h2[data-doc-title],
+#article-body .article-title-block > h3[data-doc-title] {
+    /* Beat #article-body .article-page h1 margin so title→byline matches preview/editor */
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
+    color: #141414;
+    -webkit-text-fill-color: #141414;
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(1.14rem, 1.38vw, 1.42rem);
+    line-height: 1.16;
+    font-weight: 700;
+    letter-spacing: normal;
+}
+
+#article-body .article-title-block .article-byline {
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
 }
 
 #article-body .article-page.article-page-first {
@@ -558,6 +614,12 @@ body.reader-loading #comment-screen {
     font-size: 0.9rem;
 }
 
+/* Author page breaks are packer sentinels — never show in the reader */
+#article-body .article-page hr[data-variant="page-break"],
+#article-body .article-page hr[data-page-break="true"] {
+    display: none !important;
+}
+
 #article-body .article-page p[data-variant="dropcap"]::first-letter {
     float: left;
     font-size: 3.2em;
@@ -602,13 +664,18 @@ body.reader-loading #comment-screen {
     letter-spacing: 0.04em;
 }
 
-/* Preserve inline color/highlight marks from Tiptap output */
+/*
+ * Custom TipTap text colors: escape the ink gradient on parent p/h*
+ * (transparent fill + background-clip:text) and paint with the inline color.
+ * Do not set `color: inherit` — that wiped the author's color.
+ */
 #article-body .article-page span[style*="color"] {
-    color: inherit;
     -webkit-text-fill-color: currentColor;
     background: none;
     -webkit-background-clip: border-box;
     background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
 }
 
 #article-body .article-page mark {
@@ -640,14 +707,76 @@ body.reader-loading #comment-screen {
 #article-body .article-page img[align="center"] { display: block; margin-left: auto; margin-right: auto; }
 #article-body .article-page img[align="right"] { display: block; margin-left: auto; margin-right: 0; }
 
-/* Comments: same continuous sheet — no rule above */
-.comment-block {
+/* Corner nav (match editor): Wall top-left, Dashboard bottom-right (authors only). */
+.reader-nav-wall {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    left: max(16px, env(safe-area-inset-left, 0px));
+    z-index: 100;
+}
+
+.reader-nav-dashboard {
+    position: fixed;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    z-index: 100;
+}
+
+.reader-nav-wall.btn,
+.reader-nav-dashboard.btn {
+    padding: 0;
+    border: none;
+    background: none !important;
+    font-size: 25px;
+    font-weight: 1200;
+    font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    color: #fff !important;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 2px #000;
+}
+
+.reader-nav-wall.btn:hover,
+.reader-nav-dashboard.btn:hover {
+    /* Random hue set by JS; fallback matches prior blue */
+    color: var(--nav-hover-color, #007acc) !important;
+}
+
+body.reader-embed .reader-nav-wall,
+body.reader-embed .reader-nav-dashboard {
+    display: none !important;
+}
+
+/* No comments yet — shared chrome */
+.comment-block,
+#article-body .article-page #comment-screen {
     clear: none;
-    padding: clamp(8px, 1vw, 14px) 0 0;
-    margin: 0 calc(-1 * var(--reader-page-pad-inline));
-    width: calc(100% + (var(--reader-page-pad-inline) * 2));
-    background: transparent;
+    padding: clamp(6px, 0.8vw, 10px) 0 0;
+    width: 100%;
     max-width: none;
+    background: transparent;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+/* No footnotes: pin input to the foot of the last article page */
+#article-body .article-page > #comment-screen.comment-screen--page-foot {
+    margin: auto 0 0;
+}
+
+/* Footnotes on last page: sit just above the note strip, not under it */
+#article-body .article-page-body > #comment-screen.comment-screen--above-footnotes {
+    margin: clamp(10px, 1.2vw, 16px) 0 clamp(4px, 0.6vw, 8px);
+    padding-bottom: 0;
+}
+
+/* After first comment: own sheet — thread starts at the top */
+#article-body .article-page.article-page-comments > #comment-screen {
+    margin: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
 }
 
 .annotation-section {
@@ -924,25 +1053,90 @@ body.reader-loading #comment-screen {
     counter-reset: footnote;
     background: transparent;
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
 }
 
+#commentList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
 
 #commentForm {
     background: transparent;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    max-width: none;
+}
+
+/*
+ * Comment field — same type size for placeholder + typed text; muted gray → black.
+ */
+#commentInput {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.2rem 0.35rem;
+    min-height: 0;
+    border: 1px solid rgba(0, 0, 0, 0.045);
+    border-radius: 6px;
+    outline: none;
+    caret-color: #000;
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: rgba(255, 255, 255, 0.35);
+    box-shadow: none;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(0.9375rem, 1.1vw, 1.0625rem);
+    line-height: 1.42;
+    color: #000;
+    -webkit-text-fill-color: #000;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: border-color 0.15s ease;
+}
+
+#commentInput::placeholder {
+    color: rgba(0, 0, 0, 0.28);
+    -webkit-text-fill-color: rgba(0, 0, 0, 0.28);
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    opacity: 1;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    font-weight: inherit;
+}
+
+#commentInput:focus {
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: none;
+    color: #000;
+    -webkit-text-fill-color: #000;
 }
 
 #commentForm.annotation-compose {
     margin-top: 4px;
+    max-width: none;
+    width: 100%;
 }
 
 #commentInput.annotation-compose-input {
-    border-color: var(--ann-compose-border, rgba(120, 90, 0, 0.35));
-    background: color-mix(in srgb, var(--ann-compose-fill, rgba(255, 248, 220, 0.35)) 55%, white 45%);
+    border-color: var(--ann-compose-border, rgba(120, 90, 0, 0.22));
+    background-color: color-mix(in srgb, var(--ann-compose-fill, rgba(255, 248, 220, 0.2)) 40%, transparent 60%);
 }
 
 #commentInput.annotation-compose-input:focus {
-    border-color: var(--ann-compose-border-focus, rgba(100, 75, 0, 0.45));
-    background: color-mix(in srgb, var(--ann-compose-fill, rgba(255, 252, 235, 0.5)) 50%, white 50%);
+    border-color: var(--ann-compose-border-focus, rgba(100, 75, 0, 0.32));
 }
 
 .comment-card {
@@ -1041,12 +1235,6 @@ body.reader-loading #comment-screen {
     -moz-osx-font-smoothing: grayscale !important;
 }
 
-#commentList {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
 .threaded-comment {
     padding-left: 0;
 }
@@ -1140,30 +1328,24 @@ body.reader-embed .blog {
 }
 
 /* Embed: comments sit outside paginated pages (avoid overflow:hidden caret bugs on iOS). */
-body.reader-embed .comment-block {
+body.reader-embed .comment-block,
+body.reader-embed #comment-screen {
+    margin-top: clamp(12px, 1.8svh, 20px);
     margin-inline: 0;
     width: 100%;
-    padding-top: clamp(12px, 1.8svh, 20px);
 }
 
 body.reader-embed #commentForm {
-    padding-inline: clamp(14px, 4.5vw, 24px);
+    max-width: none;
+    width: 100%;
+    padding-inline: 0;
     box-sizing: border-box;
 }
 
 body.reader-embed #commentInput {
-    display: block;
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 12px 14px;
-    min-height: 44px;
     font-size: 16px;
-    line-height: 1.25;
-    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
-    box-sizing: border-box;
-    -webkit-appearance: none;
-    appearance: none;
+    padding: 0.35rem 0.4rem;
+    min-height: 2.5rem;
 }
 
 @media (max-width: 900px) {
@@ -1217,19 +1399,28 @@ body.reader-embed #commentInput {
     }
 
     #commentForm {
-        padding-inline: clamp(14px, 4.5vw, 24px);
+        max-width: none;
+        width: 100%;
+        padding-inline: 0;
         box-sizing: border-box;
     }
 
-    #commentForm input[type="text"] {
-        max-width: none;
-        width: 100%;
-        margin: 0;
-        padding: 12px 14px;
-        min-height: 44px;
+    #commentInput {
         font-size: 16px;
-        line-height: 1.25;
-        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+        padding: 0.35rem 0.4rem;
+        min-height: 2.5rem;
+    }
+
+    .reader-nav-wall {
+        top: max(10px, env(safe-area-inset-top, 0px));
+        left: max(10px, env(safe-area-inset-left, 0px));
+        font-size: 16px;
+    }
+
+    .reader-nav-dashboard {
+        right: max(10px, env(safe-area-inset-right, 0px));
+        bottom: max(8px, env(safe-area-inset-bottom, 0px));
+        font-size: 16px;
     }
 }
 

@@ -20,11 +20,11 @@
     <!-- Editor Container -->
     <div class="editor-container">
         <div class="editor-header">
-            <input type="text" class="title-input" placeholder="Blog title...">
+            <input type="text" class="title-input" placeholder="Title…" aria-label="Article title (synced from first heading on the page)">
             <div class="editor-toolbar">
                 <div class="editor-toolbar-track">
                 <div class="toolbar-buttons">
-                    <select id="content-type-select" class="toolbar-select toolbar-section-select" required title="Home page section" aria-label="Home page section">
+                    <select id="content-type-select" class="toolbar-select toolbar-section-select" required title="Wall section" aria-label="Wall section">
                         <option value="" disabled selected>Section…</option>
                         <option value="scene_report">#SCENE</option>
                         <option value="interview">Interview</option>
@@ -34,8 +34,9 @@
                     <span class="toolbar-divider toolbar-publish-divider" aria-hidden="true"></span>
                     <button type="button" class="btn dark publish-btn" title="Publish">Publish</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
-                    <button class="toolbar-btn" data-action="title-toggle" title="Title toggle (T/p)">T/p</button>
+                    <button class="toolbar-btn" data-action="title-toggle" title="Title heading (H1)">T</button>
                     <button class="toolbar-btn" data-action="line-break" title="Line break (↵)">↵</button>
+                    <button class="toolbar-btn wide" data-action="page-break" title="Page break — move following content to the next page (⌘/Ctrl+Enter)">📄</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
                     <button class="toolbar-btn" data-action="bold" title="Bold"><strong>B</strong></button>
                     <button class="toolbar-btn" data-action="italic" title="Italic"><em>I</em></button>
@@ -103,15 +104,13 @@
             </div>
         </div>
         
-        <div class="editor-content">
+        <div class="editor-content editor-pages-canvas">
             <div id="tiptap-editor" class="tiptap-editor"></div>
         </div>
 
         <div class="editor-footer">
-            <div class="footer-right">
-                <a href="/admin" class="btn grey">Dashboard</a>
-                <a href="/" class="btn grey">Home</a>
-            </div>
+            <a href="/" class="btn grey editor-nav-wall">Wall</a>
+            <a href="/admin" class="btn grey editor-nav-dashboard">Dashboard</a>
         </div>
     </div>
 
@@ -197,7 +196,7 @@
             <p id="publish-confirm-title" class="publish-confirm-hint">if this is your final version, you can open it for notes!</p>
             <div class="publish-confirm-actions">
                 <button type="button" class="popover-btn" data-publish-open-notes>publish &amp; open notes</button>
-                <button type="button" class="popover-btn" data-publish-only>publish only</button>
+                <button type="button" class="popover-btn" data-publish-draft>publish draft</button>
                 <button type="button" class="popover-btn" data-publish-cancel>cancel</button>
             </div>
         </div>

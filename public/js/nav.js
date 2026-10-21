@@ -10,14 +10,14 @@ auth.onAuthStateChanged((user) => {
                 console.log(idTokenResult.claims.role);
                 if(idTokenResult.claims.role == "real person"){
                     ul[0].innerHTML = '' +
-                        '<li class="link-item"><a href="#" onclick="goHome()"class="link" id="nav-text">home</a></li>' +
+                        '<li class="link-item"><a href="#" onclick="goHome()"class="link" id="nav-text">Wall</a></li>' +
                         '<li class="link-item"><a href="/editor" class="link" id="nav-text">Editor</a></li>' +
                         '<li class="link-item"><a href="/admin" class="link" id="nav-text">Dashboard</a></li>' +
                         '<li class="link-item"><a href="#" onclick="logoutUser()" class="link" id="nav-text">Logout</a></li>';
                 }
                 else{
                     ul[0].innerHTML = '' +
-                        '<li class="link-item"><a href="/" class="link" id="nav-text">home</a></li>' +
+                        '<li class="link-item"><a href="/" class="link" id="nav-text">Wall</a></li>' +
                         '<li class="link-item"><a href="#" onclick="logoutUser()" class="link" id="nav-text">Logout</a></li>';
                 }
                 console.log(idTokenResult.claims);

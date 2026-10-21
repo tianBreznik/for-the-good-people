@@ -2408,12 +2408,26 @@ html[data-home-texture] .title-section .blog-card.preview-source .blog-title {
 }
 
 /*
- * Search hover: gray letter fill via the same background-clip recipe as stone titles.
- * Texture packs use !important transparent fill — must override the same way.
+ * SEARCH / EDITOR / LOGIN / LOGOUT: same solid white hover as article titles
+ * (texture packs use background-clip; no texture uses plain fill).
  */
+#search-card:hover .blog-title,
+#auth-login-card:hover .blog-title,
+#auth-login-card[data-logout="true"]:hover .blog-title,
+#auth-editor-card:hover .blog-title {
+    color: #fff;
+    -webkit-text-fill-color: #fff;
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+    text-shadow: none;
+    filter: none;
+}
+
 html[data-home-texture] #search-card:hover .blog-title,
-#search-card:hover .blog-title {
-    background-image: linear-gradient(#2f2f2f, #2f2f2f) !important;
+html[data-home-texture] #auth-login-card:hover .blog-title,
+html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title,
+html[data-home-texture] #auth-editor-card:hover .blog-title {
+    background-image: linear-gradient(#fff, #fff) !important;
     background-size: auto !important;
     background-position: center !important;
     background-attachment: scroll !important;
@@ -2424,6 +2438,12 @@ html[data-home-texture] #search-card:hover .blog-title,
     -webkit-text-stroke: 0;
     text-shadow: none;
     filter: none;
+}
+
+#search-card:hover .blog-title::before,
+#auth-login-card:hover .blog-title::before,
+#auth-editor-card:hover .blog-title::before {
+    display: none;
 }
 
 /* Wash non-matching cards when an author is hovered — never wash about.
@@ -2740,48 +2760,6 @@ html[data-home-texture='stucco8'] .blog-card.search-miss:hover .blog-title {
     z-index: -1; /* render behind the primary text */
 }
 
-/* Auth hovers: same clipped solid fill as search (no glow) */
-html[data-home-texture] #auth-login-card:hover .blog-title,
-#auth-login-card:hover .blog-title,
-html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title,
-#auth-login-card[data-logout="true"]:hover .blog-title,
-html[data-home-texture] #auth-editor-card:hover .blog-title,
-#auth-editor-card:hover .blog-title {
-    background-size: auto !important;
-    background-position: center !important;
-    background-attachment: scroll !important;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent !important;
-    color: transparent;
-    -webkit-text-stroke: 0;
-    text-shadow: none;
-    filter: none;
-}
-
-#auth-login-card:hover .blog-title::before,
-#auth-editor-card:hover .blog-title::before {
-    display: none;
-}
-
-/* Login — was green glow */
-html[data-home-texture] #auth-login-card:hover .blog-title,
-#auth-login-card:hover .blog-title {
-    background-image: linear-gradient(rgb(0, 255, 0), rgb(0, 255, 0)) !important;
-}
-
-/* Logout — was cherry red glow */
-html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title,
-#auth-login-card[data-logout="true"]:hover .blog-title {
-    background-image: linear-gradient(#ff1744, #ff1744) !important;
-}
-
-/* Editor — was pearl hover glow */
-html[data-home-texture] #auth-editor-card:hover .blog-title,
-#auth-editor-card:hover .blog-title {
-    background-image: linear-gradient(#fdf6e3, #fdf6e3) !important;
-}
-
 /* Each column gets a perfectly aligned texture slice.
  * Y is shifted by one viewport so the homepage continues the splash slab’s
  * stone (same 50vw tile grid) — no “texture restart” at the wall seam. */
@@ -2977,6 +2955,47 @@ body.article-open .home-main-stage .column-section {
     -webkit-text-stroke: 0;
     text-shadow: none;
     -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Title-in-body preview: beat .home-preview-body h1 (ink + body heading size)
+ * so the doc title matches the reader (.article-title-block).
+ */
+.home-preview-body .article-title-block > .home-preview-title,
+.home-preview-body .article-title-block > h1[data-doc-title],
+.home-preview-body .article-title-block > h2[data-doc-title],
+.home-preview-body .article-title-block > h3[data-doc-title] {
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(1.14rem, 1.38vw, 1.42rem);
+    line-height: 1.16;
+    font-weight: 700;
+    letter-spacing: normal;
+    color: #141414;
+    -webkit-text-fill-color: #141414;
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+}
+
+.home-preview-body .article-title-block {
+    margin: 0 0 clamp(0.35rem, 0.7vw, 0.65rem);
+}
+
+.home-preview-body .article-title-block .article-byline,
+.home-preview-body .article-title-block .home-preview-byline {
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
 }
 
 .home-preview-byline {

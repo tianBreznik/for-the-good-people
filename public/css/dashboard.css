@@ -195,37 +195,45 @@ body {
     color: #911616;
 }
 
-/* Footer — bottom right */
+/* Footer — bottom right; Wall stacked above Logout */
 .dashboard-footer {
     position: fixed;
     right: max(16px, env(safe-area-inset-right));
     bottom: max(14px, env(safe-area-inset-bottom));
     display: flex;
-    gap: 1.1rem;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
     z-index: 100;
 }
 
+/* Match reader Wall / Dashboard corner nav exactly */
 .dashboard-footer .btn {
     padding: 0;
     border: none;
     min-width: 0;
     background: none !important;
     box-shadow: none;
-    font-size: clamp(20px, 3vw, 26px);
-    font-weight: 900;
-    font-family: 'Impact', sans-serif;
-    text-transform: uppercase;
+    font-size: 25px;
+    font-weight: 1200;
+    font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    text-transform: none;
+    letter-spacing: normal;
     color: #fff !important;
-    -webkit-text-fill-color: #fff;
-    -webkit-text-stroke: 1.15px #000;
-    paint-order: stroke fill;
-    text-shadow: none;
+    -webkit-text-fill-color: unset;
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 2px #000;
 }
 
 .dashboard-footer .btn:hover {
-    color: var(--dash-hover) !important;
-    -webkit-text-fill-color: var(--dash-hover);
-    -webkit-text-stroke-color: var(--dash-hover);
+    color: var(--dash-hover, #007acc) !important;
+    -webkit-text-fill-color: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 2px #000;
     transform: none;
 }
 

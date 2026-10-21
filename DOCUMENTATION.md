@@ -66,4 +66,5 @@ This directory contains static assets served by the Express server.
 - **`home.html`**: Glavna vstopna stran.
 - **`blog.html`**: Stran za renderiranje blog zapisov.
 - **`dashboard.html`**: Adminova urejevalna stran.
-- **`editor.html`**: Urejevalna stran za pisanje in urejanje blogov. 
+- **`editor.html`**: Urejevalna stran za pisanje in urejanje blogov.
+- **`EDITOR_AUDIT_AND_PAGINATION.md`**: Editor block audit, known gaps, and proposal for pagination-in-editor (author-controlled page breaks). 

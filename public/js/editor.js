@@ -14,6 +14,18 @@ import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2.11.5';
 import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2.11.5';
 import Color from 'https://esm.sh/@tiptap/extension-color@2.11.5';
 import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2.11.5';
+import {
+    createEditorPaginationExtension,
+    requestEditorPaginationRefresh,
+    handleEditorPageScrollToSelection,
+    resetEditorPageScrollMemory,
+} from './editor-pagination.js';
+import {
+    StyledHeading,
+    createTitleBylineExtension,
+    ensureDocTitleHeading,
+    markDocTitleAt,
+} from './title-byline.js';
 // Editor functionality with Tiptap and auto-save
 
 /** Preserve @author / #article ref attributes on links. */
@@ -212,6 +224,9 @@ let allowImmediateNavigation = false;
 let pendingNavigationAction = null;
 let pendingImageMode = 'block';
 const AUTO_SAVE_DELAY = 2000;
+
+/** Author / date shown in the byline that travels with the doc-title heading. */
+let editorArticleMeta = { author: '', publishedAt: '' };
 
 /** Cursor position when the footnote dialog opens (dialog focus would otherwise clear PM selection). */
 let footnoteDialogInsertAnchor = null;
@@ -527,11 +542,77 @@ const StyledHorizontalRule = HorizontalRule.extend({
         return {
             variant: {
                 default: null,
-                parseHTML: element => element.getAttribute('data-variant') || null,
-                renderHTML: attributes => attributes.variant ? { 'data-variant': attributes.variant } : {}
-            }
+                parseHTML: (element) => {
+                    if (!(element instanceof HTMLElement)) return null;
+                    if (element.getAttribute('data-page-break') === 'true') return 'page-break';
+                    return element.getAttribute('data-variant') || null;
+                },
+                renderHTML: (attributes) => {
+                    if (!attributes.variant) return {};
+                    if (attributes.variant === 'page-break') {
+                        return { 'data-variant': 'page-break', 'data-page-break': 'true' };
+                    }
+                    return { 'data-variant': attributes.variant };
+                },
+            },
         };
-    }
+    },
+});
+
+
+/** Persist align + data-display so toolbar/upload survive save → reader. */
+const StyledImage = Image.extend({
+    addAttributes() {
+        return {
+            ...this.parent?.(),
+            align: {
+                default: null,
+                parseHTML: (element) => {
+                    const raw = element.getAttribute('align');
+                    return raw === 'left' || raw === 'center' || raw === 'right' ? raw : null;
+                },
+                renderHTML: (attributes) => (attributes.align ? { align: attributes.align } : {}),
+            },
+            display: {
+                default: null,
+                parseHTML: (element) => element.getAttribute('data-display') || null,
+                renderHTML: (attributes) => (
+                    attributes.display ? { 'data-display': attributes.display } : {}
+                ),
+            },
+        };
+    },
+
+    // @author avatars are plain <img> inside links — must not become TipTap Image nodes
+    // (those render at natural/full size and blow up the editor).
+    parseHTML() {
+        return [
+            {
+                tag: 'img[src]',
+                getAttrs: (element) => {
+                    if (!(element instanceof HTMLElement)) return false;
+                    if (element.classList.contains('content-ref-author-avatar')) return false;
+                    if (element.closest('a.content-ref-author')) return false;
+                    return {};
+                },
+            },
+        ];
+    },
+});
+
+const PageBreakShortcut = Extension.create({
+    name: 'pageBreakShortcut',
+    addKeyboardShortcuts() {
+        return {
+            // Word-style: Ctrl/Cmd+Enter inserts an author page break.
+            'Mod-Enter': () =>
+                this.editor
+                    .chain()
+                    .focus()
+                    .insertContent({ type: 'horizontalRule', attrs: { variant: 'page-break' } })
+                    .run(),
+        };
+    },
 });
 
 const FontSize = Extension.create({
@@ -783,19 +864,21 @@ function setupFootnoteDialog() {
 const EDITOR_NARROW_QUERY = '(max-width: 900px)';
 
 function setupMobileEditorLayout() {
+    // Narrow layout is CSS-driven. Do not scroll the caret into view on focus —
+    // pages stay put; the user scrolls the document to move between sheets.
     if (!window.matchMedia(EDITOR_NARROW_QUERY).matches) return;
+}
 
-    const scrollCaretIntoView = () => {
-        requestAnimationFrame(() => {
-            const sel = window.getSelection();
-            if (!sel?.rangeCount) return;
-            const node = sel.getRangeAt(0).startContainer;
-            const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-            el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+function bindRandomNavHover(selectors) {
+    document.querySelectorAll(selectors).forEach((el) => {
+        el.addEventListener('pointerenter', () => {
+            const hue = Math.floor(Math.random() * 360);
+            el.style.setProperty('color', `hsl(${hue} 72% 48%)`, 'important');
         });
-    };
-
-    document.querySelector('.tiptap-editor .ProseMirror')?.addEventListener('focus', scrollCaretIntoView, true);
+        el.addEventListener('pointerleave', () => {
+            el.style.removeProperty('color');
+        });
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -810,6 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupLeaveConfirmDialog();
     setupPublishConfirmDialog();
     setupEventListeners();
+    bindRandomNavHover('.editor-nav-wall, .editor-nav-dashboard, .publish-btn');
     // New-post drafts: apply local immediately; reconcile with Firestore once auth is ready.
     if (!isEditing) {
         applyDraftToEditor(readLocalDraft(), { statusText: 'Draft loaded' });
@@ -886,12 +970,140 @@ function setupLeaveConfirmDialog() {
     });
 }
 
+/** Remove top-level Image nodes that are leftover @author avatars (full-size blow-ups). */
+function stripOrphanAuthorAvatarImages() {
+    if (!editor || editor.isDestroyed) return;
+    const { state } = editor;
+    let tr = state.tr;
+    let changed = false;
+    const victims = [];
+    state.doc.forEach((node, pos) => {
+        if (node.type.name !== 'image') return;
+        const cls = String(node.attrs?.class || '');
+        const src = String(node.attrs?.src || '');
+        if (cls.includes('content-ref-author-avatar') || /avatar/i.test(src)) {
+            victims.push({ pos, size: node.nodeSize });
+        }
+    });
+    for (let i = victims.length - 1; i >= 0; i -= 1) {
+        const { pos, size } = victims[i];
+        tr = tr.delete(pos, pos + size);
+        changed = true;
+    }
+    if (changed) {
+        editor.view.dispatch(tr.setMeta('addToHistory', false));
+    }
+}
+
 function getEditorHTML() {
     return editor ? editor.getHTML().trim() : '';
 }
 
 function getEditorText() {
     return editor ? editor.getText().trim() : '';
+}
+
+/** Doc-title heading text (data-doc-title), else first h1–h3. */
+function extractTitleFromEditor() {
+    if (!editor) return '';
+    let titled = '';
+    let fallback = '';
+    editor.state.doc.forEach((node) => {
+        if (node.type.name !== 'heading' || node.attrs?.level < 1 || node.attrs.level > 3) return;
+        const text = node.textContent.replace(/\s+/g, ' ').trim();
+        if (node.attrs?.docTitle && !titled) titled = text;
+        if (!fallback) fallback = text;
+    });
+    return titled || fallback;
+}
+
+/** Body text excluding the doc-title heading (for publish validation). */
+function getBodyTextExcludingTitle() {
+    if (!editor) return '';
+    let hasMarked = false;
+    editor.state.doc.forEach((n) => {
+        if (n.type.name === 'heading' && n.attrs?.docTitle) hasMarked = true;
+    });
+    const parts = [];
+    let skippedFallback = false;
+    editor.state.doc.forEach((node) => {
+        if (node.type.name === 'heading' && node.attrs?.docTitle) return;
+        if (
+            !hasMarked &&
+            !skippedFallback &&
+            node.type.name === 'heading' &&
+            node.attrs?.level >= 1 &&
+            node.attrs.level <= 3
+        ) {
+            skippedFallback = true;
+            return;
+        }
+        const t = node.textContent.replace(/\s+/g, ' ').trim();
+        if (t) parts.push(t);
+    });
+    return parts.join(' ').trim();
+}
+
+/** Article HTML for publish — keeps the title heading (byline attaches in the reader). */
+function getArticleHTMLForPublish() {
+    return getEditorHTML();
+}
+
+function authorIdFromAuth() {
+    const user = window.auth?.currentUser;
+    if (!user) return '';
+    const fn = window.getAuthorIdFromUser;
+    if (typeof fn !== 'function') return '';
+    const id = String(fn(user) || '').trim().replace(/^@+/, '');
+    // getAuthorIdFromUser returns "Anonymous" when logged out — ignore that here.
+    if (!id || id === 'Anonymous') return '';
+    return id;
+}
+
+function bumpTitleBylineDecoration() {
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false));
+}
+
+function refreshEditorArticleMetaFromAuth() {
+    const apply = (name) => {
+        if (!name) return;
+        if (editorArticleMeta.author === name) {
+            bumpTitleBylineDecoration();
+            return;
+        }
+        editorArticleMeta = { ...editorArticleMeta, author: name };
+        bumpTitleBylineDecoration();
+    };
+
+    const user = window.auth?.currentUser;
+    if (!user) return;
+
+    // Prefer claim handle; fall back to displayName / email via getAuthorIdFromUser.
+    const tokenPromise =
+        typeof window.refreshAuthorIdFromToken === 'function'
+            ? window.refreshAuthorIdFromToken(user)
+            : Promise.resolve();
+
+    tokenPromise
+        .then(() => user.getIdTokenResult())
+        .then((result) => {
+            const claim = result?.claims?.authorName;
+            const fromClaim = claim ? String(claim).trim().replace(/^@+/, '') : '';
+            apply(fromClaim || authorIdFromAuth());
+        })
+        .catch(() => {
+            apply(authorIdFromAuth());
+        });
+}
+
+/** Keep hidden title input in sync with the in-page heading. */
+function syncTitleFromEditor() {
+    if (!titleInput || !editor) return;
+    const title = extractTitleFromEditor();
+    if (titleInput.value !== title) {
+        titleInput.value = title;
+    }
 }
 
 function markUnsavedChanges() {
@@ -909,13 +1121,15 @@ function initializeEditor() {
             StarterKit.configure({
                 paragraph: false,
                 blockquote: false,
-                horizontalRule: false
+                horizontalRule: false,
+                heading: false,
             }),
+            StyledHeading.configure({ levels: [1, 2, 3] }),
             StyledParagraph,
             StyledBlockquote,
             StyledHorizontalRule,
             Underline,
-            Image,
+            StyledImage,
             FootnoteRef,
             FootnoteRenumber,
             TextStyle,
@@ -933,28 +1147,69 @@ function initializeEditor() {
             }),
             createContentRefSuggestExtension(),
             Placeholder.configure({
-                placeholder: '#IKFLY'
-            })
+                showOnlyWhenEditable: true,
+                showOnlyCurrent: false,
+                placeholder: ({ node }) => {
+                    if (node.type.name === 'heading') return 'Title';
+                    return '#IKFLY';
+                },
+            }),
+            createTitleBylineExtension({
+                getMeta: () => ({
+                    author: editorArticleMeta.author || authorIdFromAuth() || '',
+                    publishedAt: editorArticleMeta.publishedAt || '',
+                }),
+            }),
+            PageBreakShortcut,
+            createEditorPaginationExtension({
+                getTitle: () => extractTitleFromEditor() || (titleInput ? titleInput.value : ''),
+            }),
         ],
-        content: '<p></p>',
+        content: '<h1 data-doc-title="true"></h1><p></p>',
         editorProps: {
             attributes: {
                 class: 'ProseMirror'
-            }
+            },
+            // Stay put while typing on the same sheet; jump when the caret
+            // crosses onto another page.
+            handleScrollToSelection: (view) => handleEditorPageScrollToSelection(view),
         },
         onCreate: () => {
+            if (!isEditing) {
+                isHydratingEditor = true;
+                ensureDocTitleHeading(editor, titleInput?.value || '');
+                isHydratingEditor = false;
+                refreshEditorArticleMetaFromAuth();
+                // Caret in the title so a new article has an obvious place to type.
+                requestAnimationFrame(() => {
+                    try {
+                        editor.chain().focus('start').run();
+                    } catch (_) { /* ignore */ }
+                });
+            }
+            syncTitleFromEditor();
             syncToolbarFromSelection();
+            requestEditorPaginationRefresh(editor);
         },
         onSelectionUpdate: () => {
             syncToolbarFromSelection();
         },
         onUpdate: () => {
             if (isHydratingEditor) return;
+            syncTitleFromEditor();
             syncToolbarFromSelection();
             markUnsavedChanges();
             triggerAutoSave();
         }
     });
+
+    if (window.auth?.onAuthStateChanged) {
+        window.auth.onAuthStateChanged(() => {
+            refreshEditorArticleMetaFromAuth();
+        });
+    } else {
+        refreshEditorArticleMetaFromAuth();
+    }
 
     if (isEditing) {
         loadBlogData();
@@ -1011,8 +1266,9 @@ function setupPublishConfirmDialog() {
         closePublishConfirmDialog();
         commitPublish({ openNotes: true });
     });
-    dialog.querySelector('[data-publish-only]')?.addEventListener('click', () => {
+    dialog.querySelector('[data-publish-draft]')?.addEventListener('click', () => {
         closePublishConfirmDialog();
+        // TODO: persist as dashboard draft (hidden from home). See EDITOR_AUDIT §5.
         commitPublish({ openNotes: false });
     });
     document.addEventListener('mousedown', (e) => {
@@ -1030,7 +1286,8 @@ function setupPublishConfirmDialog() {
 
 /** Validate + show publish confirmation (final / open notes). */
 function requestPublish() {
-    if (!titleInput.value.trim() || !getEditorText()) {
+    syncTitleFromEditor();
+    if (!extractTitleFromEditor() || !getBodyTextExcludingTitle()) {
         alert('Please fill in both title and content');
         return;
     }
@@ -1058,6 +1315,7 @@ function setupEventListeners() {
 function setupAutoSave() {
     titleInput.addEventListener('input', () => {
         markUnsavedChanges();
+        requestEditorPaginationRefresh(editor);
         clearTimeout(autoSaveTimeout);
         autoSaveTimeout = setTimeout(saveDraft, AUTO_SAVE_DELAY);
     });
@@ -1088,7 +1346,8 @@ async function saveDraft() {
     
     try {
         const draftData = {
-            title: titleInput.value,
+            title: extractTitleFromEditor() || titleInput.value,
+            // Drafts keep the in-page title heading so position survives reload.
             contentHtml: getEditorHTML(),
             contentText: getEditorText(),
             contentType: getSelectedContentType() || null,
@@ -1178,13 +1437,22 @@ function setupToolbar() {
                 case 'line-break':
                     chain.setHardBreak().run();
                     break;
-                case 'title-toggle':
-                    if (editor.isActive('heading')) {
-                        chain.setParagraph().run();
+                case 'title-toggle': {
+                    // Mark this block as the traveling doc title (H1) + byline anchor.
+                    if (editor.isActive('heading', { level: 1 }) && editor.getAttributes('heading').docTitle) {
+                        chain.updateAttributes('heading', { docTitle: false }).setParagraph().run();
                     } else {
-                        chain.toggleHeading({ level: 2 }).run();
+                        chain.setHeading({ level: 1 }).updateAttributes('heading', { docTitle: true }).run();
+                        const { $from } = editor.state.selection;
+                        let depth = $from.depth;
+                        while (depth > 0 && $from.node(depth).type.name !== 'heading') depth -= 1;
+                        if (depth > 0) {
+                            const pos = $from.before(depth);
+                            markDocTitleAt(editor, pos);
+                        }
                     }
                     break;
+                }
                 case 'align-left':
                     chain.setTextAlign('left').run();
                     break;
@@ -1240,6 +1508,12 @@ function setupToolbar() {
                 }
                 case 'dinkus':
                     chain.insertContent({ type: 'horizontalRule', attrs: { variant: 'dinkus' } }).run();
+                    break;
+                case 'page-break':
+                    chain
+                        .insertContent({ type: 'horizontalRule', attrs: { variant: 'page-break' } })
+                        .run();
+                    requestEditorPaginationRefresh(editor);
                     break;
                 case 'dropcap':
                     chain.setNode('paragraph', { variant: 'dropcap' }).run();
@@ -1338,6 +1612,8 @@ function setupToolbar() {
 
 function setActiveImageAlign(align) {
     if (!editor) return;
+    if (align !== 'left' && align !== 'center' && align !== 'right') return;
+
     const { state } = editor.view;
     const { from, to } = state.selection;
     let applied = false;
@@ -1348,8 +1624,24 @@ function setActiveImageAlign(align) {
             applied = true;
         }
     });
+
+    // If the caret sits next to an image (common after click), still apply.
     if (!applied) {
-        editor.chain().focus().insertContent(`<p>Select an image to align (${align}).</p>`).run();
+        const $from = state.selection.$from;
+        const before = $from.nodeBefore;
+        const after = $from.nodeAfter;
+        if (before?.type.name === 'image') {
+            const pos = $from.pos - before.nodeSize;
+            editor.chain().focus().setNodeSelection(pos).updateAttributes('image', { align }).run();
+            applied = true;
+        } else if (after?.type.name === 'image') {
+            editor.chain().focus().setNodeSelection($from.pos).updateAttributes('image', { align }).run();
+            applied = true;
+        }
+    }
+
+    if (!applied) {
+        updateAutosaveStatus('Select an image to align', 'error');
     }
 }
 
@@ -1378,11 +1670,12 @@ async function handleImageUpload(event) {
             typeof data === 'string' && !data.startsWith('http') && !data.startsWith('/') ? `/${data}` : data;
 
         if (editor) {
-            if (pendingImageMode === 'inline') {
-                editor.chain().focus().insertContent(`<img src="${imageSrc}" alt="${file.name}" data-display="inline">`).run();
-            } else {
-                editor.chain().focus().insertContent(`<img src="${imageSrc}" alt="${file.name}" data-display="block">`).run();
-            }
+            const display = pendingImageMode === 'inline' ? 'inline' : 'block';
+            editor.chain().focus().setImage({
+                src: imageSrc,
+                alt: file.name || '',
+                display,
+            }).run();
             triggerAutoSave();
         }
         
@@ -1397,7 +1690,9 @@ async function handleImageUpload(event) {
 
 
 async function commitPublish({ openNotes = false } = {}) {
-    if (!titleInput.value.trim() || !getEditorText()) {
+    syncTitleFromEditor();
+    const pieceTitle = extractTitleFromEditor();
+    if (!pieceTitle || !getBodyTextExcludingTitle()) {
         alert('Please fill in both title and content');
         return;
     }
@@ -1445,15 +1740,16 @@ async function commitPublish({ openNotes = false } = {}) {
         }
 
         const notesOpen = openNotes === true || prior?.notesOpen === true;
-        const html = getEditorHTML();
+        // Title heading stays in article HTML (with data-doc-title); byline attaches beside it in the reader.
+        const html = getArticleHTMLForPublish();
         const blogData = {
-            title: titleInput.value.trim(),
+            title: pieceTitle,
             article: html,
             articleFormat: 'tiptap-html',
             contentType,
             // Preserve original publish metadata on edit; only bump lastModified.
             publishedAt: prior?.publishedAt || formatPublishedAt(),
-            author: prior?.author || getAuthorIdFromUser(window.auth.currentUser),
+            author: prior?.author || authorIdFromAuth() || 'Anonymous',
             numberofcomments: typeof prior?.numberofcomments === 'number' ? prior.numberofcomments : 0,
             notesOpen,
             notesOpenedAt: notesOpen
@@ -1481,7 +1777,10 @@ async function commitPublish({ openNotes = false } = {}) {
 
 function generateBlogId() {
     const letters = 'abcdefghijklmnopqrstuvwxyz';
-    const blogTitle = titleInput.value.split(" ").join("-").toLowerCase();
+    const blogTitle = (extractTitleFromEditor() || titleInput.value || 'untitled')
+        .split(' ')
+        .join('-')
+        .toLowerCase();
     let id = '';
     for (let i = 0; i < 4; i++) {
         id += letters[Math.floor(Math.random() * letters.length)];
@@ -1514,12 +1813,21 @@ async function loadBlogData() {
             return;
         }
         titleInput.value = data.title || '';
+        editorArticleMeta = {
+            author: data.author || authorIdFromAuth() || 'Anonymous',
+            publishedAt: data.publishedAt || '',
+        };
         setContentTypeSelect(data.contentType, blogId);
         isHydratingEditor = true;
         editor.commands.setContent(data.article || '<p></p>', false, {
             preserveWhitespace: 'full'
         });
+        stripOrphanAuthorAvatarImages();
+        ensureDocTitleHeading(editor, data.title || '');
         isHydratingEditor = false;
+        syncTitleFromEditor();
+        resetEditorPageScrollMemory();
+        requestEditorPaginationRefresh(editor);
         publishTargetBlogId = blogId;
         markChangesSaved();
     } catch (error) {
@@ -1591,6 +1899,7 @@ function applyDraftToEditor(draft, { statusText = 'Draft loaded' } = {}) {
             editor.commands.setContent(draft.contentHtml, false, {
                 preserveWhitespace: 'full'
             });
+            stripOrphanAuthorAvatarImages();
             isHydratingEditor = false;
         } else if (draft.content) {
             isHydratingEditor = true;
@@ -1599,6 +1908,14 @@ function applyDraftToEditor(draft, { statusText = 'Draft loaded' } = {}) {
             });
             isHydratingEditor = false;
         }
+        isHydratingEditor = true;
+        ensureDocTitleHeading(editor, draft.title || titleInput.value || '');
+        isHydratingEditor = false;
+        refreshEditorArticleMetaFromAuth();
+        syncTitleFromEditor();
+        resetEditorPageScrollMemory();
+        requestEditorPaginationRefresh(editor);
+        bumpTitleBylineDecoration();
         markChangesSaved();
         updateAutosaveStatus(statusText, 'saved');
         setTimeout(() => updateAutosaveStatus('Ready', ''), 2000);

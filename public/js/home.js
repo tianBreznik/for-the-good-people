@@ -958,6 +958,15 @@ function splitPreviewBlockToFit(bodyEl, sourceBlock) {
     return leftQuote;
 }
 
+function isAuthorPageBreakElement(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (el.tagName !== 'HR') return false;
+    return (
+        el.getAttribute('data-page-break') === 'true' ||
+        el.getAttribute('data-variant') === 'page-break'
+    );
+}
+
 function fitPreviewBlocksToPage(bodyEl, blocks) {
     if (!bodyEl) return;
     bodyEl.innerHTML = '';
@@ -965,6 +974,9 @@ function fitPreviewBlocksToPage(bodyEl, blocks) {
 
     for (let i = 0; i < blocks.length; i++) {
         const node = blocks[i].cloneNode(true);
+        // First-page preview: stop at an author page break (later pages not shown).
+        if (isAuthorPageBreakElement(node)) break;
+
         const budget = previewBodyHeightBudget(bodyEl, null);
 
         if (isPreviewImageBlock(node)) {
@@ -1008,29 +1020,7 @@ function prefetchPreviewBlockImages(blocks) {
     );
 }
 
-function renderFirstPagePreview(panelEl, payload, onReady) {
-    if (!panelEl) return;
-    const mount = panelEl.querySelector('#article-first-page');
-    if (!mount) return;
-
-    const title = payload.title || '';
-    const author = payload.author || 'Anonymous';
-    const published = formatPublishedReadable(payload.publishedAt);
-    const blocks = articleBlocksFromRaw(payload.article);
-
-    mount.innerHTML = '';
-
-    const page = document.createElement('article');
-    page.className = 'article-page article-page-left article-page-first home-preview-page';
-
-    const masthead = document.createElement('section');
-    masthead.className = 'article-inline-masthead home-preview-masthead';
-
-    const h1 = document.createElement('h1');
-    h1.className = 'title home-preview-title';
-    h1.textContent = title;
-    masthead.appendChild(h1);
-
+function buildHomePreviewByline(author, published) {
     const byline = document.createElement('div');
     byline.className = 'article-byline home-preview-byline';
 
@@ -1096,8 +1086,64 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
         byline.appendChild(dateEl);
     }
 
-    masthead.appendChild(byline);
-    page.appendChild(masthead);
+    return byline;
+}
+
+function wrapHomePreviewTitleBlock(headingEl, author, published) {
+    const wrap = document.createElement('header');
+    wrap.className = 'article-title-block';
+    headingEl.classList.add('title', 'home-preview-title');
+    headingEl.setAttribute('data-doc-title', 'true');
+    wrap.appendChild(headingEl);
+    wrap.appendChild(buildHomePreviewByline(author, published));
+    return wrap;
+}
+
+function renderFirstPagePreview(panelEl, payload, onReady) {
+    if (!panelEl) return;
+    const mount = panelEl.querySelector('#article-first-page');
+    if (!mount) return;
+
+    const title = payload.title || '';
+    const author = payload.author || 'Anonymous';
+    const published = formatPublishedReadable(payload.publishedAt);
+    const blocks = articleBlocksFromRaw(payload.article);
+    const metaTitle = String(title || '').replace(/\s+/g, ' ').trim();
+    let titleBlockIndex = blocks.findIndex(
+        (el) => el && el.getAttribute && el.getAttribute('data-doc-title') === 'true'
+    );
+    if (titleBlockIndex < 0 && metaTitle) {
+        titleBlockIndex = blocks.findIndex(
+            (el) =>
+                el &&
+                /^H[1-3]$/.test(el.tagName) &&
+                (el.textContent || '').replace(/\s+/g, ' ').trim() === metaTitle
+        );
+    }
+    const titleTravelsInBody = titleBlockIndex >= 0;
+
+    mount.innerHTML = '';
+
+    const page = document.createElement('article');
+    page.className = 'article-page article-page-left article-page-first home-preview-page';
+
+    if (!titleTravelsInBody) {
+        const masthead = document.createElement('section');
+        masthead.className = 'article-inline-masthead home-preview-masthead';
+
+        const h1 = document.createElement('h1');
+        h1.className = 'title home-preview-title';
+        h1.textContent = title;
+        masthead.appendChild(h1);
+        masthead.appendChild(buildHomePreviewByline(author, published));
+        page.appendChild(masthead);
+    } else {
+        blocks[titleBlockIndex] = wrapHomePreviewTitleBlock(
+            blocks[titleBlockIndex],
+            author,
+            published
+        );
+    }
 
     const body = document.createElement('div');
     body.className = 'article-page-body home-preview-body';

@@ -218,3 +218,20 @@ const logout = () => {
         console.log(error);
     });
 }
+
+function bindRandomNavHover(selectors) {
+    document.querySelectorAll(selectors).forEach((el) => {
+        el.addEventListener('pointerenter', () => {
+            const hue = Math.floor(Math.random() * 360);
+            const c = `hsl(${hue} 72% 48%)`;
+            el.style.setProperty('--dash-hover', c);
+            el.style.setProperty('color', c, 'important');
+        });
+        el.addEventListener('pointerleave', () => {
+            el.style.removeProperty('--dash-hover');
+            el.style.removeProperty('color');
+        });
+    });
+}
+
+bindRandomNavHover('.dashboard-footer .logout-btn, .dashboard-footer .home-btn');
