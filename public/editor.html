@@ -34,7 +34,7 @@
                     <span class="toolbar-divider toolbar-publish-divider" aria-hidden="true"></span>
                     <button type="button" class="btn dark publish-btn" title="Publish">Publish</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
-                    <button class="toolbar-btn" data-action="title-toggle" title="Title heading (H1)">T</button>
+                    <button class="toolbar-btn" data-action="title-toggle" title="Mark as article title (required — cannot remove)">T</button>
                     <button class="toolbar-btn" data-action="line-break" title="Line break (↵)">↵</button>
                     <button class="toolbar-btn wide" data-action="page-break" title="Page break — move following content to the next page (⌘/Ctrl+Enter)">📄</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
@@ -46,54 +46,39 @@
                     <button class="toolbar-btn" data-action="superscript" title="Superscript (x²)">x²</button>
                     <button class="toolbar-btn" data-action="clear-format" title="Clear formatting">⟲</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
-                    <select class="toolbar-select toolbar-font-size" data-action="font-size" title="Font size">
-                        <option value="default">A</option>
-                        <option value="10">10</option>
-                        <option value="12">12</option>
-                        <option value="14">14</option>
-                        <option value="16">16</option>
-                        <option value="18">18</option>
-                        <option value="20">20</option>
-                        <option value="24">24</option>
-                        <option value="28">28</option>
-                        <option value="32">32</option>
-                        <option value="36">36</option>
-                        <option value="48">48</option>
-                    </select>
                     <input class="toolbar-color" type="color" data-action="text-color" title="Text color">
                     <span class="toolbar-color-wrap" title="Highlight color">
                         <input class="toolbar-color" type="color" data-action="highlight-color">
                         <span class="toolbar-color-label">H</span>
                     </span>
-                    <button class="toolbar-btn" data-action="align-left" title="Text align left (⬑)">←</button>
-                    <button class="toolbar-btn" data-action="align-center" title="Text align center (≡)">↔</button>
-                    <button class="toolbar-btn" data-action="align-right" title="Text align right (⬏)">→</button>
+                    <button class="toolbar-btn" data-action="align-left" title="Text align left">←</button>
+                    <button class="toolbar-btn" data-action="align-center" title="Text align center">↔</button>
+                    <button class="toolbar-btn" data-action="align-right" title="Text align right">→</button>
                     <button class="toolbar-btn" data-action="align-justify" title="Text align justify">≡</button>
-                    <button class="toolbar-btn" data-action="image-align-left" title="Image align left (⬅️)">⬅️</button>
-                    <button class="toolbar-btn" data-action="image-align-center" title="Image align center (⬆️)">⬆️</button>
-                    <button class="toolbar-btn" data-action="image-align-right" title="Image align right (➡️)">➡️</button>
+                    <button class="toolbar-btn" data-action="indent" title="Indent — paragraph/heading, or nest list item">⇥</button>
+                    <button class="toolbar-btn" data-action="outdent" title="Outdent — paragraph/heading, or lift list item">⇤</button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <input type="file" accept="image/*" id="image-upload" hidden>
+                    <button class="toolbar-btn" data-action="image-block" title="Block image — then wrap with ⬅️⬆️➡️ or drag on the image">🖼</button>
+                    <button class="toolbar-btn" data-action="image-align-left" title="Image wrap left — text flows on the right (select image, drag corner to resize)">⬅️</button>
+                    <button class="toolbar-btn" data-action="image-align-center" title="Image block center — no text wrap (select image, drag corner to resize)">⬆️</button>
+                    <button class="toolbar-btn" data-action="image-align-right" title="Image wrap right — text flows on the left (select image, drag corner to resize)">➡️</button>
+                    <button class="toolbar-btn" data-action="image-inline" title="Inline image (📎)">📎</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
                     <button class="toolbar-btn" data-action="bullet-list" title="Bullet list">•</button>
                     <button class="toolbar-btn" data-action="ordered-list" title="Numbered list">1.</button>
-                    <button class="toolbar-btn" data-action="indent" title="Indent (→)">⇥</button>
-                    <button class="toolbar-btn" data-action="outdent" title="Outdent (←)">⇤</button>
-                    <button class="toolbar-btn" data-action="blockquote" title="Blockquote — insert quoted passage (\")">"</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button class="toolbar-btn" data-action="blockquote" title="Blockquote — insert quoted passage (\")">"</button>
                     <button class="toolbar-btn wide" data-action="intro-paragraph" title="Intro paragraph (¶ italic)">✍️</button>
                     <button class="toolbar-btn wide" data-action="whisper-paragraph" title="Whisper paragraph (¶ gray)">🤫</button>
-                    <button class="toolbar-btn wide" data-action="paragraph-epigraph" title="Paragraph epigraph (\")">"</button>
+                    <button class="toolbar-btn wide" data-action="paragraph-epigraph" title="Epigraph — insert right-leaning italic paragraph">❝</button>
                     <button class="toolbar-btn wide" data-action="poetry" title="Poetry block — insert poem (📜)">📜</button>
-                    <button class="toolbar-btn wide" data-action="quote" title="Styled quote — insert pull quote (💬)">💬</button>
                     <button class="toolbar-btn wide" data-action="dinkus" title="Dinkus (* * *)">✶</button>
                     <button class="toolbar-btn wide" data-action="dropcap" title="Drop cap (A)">🅰️</button>
                     <button class="toolbar-btn wide" data-action="footnote" title="Footnote — insert reference and note (¹)">¹</button>
                     <button class="toolbar-btn wide" data-action="smallcaps" title="Small caps paragraph">🔠</button>
-                    <input type="file" accept="image/*" id="image-upload" hidden>
-                    <button class="toolbar-btn" data-action="image-block" title="Block image (🖼)">🖼</button>
-                    <button class="toolbar-btn" data-action="image-inline" title="Inline image (📎)">📎</button>
                 </div>
                 <div class="toolbar-actions">
-                    <button class="toolbar-btn" data-action="chapter-epigraph" title="Chapter epigraph (✶)">✶</button>
                     <button class="toolbar-btn" data-action="link" title="Link dialog (🔗)">🔗</button>
                     <button class="toolbar-btn" data-action="undo" title="Undo">↩️</button>
                     <button class="toolbar-btn" data-action="redo" title="Redo">↪️</button>
@@ -149,29 +134,12 @@
         </div>
     </div>
 
-    <div id="quote-dialog" class="editor-dialog" hidden aria-hidden="true">
-        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
-        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="quote-dialog-title">
-            <h2 id="quote-dialog-title" class="editor-dialog-title">Styled quote</h2>
-            <p class="editor-dialog-hint">Pull-quote presentation: italic block, no side rule.</p>
-            <label class="editor-dialog-label" for="quote-dialog-body">Quote</label>
-            <textarea id="quote-dialog-body" class="editor-dialog-textarea" rows="8" placeholder="Quote text"></textarea>
-            <label class="editor-dialog-label" for="quote-dialog-author">Attribution <span class="editor-dialog-optional">(optional)</span></label>
-            <input type="text" id="quote-dialog-author" class="editor-dialog-input" placeholder="" autocomplete="off">
-            <div class="editor-dialog-actions">
-                <button type="button" class="popover-btn" data-quote-cancel>cancel</button>
-                <button type="button" class="popover-btn" data-quote-insert>insert</button>
-            </div>
-        </div>
-    </div>
-
     <div id="footnote-dialog" class="editor-dialog" hidden aria-hidden="true">
         <div class="editor-dialog-backdrop" aria-hidden="true"></div>
         <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="footnote-dialog-title">
             <h2 id="footnote-dialog-title" class="editor-dialog-title">Footnote</h2>
-            <p class="editor-dialog-hint">The superscript is placed where the cursor was when you opened this dialog. The note is stored at the end of the article for layout in the reader. Numbers update automatically.</p>
-            <label class="editor-dialog-label" for="footnote-dialog-body">Note text</label>
-            <textarea id="footnote-dialog-body" class="editor-dialog-textarea" rows="5" maxlength="6000" placeholder="Footnote content (plain text)"></textarea>
+            <p class="editor-dialog-hint">add footnote text</p>
+            <textarea id="footnote-dialog-body" class="editor-dialog-textarea" rows="5" maxlength="6000" placeholder="Footnote content (plain text)" aria-label="Footnote text"></textarea>
             <div class="editor-dialog-actions">
                 <button type="button" class="popover-btn" data-footnote-cancel>cancel</button>
                 <button type="button" class="popover-btn" data-footnote-insert>insert</button>
@@ -187,6 +155,37 @@
             <div class="editor-dialog-actions">
                 <button type="button" class="popover-btn" data-leave-cancel>stay</button>
                 <button type="button" class="popover-btn" data-leave-confirm>leave page</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="link-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="link-dialog-title">
+            <h2 id="link-dialog-title" class="editor-dialog-title">Link</h2>
+            <p class="editor-dialog-hint">URL for the selected text (leave empty and apply to remove).</p>
+            <label class="editor-dialog-label" for="link-dialog-url">URL</label>
+            <input type="url" id="link-dialog-url" class="editor-dialog-input" placeholder="https://" autocomplete="off">
+            <div class="editor-dialog-actions">
+                <button type="button" class="popover-btn" data-link-cancel>cancel</button>
+                <button type="button" class="popover-btn" data-link-remove>remove</button>
+                <button type="button" class="popover-btn" data-link-apply>apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="epigraph-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="epigraph-dialog-title">
+            <h2 id="epigraph-dialog-title" class="editor-dialog-title">Epigraph</h2>
+            <p class="editor-dialog-hint">Right-leaning italic paragraph. Optional attribution below.</p>
+            <label class="editor-dialog-label" for="epigraph-dialog-body">Text</label>
+            <textarea id="epigraph-dialog-body" class="editor-dialog-textarea" rows="5" placeholder="Epigraph text"></textarea>
+            <label class="editor-dialog-label" for="epigraph-dialog-author">Attribution <span class="editor-dialog-optional">(optional)</span></label>
+            <input type="text" id="epigraph-dialog-author" class="editor-dialog-input" placeholder="" autocomplete="off">
+            <div class="editor-dialog-actions">
+                <button type="button" class="popover-btn" data-epigraph-cancel>cancel</button>
+                <button type="button" class="popover-btn" data-epigraph-insert>insert</button>
             </div>
         </div>
     </div>

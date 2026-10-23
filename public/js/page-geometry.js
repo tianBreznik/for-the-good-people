@@ -25,7 +25,10 @@ export function getSpreadTargetHeight() {
     return Math.max(viewportH - inset, 440);
 }
 
-/** Max footnote band (px) when a page has notes — same as blog.js footnoteBandHeight. */
+/**
+ * Max footnote band (px). Band sizes to fitted notes up to this cap; overflow spills
+ * to the next page (same as blog.js footnoteBandHeight).
+ */
 export function footnoteBandHeight(spreadHeight) {
     const h = Number(spreadHeight) || 0;
     if (h <= 0) return 112;

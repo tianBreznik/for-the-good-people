@@ -1,5 +1,5 @@
 import { Editor, Extension, Node } from 'https://esm.sh/@tiptap/core@2.11.5';
-import { Plugin, PluginKey, TextSelection } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
+import { Plugin, PluginKey, TextSelection, NodeSelection } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
 import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.11.5';
 import Underline from 'https://esm.sh/@tiptap/extension-underline@2.11.5';
 import Image from 'https://esm.sh/@tiptap/extension-image@2.11.5';
@@ -351,17 +351,123 @@ function openBlockquoteDialog() {
     requestAnimationFrame(() => bodyEl.focus());
 }
 
-function closeQuoteDialog() {
-    const el = document.getElementById('quote-dialog');
+function setupBlockquoteDialog() {
+    const bq = document.getElementById('blockquote-dialog');
+    const bqBody = document.getElementById('blockquote-dialog-body');
+    const bqAuthor = document.getElementById('blockquote-dialog-author');
+    if (!bq || !bqBody || !bqAuthor) return;
+
+    bq.querySelector('[data-bq-cancel]')?.addEventListener('click', closeBlockquoteDialog);
+    bq.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeBlockquoteDialog);
+    bq.querySelector('[data-bq-insert]')?.addEventListener('click', () => {
+        if (!editor) return;
+        const raw = bqBody.value.replace(/\r\n/g, '\n');
+        if (!raw.trim()) {
+            bqBody.focus();
+            return;
+        }
+        const author = bqAuthor.value.trim();
+        const inner = [{ type: 'paragraph', content: [{ type: 'text', text: raw }] }];
+        if (author) {
+            inner.push({
+                type: 'paragraph',
+                attrs: { variant: 'attribution' },
+                content: [{ type: 'text', text: `- ${author}` }],
+            });
+        }
+        editor.chain().focus().insertContent({ type: 'blockquote', content: inner }).run();
+        closeBlockquoteDialog();
+        triggerAutoSave();
+    });
+}
+
+function setupInsertDialogEscape() {
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const closers = [
+            ['poetry-dialog', closePoetryDialog],
+            ['blockquote-dialog', closeBlockquoteDialog],
+            ['epigraph-dialog', closeEpigraphDialog],
+            ['footnote-dialog', closeFootnoteDialog],
+            ['link-dialog', closeLinkDialog],
+            ['leave-confirm-dialog', closeLeaveConfirmDialog],
+            ['publish-confirm-dialog', closePublishConfirmDialog],
+        ];
+        for (const [id, close] of closers) {
+            const el = document.getElementById(id);
+            if (el && !el.hidden) {
+                e.preventDefault();
+                close();
+                return;
+            }
+        }
+    });
+}
+
+function closeLinkDialog() {
+    const dialog = document.getElementById('link-dialog');
+    if (!dialog) return;
+    dialog.hidden = true;
+    dialog.setAttribute('aria-hidden', 'true');
+}
+
+function openLinkDialog() {
+    const dialog = document.getElementById('link-dialog');
+    const urlEl = document.getElementById('link-dialog-url');
+    if (!dialog || !urlEl || !editor) return;
+    urlEl.value = editor.getAttributes('link').href || '';
+    dialog.hidden = false;
+    dialog.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+        urlEl.focus();
+        urlEl.select();
+    });
+}
+
+function setupLinkDialog() {
+    const dialog = document.getElementById('link-dialog');
+    const urlEl = document.getElementById('link-dialog-url');
+    if (!dialog || !urlEl) return;
+
+    const applyLink = (href) => {
+        if (!editor) return;
+        const trimmed = String(href || '').trim();
+        const chain = editor.chain().focus();
+        if (!trimmed) {
+            chain.extendMarkRange('link').unsetLink().run();
+        } else {
+            chain.extendMarkRange('link').setLink({ href: trimmed }).run();
+        }
+        closeLinkDialog();
+        triggerAutoSave();
+    };
+
+    dialog.querySelector('[data-link-cancel]')?.addEventListener('click', () => {
+        closeLinkDialog();
+        editor?.chain().focus().run();
+    });
+    dialog.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeLinkDialog);
+    dialog.querySelector('[data-link-remove]')?.addEventListener('click', () => applyLink(''));
+    dialog.querySelector('[data-link-apply]')?.addEventListener('click', () => applyLink(urlEl.value));
+    urlEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyLink(urlEl.value);
+        }
+    });
+}
+
+function closeEpigraphDialog() {
+    const el = document.getElementById('epigraph-dialog');
     if (!el) return;
     el.hidden = true;
     el.setAttribute('aria-hidden', 'true');
 }
 
-function openQuoteDialog() {
-    const dialog = document.getElementById('quote-dialog');
-    const bodyEl = document.getElementById('quote-dialog-body');
-    const authorEl = document.getElementById('quote-dialog-author');
+function openEpigraphDialog() {
+    const dialog = document.getElementById('epigraph-dialog');
+    const bodyEl = document.getElementById('epigraph-dialog-body');
+    const authorEl = document.getElementById('epigraph-dialog-author');
     if (!dialog || !bodyEl || !authorEl) return;
     bodyEl.value = '';
     authorEl.value = '';
@@ -370,97 +476,111 @@ function openQuoteDialog() {
     requestAnimationFrame(() => bodyEl.focus());
 }
 
-function setupBlockquoteAndQuoteDialogs() {
-    const bq = document.getElementById('blockquote-dialog');
-    const bqBody = document.getElementById('blockquote-dialog-body');
-    const bqAuthor = document.getElementById('blockquote-dialog-author');
-    if (bq && bqBody && bqAuthor) {
-        bq.querySelector('[data-bq-cancel]')?.addEventListener('click', closeBlockquoteDialog);
-        bq.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeBlockquoteDialog);
-        bq.querySelector('[data-bq-insert]')?.addEventListener('click', () => {
-            if (!editor) return;
-            const raw = bqBody.value.replace(/\r\n/g, '\n');
-            if (!raw.trim()) {
-                bqBody.focus();
-                return;
-            }
-            const author = bqAuthor.value.trim();
-            const inner = [{ type: 'paragraph', content: [{ type: 'text', text: raw }] }];
-            if (author) {
-                inner.push({
-                    type: 'paragraph',
-                    attrs: { variant: 'attribution' },
-                    content: [{ type: 'text', text: `- ${author}` }]
-                });
-            }
-            editor.chain().focus().insertContent({ type: 'blockquote', content: inner }).run();
-            closeBlockquoteDialog();
-            triggerAutoSave();
-        });
-    }
+function setupEpigraphDialog() {
+    const dialog = document.getElementById('epigraph-dialog');
+    const bodyEl = document.getElementById('epigraph-dialog-body');
+    const authorEl = document.getElementById('epigraph-dialog-author');
+    if (!dialog || !bodyEl || !authorEl) return;
 
-    const qd = document.getElementById('quote-dialog');
-    const qBody = document.getElementById('quote-dialog-body');
-    const qAuthor = document.getElementById('quote-dialog-author');
-    if (qd && qBody && qAuthor) {
-        qd.querySelector('[data-quote-cancel]')?.addEventListener('click', closeQuoteDialog);
-        qd.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeQuoteDialog);
-        qd.querySelector('[data-quote-insert]')?.addEventListener('click', () => {
-            if (!editor) return;
-            const raw = qBody.value.replace(/\r\n/g, '\n');
-            if (!raw.trim()) {
-                qBody.focus();
-                return;
-            }
-            const author = qAuthor.value.trim();
-            const inner = [{ type: 'paragraph', content: [{ type: 'text', text: raw }] }];
-            if (author) {
-                inner.push({
-                    type: 'paragraph',
-                    attrs: { variant: 'attribution' },
-                    content: [{ type: 'text', text: `- ${author}` }]
-                });
-            }
-            editor.chain().focus().insertContent({ type: 'blockquote', attrs: { variant: 'quote' }, content: inner }).run();
-            closeQuoteDialog();
-            triggerAutoSave();
-        });
-    }
+    dialog.querySelector('[data-epigraph-cancel]')?.addEventListener('click', closeEpigraphDialog);
+    dialog.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeEpigraphDialog);
+    dialog.querySelector('[data-epigraph-insert]')?.addEventListener('click', () => {
+        if (!editor) return;
+        const raw = bodyEl.value.replace(/\r\n/g, '\n');
+        if (!raw.trim()) {
+            bodyEl.focus();
+            return;
+        }
+        const nodes = [
+            {
+                type: 'paragraph',
+                attrs: { variant: 'epigraph' },
+                content: [{ type: 'text', text: raw.trim() }],
+            },
+        ];
+        const author = authorEl.value.trim();
+        if (author) {
+            nodes.push({
+                type: 'paragraph',
+                attrs: { variant: 'attribution' },
+                content: [{ type: 'text', text: `- ${author}` }],
+            });
+        }
+        editor.chain().focus().insertContent(nodes).run();
+        closeEpigraphDialog();
+        triggerAutoSave();
+    });
 }
 
-function setupInsertDialogEscape() {
-    document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        const poetry = document.getElementById('poetry-dialog');
-        const bq = document.getElementById('blockquote-dialog');
-        const qd = document.getElementById('quote-dialog');
-        if (poetry && !poetry.hidden) {
-            e.preventDefault();
-            closePoetryDialog();
-            return;
-        }
-        if (bq && !bq.hidden) {
-            e.preventDefault();
-            closeBlockquoteDialog();
-            return;
-        }
-        if (qd && !qd.hidden) {
-            e.preventDefault();
-            closeQuoteDialog();
-            return;
-        }
-        const fd = document.getElementById('footnote-dialog');
-        if (fd && !fd.hidden) {
-            e.preventDefault();
-            closeFootnoteDialog();
-            return;
-        }
-        const publishDlg = document.getElementById('publish-confirm-dialog');
-        if (publishDlg && !publishDlg.hidden) {
-            e.preventDefault();
-            closePublishConfirmDialog();
-        }
+/** Strip foreign presentation from clipboard HTML; keep structure TipTap understands. */
+function sanitizePastedHtml(html) {
+    if (!html || typeof html !== 'string') return html;
+    let doc;
+    try {
+        doc = new DOMParser().parseFromString(html, 'text/html');
+    } catch (_) {
+        return html;
+    }
+    if (!doc?.body) return html;
+
+    const DROP_ATTRS = [
+        'style',
+        'class',
+        'color',
+        'face',
+        'size',
+        'bgcolor',
+        'background',
+        'align',
+        'width',
+        'height',
+        'valign',
+        'border',
+        'cellpadding',
+        'cellspacing',
+    ];
+    // Keep our own semantic data-* when pasting within/from the app.
+    const KEEP_DATA = new Set([
+        'data-variant',
+        'data-doc-title',
+        'data-display',
+        'data-align',
+        'data-width',
+        'data-indent',
+        'data-footnote-id',
+        'data-poetry-italic',
+        'data-page-break',
+        'data-ref',
+        'data-ref-id',
+    ]);
+
+    const unwrap = (el) => {
+        const parent = el.parentNode;
+        if (!parent) return;
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+    };
+
+    doc.body.querySelectorAll('style, script, meta, link, xml, o\\:p').forEach((el) => el.remove());
+    // Word leftovers
+    doc.body.querySelectorAll('*').forEach((el) => {
+        if (/^O:/i.test(el.tagName) || el.tagName.includes(':')) unwrap(el);
     });
+    doc.body.querySelectorAll('font').forEach(unwrap);
+
+    const walk = (el) => {
+        if (!(el instanceof Element)) return;
+        DROP_ATTRS.forEach((name) => el.removeAttribute(name));
+        [...el.attributes].forEach((attr) => {
+            const n = attr.name.toLowerCase();
+            if (n.startsWith('on')) el.removeAttribute(attr.name);
+            if (n.startsWith('data-') && !KEEP_DATA.has(n)) el.removeAttribute(attr.name);
+        });
+        [...el.children].forEach(walk);
+    };
+    walk(doc.body);
+
+    return doc.body.innerHTML;
 }
 
 function rgbToHex(color) {
@@ -475,6 +595,18 @@ function rgbToHex(color) {
     if (!match) return null;
     const toHex = (n) => Number(n).toString(16).padStart(2, '0');
     return `#${toHex(match[1])}${toHex(match[2])}${toHex(match[3])}`;
+}
+
+function selectedImageAlignForToolbar() {
+    if (!editor) return null;
+    const { selection } = editor.state;
+    if (selection instanceof NodeSelection && selection.node?.type?.name === 'image') {
+        return selection.node.attrs.align || 'center';
+    }
+    if (editor.isActive('image')) {
+        return editor.getAttributes('image').align || 'center';
+    }
+    return null;
 }
 
 function syncToolbarFromSelection() {
@@ -492,6 +624,100 @@ function syncToolbarFromSelection() {
     if (textColorInput) textColorInput.value = textColor;
     if (highlightColorInput) highlightColorInput.value = highlightColor;
     if (highlightWrap) highlightWrap.style.setProperty('--highlight-label-color', textColor);
+
+    const paraVariant = editor.getAttributes('paragraph').variant || null;
+    const bqVariant = editor.isActive('blockquote')
+        ? editor.getAttributes('blockquote').variant || null
+        : null;
+    const imageAlign = selectedImageAlignForToolbar();
+    const inDocTitle =
+        editor.isActive('heading', { level: 1 }) &&
+        Boolean(editor.getAttributes('heading').docTitle);
+
+    /** Only stateful / toggleable actions — not one-shot inserts (dinkus, footnote, …). */
+    const activeByAction = {
+        bold: editor.isActive('bold'),
+        italic: editor.isActive('italic'),
+        strikethrough: editor.isActive('strike'),
+        underline: editor.isActive('underline'),
+        subscript: editor.isActive('subscript'),
+        superscript: editor.isActive('superscript'),
+        'bullet-list': editor.isActive('bulletList'),
+        'ordered-list': editor.isActive('orderedList'),
+        'align-left': editor.isActive({ textAlign: 'left' }),
+        'align-center': editor.isActive({ textAlign: 'center' }),
+        'align-right': editor.isActive({ textAlign: 'right' }),
+        'align-justify': editor.isActive({ textAlign: 'justify' }),
+        link: editor.isActive('link'),
+        'title-toggle': inDocTitle,
+        blockquote: editor.isActive('blockquote') && bqVariant !== 'quote',
+        poetry: paraVariant === 'poetry' || paraVariant === 'poetry-author',
+        'intro-paragraph': paraVariant === 'intro',
+        'whisper-paragraph': paraVariant === 'whisper',
+        'paragraph-epigraph': paraVariant === 'epigraph',
+        smallcaps: paraVariant === 'smallcaps',
+        dropcap: paraVariant === 'dropcap',
+        'image-align-left': imageAlign === 'left',
+        'image-align-center': imageAlign === 'center',
+        'image-align-right': imageAlign === 'right',
+    };
+
+    document.querySelectorAll('.toolbar-btn[data-action]').forEach((btn) => {
+        const action = btn.dataset.action;
+        if (!Object.prototype.hasOwnProperty.call(activeByAction, action)) {
+            btn.classList.remove('active');
+            return;
+        }
+        btn.classList.toggle('active', Boolean(activeByAction[action]));
+    });
+}
+
+const BLOCK_INDENT_MAX = 4;
+
+function parseBlockIndent(element) {
+    const raw = element?.getAttribute?.('data-indent');
+    const n = parseInt(raw || '0', 10);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.min(BLOCK_INDENT_MAX, n);
+}
+
+function renderBlockIndent(attributes) {
+    const n = Number(attributes.indent) || 0;
+    return n > 0 ? { 'data-indent': String(n) } : {};
+}
+
+/** List nest when in a list; otherwise nudge paragraph/heading margin. */
+function adjustBlockIndent(delta) {
+    if (!editor || !delta) return false;
+    if (editor.isActive('listItem')) {
+        if (delta > 0) return editor.chain().focus().sinkListItem('listItem').run();
+        return editor.chain().focus().liftListItem('listItem').run();
+    }
+
+    const { state } = editor;
+    const { from, to } = state.selection;
+    let tr = state.tr;
+    let changed = false;
+    state.doc.nodesBetween(from, to, (node, pos) => {
+        if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return;
+        if (node.attrs?.variant === 'footnote') return;
+        const cur = Number(node.attrs.indent) || 0;
+        const next = Math.min(BLOCK_INDENT_MAX, Math.max(0, cur + delta));
+        if (next === cur) return;
+        tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: next });
+        changed = true;
+    });
+    if (changed) {
+        editor.view.dispatch(tr);
+        return true;
+    }
+
+    const typeName = editor.isActive('heading') ? 'heading' : 'paragraph';
+    if (!editor.isActive(typeName) && !editor.isActive('paragraph')) return false;
+    const cur = Number(editor.getAttributes(typeName).indent) || 0;
+    const next = Math.min(BLOCK_INDENT_MAX, Math.max(0, cur + delta));
+    if (next === cur) return false;
+    return editor.chain().focus().updateAttributes(typeName, { indent: next }).run();
 }
 
 const StyledParagraph = Paragraph.extend({
@@ -502,6 +728,11 @@ const StyledParagraph = Paragraph.extend({
                 default: null,
                 parseHTML: element => element.getAttribute('data-variant') || null,
                 renderHTML: attributes => (attributes.variant ? { 'data-variant': attributes.variant } : {})
+            },
+            indent: {
+                default: 0,
+                parseHTML: (element) => parseBlockIndent(element),
+                renderHTML: (attributes) => renderBlockIndent(attributes),
             },
             poetryItalic: {
                 default: false,
@@ -560,25 +791,215 @@ const StyledHorizontalRule = HorizontalRule.extend({
 });
 
 
-/** Persist align + data-display so toolbar/upload survive save → reader. */
+/**
+ * Persist align + data-display. align left/right = float wrap; center/null = block.
+ * NodeView adds a drag handle so authors can reorder images in the flow.
+ */
+/** Normalize stored image width to a CSS length (prefer % of column). */
+function normalizeImageWidthAttr(raw) {
+    if (raw == null || raw === '') return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    if (/^\d+(\.\d+)?%$/.test(s)) return s;
+    if (/^\d+(\.\d+)?px$/i.test(s)) return s;
+    if (/^\d+(\.\d+)?$/.test(s)) return `${s}px`;
+    return null;
+}
+
+/** Wrap side from pointer X within the editor column (left / center / right thirds). */
+function imageAlignFromClientX(view, clientX) {
+    const rect = view.dom.getBoundingClientRect();
+    const ratio = (clientX - rect.left) / Math.max(1, rect.width);
+    if (ratio < 0.34) return 'left';
+    if (ratio > 0.66) return 'right';
+    return 'center';
+}
+
+/**
+ * Vertical drop slot among top-level blocks (skips the image being dragged).
+ * Returns a doc position to insert before/after a neighbor by pointer Y.
+ */
+function resolveImageDropInsertPos(view, clientY, fromPos) {
+    const doc = view.state.doc;
+    const slots = [];
+    doc.forEach((child, offset) => {
+        if (offset === fromPos) return;
+        const dom = view.nodeDOM(offset);
+        if (!dom || dom.nodeType !== Node.ELEMENT_NODE) return;
+        if (dom.classList?.contains('editor-page-break')) return;
+        if (dom.classList?.contains('editor-page-top-inset')) return;
+        if (dom.classList?.contains('editor-title-byline')) return;
+        const r = dom.getBoundingClientRect();
+        if (!r.height && !r.width) return;
+        slots.push({
+            before: offset,
+            after: offset + child.nodeSize,
+            mid: r.top + r.height / 2,
+        });
+    });
+    if (!slots.length) return fromPos;
+    for (let i = 0; i < slots.length; i += 1) {
+        if (clientY < slots[i].mid) return slots[i].before;
+    }
+    return slots[slots.length - 1].after;
+}
+
+function ensureImageDropIndicator(view) {
+    const host = view.dom.parentElement || view.dom;
+    let el = host.querySelector(':scope > .editor-image-drop-indicator');
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'editor-image-drop-indicator';
+        el.setAttribute('aria-hidden', 'true');
+        host.style.position = host.style.position || 'relative';
+        host.appendChild(el);
+    }
+    return el;
+}
+
+function placeImageDropIndicator(view, insertPos, fromPos, nodeSize) {
+    const el = ensureImageDropIndicator(view);
+    const host = el.parentElement;
+    if (!host) return;
+    const hostRect = host.getBoundingClientRect();
+    let y = null;
+    const doc = view.state.doc;
+
+    if (insertPos <= 0) {
+        const first = view.nodeDOM(0) || view.dom.firstElementChild;
+        if (first?.getBoundingClientRect) y = first.getBoundingClientRect().top;
+    } else if (insertPos >= doc.content.size) {
+        const last = view.dom.lastElementChild;
+        if (last?.getBoundingClientRect) y = last.getBoundingClientRect().bottom;
+    } else {
+        // Prefer the top of the block at insertPos; if between nodes, use after previous.
+        let dom = view.nodeDOM(insertPos);
+        if (dom?.getBoundingClientRect) {
+            y = dom.getBoundingClientRect().top;
+        } else {
+            try {
+                const $p = doc.resolve(insertPos);
+                const before = $p.nodeBefore;
+                if (before) {
+                    const prevPos = insertPos - before.nodeSize;
+                    const prevDom = view.nodeDOM(prevPos);
+                    if (prevDom?.getBoundingClientRect) y = prevDom.getBoundingClientRect().bottom;
+                }
+            } catch (_) { /* ignore */ }
+        }
+    }
+
+    // Same slot as current home → hide
+    if (insertPos === fromPos || insertPos === fromPos + nodeSize || y == null) {
+        el.classList.remove('is-visible');
+        return;
+    }
+
+    el.style.top = `${y - hostRect.top + host.scrollTop}px`;
+    el.classList.add('is-visible');
+}
+
+function hideImageDropIndicator(view) {
+    const host = view.dom.parentElement || view.dom;
+    const el = host.querySelector(':scope > .editor-image-drop-indicator');
+    if (el) el.classList.remove('is-visible');
+}
+
+/**
+ * Reorder image by drop Y and/or set wrap align from X.
+ * Vertical = document order among blocks; horizontal = float wrap (not free x/y pixels).
+ */
+function relocateEditorImage(editor, fromPos, clientY, align, { move = true } = {}) {
+    const { state, view } = editor;
+    const node = state.doc.nodeAt(fromPos);
+    if (!node || node.type.name !== 'image') return false;
+
+    const attrs = {
+        ...node.attrs,
+        align: align || null,
+        display: 'block',
+    };
+
+    if (!move) {
+        editor.chain().setNodeSelection(fromPos).updateAttributes('image', attrs).run();
+        return true;
+    }
+
+    const insertPos = resolveImageDropInsertPos(view, clientY, fromPos);
+    const sameSpot =
+        insertPos === fromPos || insertPos === fromPos + node.nodeSize;
+
+    if (sameSpot) {
+        editor.chain().setNodeSelection(fromPos).updateAttributes('image', attrs).run();
+        return true;
+    }
+
+    const fresh = node.type.create(attrs, node.content, node.marks);
+    const size = node.nodeSize;
+    // Moving down: delete first so insertPos shifts left by `size`.
+    // Moving up: insertPos is unchanged by the later delete.
+    const finalPos = insertPos < fromPos ? insertPos : insertPos - size;
+    let tr = state.tr.delete(fromPos, fromPos + size);
+    const at = Math.max(0, Math.min(finalPos, tr.doc.content.size));
+    tr = tr.insert(at, fresh);
+    if (tr.doc.nodeAt(at)?.type.name === 'image') {
+        tr = tr.setSelection(NodeSelection.create(tr.doc, at));
+    }
+    view.dispatch(tr);
+    return true;
+}
+
 const StyledImage = Image.extend({
+    draggable: true,
+
     addAttributes() {
         return {
             ...this.parent?.(),
             align: {
                 default: null,
                 parseHTML: (element) => {
-                    const raw = element.getAttribute('align');
+                    const el = element instanceof HTMLElement ? element : null;
+                    if (!el) return null;
+                    const raw =
+                        el.getAttribute('align') ||
+                        el.getAttribute('data-align') ||
+                        el.closest?.('[data-align]')?.getAttribute('data-align');
                     return raw === 'left' || raw === 'center' || raw === 'right' ? raw : null;
                 },
                 renderHTML: (attributes) => (attributes.align ? { align: attributes.align } : {}),
             },
             display: {
                 default: null,
-                parseHTML: (element) => element.getAttribute('data-display') || null,
+                parseHTML: (element) => {
+                    const el = element instanceof HTMLElement ? element : null;
+                    if (!el) return null;
+                    return (
+                        el.getAttribute('data-display') ||
+                        el.closest?.('[data-display]')?.getAttribute('data-display') ||
+                        null
+                    );
+                },
                 renderHTML: (attributes) => (
                     attributes.display ? { 'data-display': attributes.display } : {}
                 ),
+            },
+            // Column-relative width from live resize (e.g. "42%"). Distinct from HTML width=px.
+            width: {
+                default: null,
+                parseHTML: (element) => {
+                    const el = element instanceof HTMLElement ? element : null;
+                    if (!el) return null;
+                    const fromData =
+                        el.getAttribute('data-width') ||
+                        el.closest?.('[data-width]')?.getAttribute('data-width');
+                    const fromStyle = el.style?.width || el.closest?.('[style]')?.style?.width;
+                    return normalizeImageWidthAttr(fromData || fromStyle || null);
+                },
+                renderHTML: (attributes) => {
+                    const w = normalizeImageWidthAttr(attributes.width);
+                    if (!w) return {};
+                    return { 'data-width': w, style: `width: ${w}` };
+                },
             },
         };
     },
@@ -598,6 +1019,208 @@ const StyledImage = Image.extend({
             },
         ];
     },
+
+    addNodeView() {
+        return ({ node, editor, getPos }) => {
+            const figure = document.createElement('div');
+            figure.className = 'editor-image-figure';
+            figure.contentEditable = 'false';
+            figure.title = 'Drag up/down to move in the text; left/right to wrap. Corner: resize.';
+
+            const resizeHandle = document.createElement('span');
+            resizeHandle.className = 'editor-image-resize-handle';
+            resizeHandle.title = 'Drag to resize';
+            resizeHandle.setAttribute('aria-label', 'Resize image');
+            resizeHandle.draggable = false;
+
+            const img = document.createElement('img');
+            img.alt = node.attrs.alt || '';
+            img.draggable = false;
+
+            let resizing = false;
+            let dragging = false;
+
+            const syncAttrs = (n) => {
+                if (resizing || dragging) return;
+                img.src = n.attrs.src || '';
+                img.alt = n.attrs.alt || '';
+                if (n.attrs.title) img.title = n.attrs.title;
+                else img.removeAttribute('title');
+                const align = n.attrs.align || '';
+                const display = n.attrs.display || 'block';
+                const width = normalizeImageWidthAttr(n.attrs.width);
+                figure.dataset.align = align;
+                figure.dataset.display = display;
+                if (align) figure.setAttribute('align', align);
+                else figure.removeAttribute('align');
+                if (width) {
+                    figure.dataset.width = width;
+                    figure.style.width = width;
+                } else {
+                    delete figure.dataset.width;
+                    figure.style.width = '';
+                }
+            };
+            syncAttrs(node);
+
+            figure.appendChild(img);
+            figure.appendChild(resizeHandle);
+
+            const selectImageSync = () => {
+                if (typeof getPos !== 'function') return false;
+                const pos = getPos();
+                if (typeof pos !== 'number') return false;
+                const { view } = editor;
+                const sel = NodeSelection.create(view.state.doc, pos);
+                view.dispatch(view.state.tr.setSelection(sel));
+                return true;
+            };
+
+            const applyPreviewAlign = (align) => {
+                figure.dataset.align = align || '';
+                if (align) figure.setAttribute('align', align);
+                else figure.removeAttribute('align');
+            };
+
+            // Drag: vertical → reorder among blocks; horizontal → wrap left/center/right.
+            figure.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                if (e.target === resizeHandle || resizeHandle.contains(e.target)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                selectImageSync();
+
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const fromPos = typeof getPos === 'function' ? getPos() : null;
+                const startNode =
+                    typeof fromPos === 'number' ? editor.state.doc.nodeAt(fromPos) : null;
+                const startAlign = startNode?.attrs?.align ?? null;
+                let moved = false;
+
+                const onMove = (ev) => {
+                    const dx = ev.clientX - startX;
+                    const dy = ev.clientY - startY;
+                    if (!moved && dx * dx + dy * dy < 36) return;
+                    if (!moved) {
+                        moved = true;
+                        dragging = true;
+                        figure.classList.add('is-dragging');
+                    }
+                    const horizontal = Math.abs(dx) > 28 && Math.abs(dx) >= Math.abs(dy);
+                    if (horizontal) {
+                        applyPreviewAlign(imageAlignFromClientX(editor.view, ev.clientX));
+                    }
+                    if (typeof fromPos === 'number' && Math.abs(dy) > 12) {
+                        const insertPos = resolveImageDropInsertPos(editor.view, ev.clientY, fromPos);
+                        const n = editor.state.doc.nodeAt(fromPos);
+                        placeImageDropIndicator(
+                            editor.view,
+                            insertPos,
+                            fromPos,
+                            n?.nodeSize || 1
+                        );
+                    }
+                };
+
+                const onUp = (ev) => {
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    figure.classList.remove('is-dragging');
+                    hideImageDropIndicator(editor.view);
+                    if (!moved) {
+                        dragging = false;
+                        editor.view.focus();
+                        return;
+                    }
+                    const dx = ev.clientX - startX;
+                    const dy = ev.clientY - startY;
+                    const horizontal = Math.abs(dx) > 28 && Math.abs(dx) >= Math.abs(dy);
+                    const vertical = Math.abs(dy) > 28;
+                    const align = horizontal
+                        ? imageAlignFromClientX(editor.view, ev.clientX)
+                        : startAlign;
+                    const pos = typeof getPos === 'function' ? getPos() : fromPos;
+                    dragging = false;
+                    if (typeof pos === 'number' && (vertical || horizontal)) {
+                        relocateEditorImage(editor, pos, ev.clientY, align, {
+                            move: vertical,
+                        });
+                        triggerAutoSave();
+                        requestEditorPaginationRefresh(editor);
+                    }
+                };
+
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            });
+
+            resizeHandle.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                selectImageSync();
+
+                const parent = editor.view.dom;
+                const parentW = Math.max(1, parent.clientWidth || figure.parentElement?.clientWidth || 1);
+                const startX = e.clientX;
+                const startW = figure.getBoundingClientRect().width;
+                const align = figure.dataset.align || '';
+                resizing = true;
+                figure.classList.add('is-resizing');
+
+                const onMove = (ev) => {
+                    const dx = ev.clientX - startX;
+                    const delta = align === 'right' ? -dx : dx;
+                    let pct = ((startW + delta) / parentW) * 100;
+                    pct = Math.round(Math.min(100, Math.max(12, pct)) * 10) / 10;
+                    const next = `${pct}%`;
+                    figure.style.width = next;
+                    figure.dataset.width = next;
+                };
+
+                const onUp = () => {
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    figure.classList.remove('is-resizing');
+                    const w = normalizeImageWidthAttr(figure.style.width || figure.dataset.width);
+                    resizing = false;
+                    if (typeof getPos === 'function') {
+                        const pos = getPos();
+                        if (typeof pos === 'number' && w) {
+                            editor
+                                .chain()
+                                .setNodeSelection(pos)
+                                .updateAttributes('image', { width: w })
+                                .run();
+                            triggerAutoSave();
+                            requestEditorPaginationRefresh(editor);
+                        }
+                    }
+                };
+
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            });
+
+            return {
+                dom: figure,
+                ignoreMutation: () => true,
+                selectNode: () => {
+                    figure.classList.add('is-selected');
+                },
+                deselectNode: () => {
+                    figure.classList.remove('is-selected');
+                },
+                update: (updated) => {
+                    if (updated.type.name !== 'image') return false;
+                    syncAttrs(updated);
+                    return true;
+                },
+                destroy: () => {},
+            };
+        };
+    },
 });
 
 const PageBreakShortcut = Extension.create({
@@ -613,37 +1236,6 @@ const PageBreakShortcut = Extension.create({
                     .run(),
         };
     },
-});
-
-const FontSize = Extension.create({
-    name: 'fontSize',
-    addGlobalAttributes() {
-        return [
-            {
-                types: ['textStyle'],
-                attributes: {
-                    fontSize: {
-                        default: null,
-                        parseHTML: element => element.style.fontSize?.replace('px', '') || null,
-                        renderHTML: attributes => {
-                            if (!attributes.fontSize || attributes.fontSize === 'default') return {};
-                            return { style: `font-size: ${attributes.fontSize}px` };
-                        }
-                    }
-                }
-            }
-        ];
-    },
-    addCommands() {
-        return {
-            setFontSize: size => ({ chain }) => {
-                if (!size || size === 'default') {
-                    return chain().setMark('textStyle', { fontSize: null }).run();
-                }
-                return chain().setMark('textStyle', { fontSize: String(size) }).run();
-            }
-        };
-    }
 });
 
 function newFootnoteId() {
@@ -887,8 +1479,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setupAutoSave();
     setupToolbar();
     setupPoetryDialog();
-    setupBlockquoteAndQuoteDialogs();
+    setupBlockquoteDialog();
+    setupEpigraphDialog();
     setupFootnoteDialog();
+    setupLinkDialog();
     setupInsertDialogEscape();
     setupLeaveConfirmDialog();
     setupPublishConfirmDialog();
@@ -1135,7 +1729,6 @@ function initializeEditor() {
             TextStyle,
             Color,
             Highlight.configure({ multicolor: true }),
-            FontSize,
             Subscript,
             Superscript,
             TextAlign.configure({
@@ -1161,6 +1754,7 @@ function initializeEditor() {
                     author: editorArticleMeta.author || authorIdFromAuth() || '',
                     publishedAt: editorArticleMeta.publishedAt || '',
                 }),
+                isHydrating: () => isHydratingEditor,
             }),
             PageBreakShortcut,
             createEditorPaginationExtension({
@@ -1175,6 +1769,7 @@ function initializeEditor() {
             // Stay put while typing on the same sheet; jump when the caret
             // crosses onto another page.
             handleScrollToSelection: (view) => handleEditorPageScrollToSelection(view),
+            transformPastedHTML: (html) => sanitizePastedHtml(html),
         },
         onCreate: () => {
             if (!isEditing) {
@@ -1379,7 +1974,6 @@ function updateAutosaveStatus(text, className) {
 
 function setupToolbar() {
     const toolbarBtns = document.querySelectorAll('.toolbar-btn');
-    const fontSizeSelect = document.querySelector('.toolbar-font-size');
     const textColorInput = document.querySelector('[data-action="text-color"]');
     const highlightColorInput = document.querySelector('[data-action="highlight-color"]');
     const highlightWrap = document.querySelector('.toolbar-color-wrap');
@@ -1417,8 +2011,8 @@ function setupToolbar() {
                 return;
             }
 
-            if (action === 'quote') {
-                openQuoteDialog();
+            if (action === 'paragraph-epigraph') {
+                openEpigraphDialog();
                 return;
             }
 
@@ -1445,18 +2039,17 @@ function setupToolbar() {
                     chain.setHardBreak().run();
                     break;
                 case 'title-toggle': {
-                    // Mark this block as the traveling doc title (H1) + byline anchor.
+                    // Move the doc-title marker here — never remove it (title + byline are required).
                     if (editor.isActive('heading', { level: 1 }) && editor.getAttributes('heading').docTitle) {
-                        chain.updateAttributes('heading', { docTitle: false }).setParagraph().run();
-                    } else {
-                        chain.setHeading({ level: 1 }).updateAttributes('heading', { docTitle: true }).run();
-                        const { $from } = editor.state.selection;
-                        let depth = $from.depth;
-                        while (depth > 0 && $from.node(depth).type.name !== 'heading') depth -= 1;
-                        if (depth > 0) {
-                            const pos = $from.before(depth);
-                            markDocTitleAt(editor, pos);
-                        }
+                        break;
+                    }
+                    chain.setHeading({ level: 1 }).updateAttributes('heading', { docTitle: true }).run();
+                    const { $from } = editor.state.selection;
+                    let depth = $from.depth;
+                    while (depth > 0 && $from.node(depth).type.name !== 'heading') depth -= 1;
+                    if (depth > 0) {
+                        const pos = $from.before(depth);
+                        markDocTitleAt(editor, pos);
                     }
                     break;
                 }
@@ -1485,10 +2078,10 @@ function setupToolbar() {
                     chain.toggleSuperscript().run();
                     break;
                 case 'indent':
-                    chain.sinkListItem('listItem').run();
+                    adjustBlockIndent(1);
                     break;
                 case 'outdent':
-                    chain.liftListItem('listItem').run();
+                    adjustBlockIndent(-1);
                     break;
                 case 'clear-format':
                     chain.clearNodes().unsetAllMarks().run();
@@ -1502,17 +2095,9 @@ function setupToolbar() {
                 case 'image-align-right':
                     setActiveImageAlign('right');
                     break;
-                case 'link': {
-                    const previous = editor.getAttributes('link').href || '';
-                    const url = window.prompt('Link URL', previous);
-                    if (url === null) break;
-                    if (!url.trim()) {
-                        chain.extendMarkRange('link').unsetLink().run();
-                    } else {
-                        chain.extendMarkRange('link').setLink({ href: url.trim() }).run();
-                    }
-                    break;
-                }
+                case 'link':
+                    openLinkDialog();
+                    return;
                 case 'dinkus':
                     chain.insertContent({ type: 'horizontalRule', attrs: { variant: 'dinkus' } }).run();
                     break;
@@ -1523,53 +2108,17 @@ function setupToolbar() {
                     requestEditorPaginationRefresh(editor);
                     break;
                 case 'dropcap':
-                    chain.setNode('paragraph', { variant: 'dropcap' }).run();
+                    toggleParagraphVariant('dropcap');
                     break;
                 case 'smallcaps':
-                    chain.setNode('paragraph', { variant: 'smallcaps' }).run();
+                    toggleParagraphVariant('smallcaps');
                     break;
                 case 'intro-paragraph':
-                    chain.setNode('paragraph', { variant: 'intro' }).run();
+                    toggleParagraphVariant('intro');
                     break;
                 case 'whisper-paragraph':
-                    chain.setNode('paragraph', { variant: 'whisper' }).run();
+                    toggleParagraphVariant('whisper');
                     break;
-                case 'paragraph-epigraph': {
-                    const quoteText = window.prompt('Paragraph epigraph text');
-                    if (!quoteText) break;
-                    const author = window.prompt('Author', 'Anonymous') || 'Anonymous';
-                    chain
-                        .insertContent({
-                            type: 'blockquote',
-                            attrs: { variant: 'quote' },
-                            content: [
-                                { type: 'paragraph', content: [{ type: 'text', text: quoteText }] },
-                                {
-                                    type: 'paragraph',
-                                    attrs: { variant: 'attribution' },
-                                    content: [{ type: 'text', text: `- ${author}` }]
-                                }
-                            ]
-                        })
-                        .run();
-                    break;
-                }
-                case 'chapter-epigraph': {
-                    const quoteText = window.prompt('Chapter epigraph text');
-                    if (!quoteText) break;
-                    const author = window.prompt('Author', 'Anonymous') || 'Anonymous';
-                    chain
-                        .insertContent([
-                            { type: 'paragraph', attrs: { variant: 'epigraph' }, content: [{ type: 'text', text: quoteText }] },
-                            {
-                                type: 'paragraph',
-                                attrs: { variant: 'epigraph' },
-                                content: [{ type: 'text', text: `- ${author}` }]
-                            }
-                        ])
-                        .run();
-                    break;
-                }
                 case 'undo':
                     chain.undo().run();
                     break;
@@ -1584,14 +2133,6 @@ function setupToolbar() {
             triggerAutoSave();
         });
     });
-
-    if (fontSizeSelect) {
-        fontSizeSelect.addEventListener('change', (e) => {
-            if (!editor) return;
-            editor.chain().focus().setFontSize(e.target.value).run();
-            triggerAutoSave();
-        });
-    }
 
     if (textColorInput) {
         if (highlightWrap) {
@@ -1617,6 +2158,28 @@ function setupToolbar() {
 
 }
 
+/** Toggle a paragraph `data-variant` on/off (second click clears). */
+function toggleParagraphVariant(variant) {
+    if (!editor || !variant) return false;
+    const { state } = editor;
+    const { from, to } = state.selection;
+    let saw = false;
+    let allOn = true;
+    state.doc.nodesBetween(from, to, (node) => {
+        if (node.type.name !== 'paragraph') return;
+        saw = true;
+        if (node.attrs.variant !== variant) allOn = false;
+    });
+    if (!saw) {
+        // Caret inside a paragraph — nodesBetween may still miss empty ranges on atoms.
+        allOn = editor.getAttributes('paragraph').variant === variant;
+    }
+    if (allOn) {
+        return editor.chain().focus().updateAttributes('paragraph', { variant: null }).run();
+    }
+    return editor.chain().focus().setNode('paragraph', { variant }).run();
+}
+
 function setActiveImageAlign(align) {
     if (!editor) return;
     if (align !== 'left' && align !== 'center' && align !== 'right') return;
@@ -1625,9 +2188,15 @@ function setActiveImageAlign(align) {
     const { from, to } = state.selection;
     let applied = false;
 
+    const wrapAttrs = {
+        align,
+        // Wrap modes are block floats / centered block — not text-align and not inline.
+        display: 'block',
+    };
+
     state.doc.nodesBetween(from, to, (node, pos) => {
         if (node.type.name === 'image') {
-            editor.chain().focus().setNodeSelection(pos).updateAttributes('image', { align }).run();
+            editor.chain().focus().setNodeSelection(pos).updateAttributes('image', wrapAttrs).run();
             applied = true;
         }
     });
@@ -1639,16 +2208,25 @@ function setActiveImageAlign(align) {
         const after = $from.nodeAfter;
         if (before?.type.name === 'image') {
             const pos = $from.pos - before.nodeSize;
-            editor.chain().focus().setNodeSelection(pos).updateAttributes('image', { align }).run();
+            editor.chain().focus().setNodeSelection(pos).updateAttributes('image', wrapAttrs).run();
             applied = true;
         } else if (after?.type.name === 'image') {
-            editor.chain().focus().setNodeSelection($from.pos).updateAttributes('image', { align }).run();
+            editor.chain().focus().setNodeSelection($from.pos).updateAttributes('image', wrapAttrs).run();
             applied = true;
         }
     }
 
+    // NodeSelection on the image itself
+    if (!applied && state.selection instanceof NodeSelection && state.selection.node?.type?.name === 'image') {
+        editor.chain().focus().updateAttributes('image', wrapAttrs).run();
+        applied = true;
+    }
+
     if (!applied) {
-        updateAutosaveStatus('Select an image to align', 'error');
+        updateAutosaveStatus('Select an image to set wrap', 'error');
+    } else {
+        triggerAutoSave();
+        requestEditorPaginationRefresh(editor);
     }
 }
 
@@ -1826,9 +2404,11 @@ async function loadBlogData() {
         };
         setContentTypeSelect(data.contentType, blogId);
         isHydratingEditor = true;
-        editor.commands.setContent(data.article || '<p></p>', false, {
-            preserveWhitespace: 'full'
-        });
+        editor
+            .chain()
+            .setMeta('titleBylineSkipGuard', true)
+            .setContent(data.article || '<p></p>', false, { preserveWhitespace: 'full' })
+            .run();
         stripOrphanAuthorAvatarImages();
         ensureDocTitleHeading(editor, data.title || '');
         isHydratingEditor = false;
@@ -1903,16 +2483,22 @@ function applyDraftToEditor(draft, { statusText = 'Draft loaded' } = {}) {
         if (draft.contentType) setContentTypeSelect(draft.contentType);
         if (draft.contentHtml) {
             isHydratingEditor = true;
-            editor.commands.setContent(draft.contentHtml, false, {
-                preserveWhitespace: 'full'
-            });
+            editor
+                .chain()
+                .setMeta('titleBylineSkipGuard', true)
+                .setContent(draft.contentHtml, false, { preserveWhitespace: 'full' })
+                .run();
             stripOrphanAuthorAvatarImages();
             isHydratingEditor = false;
         } else if (draft.content) {
             isHydratingEditor = true;
-            editor.commands.setContent(`<p>${draft.content.replace(/</g, '&lt;')}</p>`, false, {
-                preserveWhitespace: 'full'
-            });
+            editor
+                .chain()
+                .setMeta('titleBylineSkipGuard', true)
+                .setContent(`<p>${draft.content.replace(/</g, '&lt;')}</p>`, false, {
+                    preserveWhitespace: 'full',
+                })
+                .run();
             isHydratingEditor = false;
         }
         isHydratingEditor = true;

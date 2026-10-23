@@ -8,6 +8,14 @@ import { Decoration, DecorationSet } from 'https://esm.sh/@tiptap/pm@2.11.5/view
 
 export const titleBylineKey = new PluginKey('titleByline');
 
+const BLOCK_INDENT_MAX = 4;
+
+function parseHeadingIndent(element) {
+    const n = parseInt(element?.getAttribute?.('data-indent') || '0', 10);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.min(BLOCK_INDENT_MAX, n);
+}
+
 export const StyledHeading = Heading.extend({
     addAttributes() {
         return {
@@ -18,6 +26,14 @@ export const StyledHeading = Heading.extend({
                 renderHTML: (attributes) => (
                     attributes.docTitle ? { 'data-doc-title': 'true' } : {}
                 ),
+            },
+            indent: {
+                default: 0,
+                parseHTML: (element) => parseHeadingIndent(element),
+                renderHTML: (attributes) => {
+                    const n = Number(attributes.indent) || 0;
+                    return n > 0 ? { 'data-indent': String(n) } : {};
+                },
             },
         };
     },
@@ -99,15 +115,22 @@ export function buildTitleBylineElement(meta = {}) {
     return byline;
 }
 
-function findDocTitle(state) {
+/** Marked doc-title heading only (not a generic first heading). */
+function findMarkedDocTitle(doc) {
     let found = null;
-    state.doc.forEach((node, pos) => {
+    doc.forEach((node, pos) => {
         if (found) return;
         if (node.type.name === 'heading' && node.attrs?.docTitle) {
             found = { node, pos };
         }
     });
-    if (found) return found;
+    return found;
+}
+
+function findDocTitle(state) {
+    const marked = findMarkedDocTitle(state.doc);
+    if (marked) return marked;
+    let found = null;
     state.doc.forEach((node, pos) => {
         if (found) return;
         if (
@@ -121,8 +144,75 @@ function findDocTitle(state) {
     return found;
 }
 
+/**
+ * If the docTitle marker was stripped (e.g. align/setNode attrs) or the heading
+ * was relocated, re-attach the marker in place — never force the title back to
+ * position 0 (that broke move-down + alignment).
+ */
+function recoverDocTitleTransaction(transactions, oldState, newState) {
+    const headingType = newState.schema.nodes.heading;
+    if (!headingType) return null;
+
+    const prev = findMarkedDocTitle(oldState.doc);
+    if (!prev) return null;
+
+    // Map where the title lived through this edit (moves / attr-only updates).
+    let mapped = prev.pos;
+    transactions.forEach((tr) => {
+        if (tr.docChanged) mapped = tr.mapping.map(mapped, -1);
+    });
+    mapped = Math.max(0, Math.min(mapped, newState.doc.content.size));
+
+    const atMapped = newState.doc.nodeAt(mapped);
+    if (atMapped?.type.name === 'heading') {
+        // Same block still here (typical: textAlign updated and dropped docTitle).
+        if (atMapped.attrs?.docTitle) return null;
+        return newState.tr
+            .setNodeMarkup(mapped, undefined, {
+                ...atMapped.attrs,
+                docTitle: true,
+            })
+            .setMeta('addToHistory', false);
+    }
+
+    // Relocated: prefer a heading with the same text that isn't already marked.
+    const prevText = prev.node.textContent;
+    let candidatePos = null;
+    newState.doc.forEach((node, pos) => {
+        if (candidatePos != null) return;
+        if (node.type.name !== 'heading' || node.attrs?.docTitle) return;
+        if (node.textContent === prevText) candidatePos = pos;
+    });
+    if (candidatePos == null) {
+        newState.doc.forEach((node, pos) => {
+            if (candidatePos != null) return;
+            if (node.type.name === 'heading' && !node.attrs?.docTitle) {
+                candidatePos = pos;
+            }
+        });
+    }
+    if (candidatePos != null) {
+        const node = newState.doc.nodeAt(candidatePos);
+        if (!node) return null;
+        return newState.tr
+            .setNodeMarkup(candidatePos, undefined, {
+                ...node.attrs,
+                docTitle: true,
+            })
+            .setMeta('addToHistory', false);
+    }
+
+    // Truly removed — put the previous title node back near where it was, not at doc start.
+    const attrs = { ...prev.node.attrs, docTitle: true };
+    const fresh = headingType.create(attrs, prev.node.content, prev.node.marks);
+    const insertAt = Math.max(0, Math.min(mapped, newState.doc.content.size));
+    return newState.tr.insert(insertAt, fresh).setMeta('addToHistory', false);
+}
+
 export function createTitleBylineExtension(options = {}) {
     const getMeta = typeof options.getMeta === 'function' ? options.getMeta : () => ({});
+    const isHydrating =
+        typeof options.isHydrating === 'function' ? options.isHydrating : () => false;
 
     return Extension.create({
         name: 'titleByline',
@@ -131,6 +221,19 @@ export function createTitleBylineExtension(options = {}) {
             return [
                 new Plugin({
                     key: titleBylineKey,
+                    appendTransaction(transactions, oldState, newState) {
+                        if (!transactions.some((tr) => tr.docChanged)) return null;
+                        if (transactions.some((tr) => tr.getMeta('titleBylineSkipGuard'))) {
+                            return null;
+                        }
+                        // Load/draft setContent — ensureDocTitleHeading owns bootstrap.
+                        if (isHydrating()) return null;
+                        const had = findMarkedDocTitle(oldState.doc);
+                        const has = findMarkedDocTitle(newState.doc);
+                        // Only recover when an edit stripped/removed an existing title marker.
+                        if (has || !had) return null;
+                        return recoverDocTitleTransaction(transactions, oldState, newState);
+                    },
                     props: {
                         decorations(state) {
                             const hit = findDocTitle(state);
@@ -214,9 +317,13 @@ export function ensureDocTitleHeading(editor, titleText) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
     const rest = editor.getHTML();
-    editor.commands.setContent(
-        `<h1 data-doc-title="true">${safe}</h1>${rest && rest !== '<p></p>' ? rest : '<p></p>'}`,
-        false,
-        { preserveWhitespace: 'full' }
-    );
+    editor
+        .chain()
+        .setMeta('titleBylineSkipGuard', true)
+        .setContent(
+            `<h1 data-doc-title="true">${safe}</h1>${rest && rest !== '<p></p>' ? rest : '<p></p>'}`,
+            false,
+            { preserveWhitespace: 'full' }
+        )
+        .run();
 }

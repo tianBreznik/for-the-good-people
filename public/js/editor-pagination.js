@@ -65,12 +65,46 @@ function measureFootnoteContentHeight(view, ids) {
     return Math.max(0, Math.round(sum + 10));
 }
 
-function footerZoneHeight(footContent, footerMin, footerMax) {
-    const min = Math.max(0, Number(footerMin) || 0);
-    const max = Math.max(min, Number(footerMax) || min);
+/**
+ * Fit notes into the max band. Returns fitted ids, spill (travel to next band),
+ * and measured height of what fits. A single oversize note is kept.
+ */
+function fitFootnotesToBand(view, ids, bandMax) {
+    const list = Array.isArray(ids) ? ids.filter(Boolean) : [];
+    if (!list.length) return { fittedIds: [], spillIds: [], height: 0 };
+
+    const max = Math.max(0, Number(bandMax) || 0);
+    const fittedIds = [];
+    let height = 0;
+    for (let i = 0; i < list.length; i += 1) {
+        const id = list[i];
+        const noteH = elementContentHeight(view, id);
+        const chrome = fittedIds.length === 0 ? 10 : 0;
+        const next = height + chrome + noteH;
+        if (fittedIds.length > 0 && max > 0 && next > max) {
+            return {
+                fittedIds,
+                spillIds: list.slice(i),
+                height: Math.max(0, Math.round(height)),
+            };
+        }
+        fittedIds.push(id);
+        height = next;
+    }
+    return {
+        fittedIds,
+        spillIds: [],
+        height: Math.max(0, Math.round(height)),
+    };
+}
+
+/** Empty pages keep a modest chrome min; pages with notes size to fitted content (capped). */
+function footerZoneHeight(footContent, emptyChromeMin, footerMax) {
+    const emptyMin = Math.max(0, Number(emptyChromeMin) || 0);
+    const max = Math.max(emptyMin, Number(footerMax) || emptyMin);
     const foot = Math.max(0, Number(footContent) || 0);
-    if (foot <= 0) return min;
-    return Math.min(max, Math.max(min, foot));
+    if (foot <= 0) return emptyMin;
+    return Math.min(max, foot);
 }
 
 function createPageBreakWidget(height) {
@@ -194,6 +228,9 @@ function collectTopLevelBlocks(view) {
     });
 
     const blocks = [];
+    // Floated images share vertical space with following siblings; avoid double-counting.
+    let pendingFloatBottom = null;
+
     for (let i = 0; i < items.length; i += 1) {
         const { node, pos, dom } = items[i];
         const top = dom.getBoundingClientRect().top;
@@ -226,7 +263,23 @@ function collectTopLevelBlocks(view) {
         }
 
         let height = Math.max(0, bottom - top);
-        if (node.type.name === 'image' && height > getReaderPageMetrics().pageHeight * 0.85) {
+        const align = node.attrs?.align;
+        const isFloatImg =
+            node.type.name === 'image' && (align === 'left' || align === 'right');
+
+        if (isFloatImg) {
+            const rect = dom.getBoundingClientRect();
+            height = Math.max(0, rect.height + marginBottom(dom));
+            pendingFloatBottom = top + height;
+        } else if (pendingFloatBottom != null && top < pendingFloatBottom - 1) {
+            // Text wrapping beside the float: only count height past the float bottom.
+            height = Math.max(0, bottom - pendingFloatBottom);
+            if (bottom >= pendingFloatBottom - 1) pendingFloatBottom = null;
+        } else {
+            pendingFloatBottom = null;
+        }
+
+        if (node.type.name === 'image' && !isFloatImg && height > getReaderPageMetrics().pageHeight * 0.85) {
             height = Math.floor(getReaderPageMetrics().pageHeight * 0.55);
         }
 
@@ -264,13 +317,9 @@ function buildDecorations(view) {
     applyPageMetricsCssVars(view.dom, metrics);
 
     const padTop = metrics.padBlockTop;
-    // Modest always-on reserve (between page margin and full footnote max) so the
-    // dashed band is visible without eating half the page; grows with real notes.
-    const footerMin = Math.max(
-        metrics.padBlockBottom + 10,
-        Math.round(metrics.footnoteBandMax * 0.42)
-    );
-    const footerMax = Math.max(footerMin, metrics.footnoteBandMax);
+    // Empty-page chrome only (dashed foot). Pages with notes size to fitted content up to max.
+    const emptyFooterChrome = Math.max(metrics.padBlockBottom + 10, Math.round(metrics.footnoteBandMax * 0.42));
+    const footerMax = Math.max(emptyFooterChrome, metrics.footnoteBandMax);
 
     const blocks = collectTopLevelBlocks(view);
     const decos = [];
@@ -286,9 +335,18 @@ function buildDecorations(view) {
     // Cursor Y in PM space as if top-inset is already applied and no breaks yet.
     let cursorY = padTop;
     let pageRefIds = [];
-    let footerZone = footerMin;
+    let footnoteSpill = [];
+    let footerZone = emptyFooterChrome;
     const pageFooterHeights = [];
     const pageFootnoteIds = [];
+
+    const applyFittedNotes = (candidateIds) => {
+        const fit = fitFootnotesToBand(view, candidateIds, footerMax);
+        pageRefIds = fit.fittedIds;
+        footnoteSpill = fit.spillIds;
+        footerZone = footerZoneHeight(fit.height, emptyFooterChrome, footerMax);
+        return fit;
+    };
 
     const commitPageChrome = () => {
         pageFooterHeights[pageIndex] = footerZone;
@@ -314,16 +372,15 @@ function buildDecorations(view) {
                 pageIndex += 1;
                 cursorY = nextOrigin;
             }
-            pageRefIds = [];
-            footerZone = footerMin;
+            applyFittedNotes(footnoteSpill.slice());
             continue;
         }
 
         if (height <= 0) continue;
 
-        const trialIds = unionIds(pageRefIds, footnoteIds);
-        const trialFoot = measureFootnoteContentHeight(view, trialIds);
-        const trialFooter = footerZoneHeight(trialFoot, footerMin, footerMax);
+        const trialIds = unionIds(unionIds(pageRefIds, footnoteSpill), footnoteIds);
+        const trialFit = fitFootnotesToBand(view, trialIds, footerMax);
+        const trialFooter = footerZoneHeight(trialFit.height, emptyFooterChrome, footerMax);
         const limitY = pageContentLimitY(pageIndex, metrics, trialFooter);
 
         const blockStartsNewPage = cursorY > padTop + 0.5
@@ -343,20 +400,26 @@ function buildDecorations(view) {
             );
             pageIndex += 1;
             cursorY = nextOrigin + height;
-            pageRefIds = footnoteIds.slice();
-            footerZone = footerZoneHeight(
-                measureFootnoteContentHeight(view, pageRefIds),
-                footerMin,
-                footerMax
-            );
+            applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
         } else {
             cursorY += height;
-            pageRefIds = trialIds;
+            pageRefIds = trialFit.fittedIds;
+            footnoteSpill = trialFit.spillIds;
             footerZone = trialFooter;
         }
     }
 
     commitPageChrome();
+
+    // Drain spilled notes onto following footnote-only sheets.
+    let drainGuard = 0;
+    while (footnoteSpill.length && drainGuard < 40) {
+        drainGuard += 1;
+        pageIndex += 1;
+        applyFittedNotes(footnoteSpill.slice());
+        commitPageChrome();
+    }
+
     const pageCount = pageIndex + 1;
     ensurePageBacks(host || canvas, pageCount, metrics, pageFooterHeights, pageFootnoteIds, view);
 

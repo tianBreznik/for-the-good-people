@@ -97,11 +97,64 @@ if (READER_EMBED) {
     }
 }
 
-/** Last article content page — input lives here until the first comment exists. */
+/** Last article content page — compose field is always pinned to this sheet’s foot. */
 let lastArticlePageElForComments = null;
 
 function articleHasPostedComments() {
     return Boolean(commentsState && commentsState.size > 0);
+}
+
+/** Thread sheet: any posted comment or annotation card. */
+function articleHasCommentThread() {
+    return (
+        articleHasPostedComments() ||
+        (Array.isArray(annotationsState) && annotationsState.length > 0)
+    );
+}
+
+function ensureCommentComposeDock() {
+    let dock = document.getElementById('comment-compose');
+    if (!dock) {
+        dock = document.createElement('div');
+        dock.id = 'comment-compose';
+        dock.className = 'comment-compose';
+    }
+    const form = document.getElementById('commentForm');
+    if (form && form.parentElement !== dock) {
+        dock.appendChild(form);
+    }
+    return dock;
+}
+
+/** Pin compose dock to the foot of a content page (above footnotes when present). */
+function pinComposeToContentPageFoot(dock, anchor) {
+    if (!dock || !anchor) return;
+    dock.classList.remove('comment-compose--page-foot', 'comment-compose--above-footnotes');
+    const footnotes = anchor.querySelector(':scope > .article-page-footnotes');
+    const pageNumber = anchor.querySelector(':scope > .article-page-number');
+    if (footnotes) {
+        dock.classList.add('comment-compose--above-footnotes');
+        footnotes.before(dock);
+    } else if (pageNumber) {
+        dock.classList.add('comment-compose--page-foot');
+        pageNumber.before(dock);
+    } else {
+        dock.classList.add('comment-compose--page-foot');
+        anchor.appendChild(dock);
+    }
+}
+
+/** Last sheet that still has article body (skip footnote-only spill pages). */
+function lastArticleContentPage(articleBody) {
+    if (!articleBody) return null;
+    const pages = articleBody.querySelectorAll(
+        '.article-page-left:not(.article-page-comments)'
+    );
+    for (let i = pages.length - 1; i >= 0; i -= 1) {
+        const body = pages[i].querySelector(':scope > .article-page-body');
+        if (body && body.childElementCount > 0) return pages[i];
+    }
+    return pages.length ? pages[pages.length - 1] : null;
 }
 
 function removeDedicatedCommentsPages(articleBody) {
@@ -114,57 +167,64 @@ function removeDedicatedCommentsPages(articleBody) {
 }
 
 /**
- * No comments yet → input on the last article page.
- * After the first comment is posted → dedicated comments sheet; comments render there.
+ * Compose field always sits on the last content page (foot, above footnotes).
+ * Once there is a thread (comments or annotations), the list gets its own sheet
+ * after that page — input stays on the content sheet, before the comments page.
  */
 function mountCommentScreenForLayout(lastArticlePageEl) {
     if (!commentScreenEl) return;
-    if (lastArticlePageEl) lastArticlePageElForComments = lastArticlePageEl;
+
+    const composeDock = ensureCommentComposeDock();
 
     if (READER_EMBED) {
         const blogRoot = document.querySelector('.blog');
-        if (blogRoot) blogRoot.appendChild(commentScreenEl);
+        if (blogRoot) {
+            blogRoot.appendChild(composeDock);
+            blogRoot.appendChild(commentScreenEl);
+        }
         return;
     }
 
     const articleBody = document.getElementById('article-body');
     if (!articleBody) return;
 
-    // Park the screen so tearing down an old comments sheet doesn't destroy it.
+    // Park list host so tearing down an old comments sheet doesn't destroy it.
     articleBody.appendChild(commentScreenEl);
+    articleBody.appendChild(composeDock);
     removeDedicatedCommentsPages(articleBody);
 
-    let anchor =
-        lastArticlePageElForComments && lastArticlePageElForComments.isConnected
-            ? lastArticlePageElForComments
-            : null;
-    if (!anchor) {
-        const articlePages = articleBody.querySelectorAll(
-            '.article-page-left:not(.article-page-comments)'
-        );
-        anchor = articlePages.length ? articlePages[articlePages.length - 1] : null;
+    // Prefer an explicit page only if it still has body content; else resolve fresh.
+    let anchor = null;
+    if (
+        lastArticlePageEl &&
+        lastArticlePageEl.isConnected &&
+        lastArticlePageEl.querySelector(':scope > .article-page-body')?.childElementCount > 0
+    ) {
+        anchor = lastArticlePageEl;
+    } else if (
+        lastArticlePageElForComments &&
+        lastArticlePageElForComments.isConnected &&
+        lastArticlePageElForComments.querySelector(':scope > .article-page-body')?.childElementCount > 0
+    ) {
+        anchor = lastArticlePageElForComments;
+    }
+    if (!anchor) anchor = lastArticleContentPage(articleBody);
+    if (anchor) lastArticlePageElForComments = anchor;
+
+    commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
+
+    if (anchor) {
+        pinComposeToContentPageFoot(composeDock, anchor);
     }
 
-    if (!articleHasPostedComments()) {
-        if (anchor) {
-            // Above the footnote strip when present; otherwise pin to the page foot.
-            // Never sit below footnotes (that reads as page chrome / footer).
-            const footnotes = anchor.querySelector(':scope > .article-page-footnotes');
-            commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
-            if (footnotes) {
-                commentScreenEl.classList.add('comment-screen--above-footnotes');
-                footnotes.before(commentScreenEl);
-            } else {
-                commentScreenEl.classList.add('comment-screen--page-foot');
-                anchor.appendChild(commentScreenEl);
-            }
-        }
+    if (!articleHasCommentThread()) {
+        // No list yet — park the list host off-sheet.
+        commentScreenEl.hidden = true;
         applyPageNumbers(articleBody);
         return;
     }
 
-    commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
-
+    commentScreenEl.hidden = false;
     const spread = createSpread();
     articleBody.appendChild(spread.spread);
     const page = spread.leftPage;
@@ -620,11 +680,19 @@ function renderAnnotationList() {
         card.style.setProperty('--ann-badge-text', tone.badgeText);
         const userTag = String(item.user || 'anonymous').trim() || 'anonymous';
         const content = (item.commentText || '').trim();
+        const quote = String(item.selectedText || '').trim();
+        const quoteHtml = quote
+            ? `<em class="annotation-quote">\u201c${formatCommentBodyHtml(quote)}\u201d</em>`
+            : '';
+        const bodyHtml = content
+            ? `<span class="annotation-comment-body">${formatCommentBodyHtml(content)}</span>`
+            : '';
+        const commentInner = [quoteHtml, bodyHtml].filter(Boolean).join(' ');
         card.innerHTML = `
             <div class="comment-shell">
                 <div class="comment-main">
                     <h1 class="user annotation-user">@${userTag}</h1>
-                    <p class="comment-content annotation-comment">${formatCommentBodyHtml(content)}</p>
+                    <p class="comment-content annotation-comment">${commentInner}</p>
                 </div>
                 <div class="comment-actions">
                     <button class="reply" onclick="event.stopPropagation(); makeAnchor('${userTag}','${item.id}')">reply</button>
@@ -835,7 +903,10 @@ function beginAnnotationComposeFromSelection() {
 
     syncPendingAnnotationComposeChrome();
 
-    commentScreenEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    (document.getElementById('comment-compose') || form || input)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+    });
     input.focus();
 }
 
@@ -864,6 +935,7 @@ function attachAnnotationsListener() {
             // On refresh, comments can load before annotations; rerender threads now that
             // annotation parent IDs are known, so annotation replies are nested correctly.
             renderThreadedComments();
+            mountCommentScreenForLayout(lastArticlePageElForComments);
         });
 }
 
@@ -1537,8 +1609,8 @@ function collectFootnoteRefIdsUnion(bodyEl, extraEl) {
 }
 
 /**
- * Fixed footnote band (px). Body packs above this; notes that don't fit spill to the next page.
- * Stable when body type changes — no char/line estimates.
+ * Max footnote band (px). Band sizes to notes that fit; anything past this spills
+ * to the next page so a spam of notes cannot eat the whole sheet.
  */
 function footnoteBandHeight(spreadHeight) {
     const h = Number(spreadHeight) || 0;
@@ -1546,16 +1618,97 @@ function footnoteBandHeight(spreadHeight) {
     return Math.min(168, Math.max(96, Math.round(h * 0.155)));
 }
 
-function pageNeedsFootnoteBand(bodyEl, defMap, extraEl, carryIds) {
-    if (Array.isArray(carryIds) && carryIds.length > 0) return true;
-    if (!defMap || defMap.size === 0) return false;
-    return collectFootnoteRefIdsUnion(bodyEl, extraEl).length > 0;
+function footnoteQueueForPage(bodyEl, defMap, extraEl, carryIds, assignedAnchors) {
+    const queue = [];
+    const seen = new Set();
+    const carry = Array.isArray(carryIds) ? carryIds : [];
+    const assigned = assignedAnchors instanceof Set ? assignedAnchors : null;
+    const enqueue = (id) => {
+        if (!id || seen.has(id) || !defMap?.has(id)) return;
+        if (assigned?.has(id) && !carry.includes(id)) return;
+        seen.add(id);
+        queue.push(id);
+    };
+    carry.forEach(enqueue);
+    collectFootnoteRefIdsUnion(bodyEl, extraEl).forEach(enqueue);
+    return queue;
 }
 
-/** Reserve the fixed band when this page has refs or carried notes; else 0. */
-function footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds) {
-    if (!pageNeedsFootnoteBand(bodyEl, defMap, extraEl, carryIds)) return 0;
-    return footnoteBandHeight(spreadHeight);
+/**
+ * Append notes into a probe until max band is full. Returns fitted ids + measured height.
+ * A single note taller than the max is kept (same as finalize) so we never loop empty pages.
+ */
+function measureFittedFootnoteBand(defMap, idList, maxBand, probeWidthPx) {
+    const ids = Array.isArray(idList) ? idList.filter((id) => id && defMap?.has(id)) : [];
+    if (!ids.length) return { fittedIds: [], height: 0 };
+
+    const width = Math.max(120, Math.round(Number(probeWidthPx) || 520));
+    const probe = document.createElement('div');
+    probe.className = 'article-page-footnotes';
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = [
+        'position:absolute',
+        'left:-99999px',
+        'top:0',
+        `width:${width}px`,
+        'visibility:hidden',
+        'pointer-events:none',
+        'margin:0',
+    ].join(';');
+    document.body.appendChild(probe);
+
+    const fittedIds = [];
+    try {
+        for (let i = 0; i < ids.length; i += 1) {
+            const id = ids[i];
+            const html = defMap.get(id);
+            if (!html) continue;
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            const src = temp.firstElementChild;
+            if (!src) continue;
+            const clone = src.cloneNode(true);
+            clone.setAttribute('data-footnote-n', String(i + 1));
+            probe.appendChild(clone);
+            void probe.offsetHeight;
+            const used = elementOuterHeightWithMargins(probe);
+            if (used > maxBand && fittedIds.length > 0) {
+                probe.removeChild(clone);
+                break;
+            }
+            fittedIds.push(id);
+        }
+        const height = fittedIds.length ? elementOuterHeightWithMargins(probe) : 0;
+        return { fittedIds, height: Math.max(0, Math.round(height)) };
+    } finally {
+        probe.remove();
+    }
+}
+
+function footnoteProbeWidth(pageEl) {
+    const body = pageEl?.querySelector?.('.article-page-body');
+    if (body?.clientWidth) return body.clientWidth;
+    if (pageEl?.clientWidth) {
+        const styles = window.getComputedStyle ? window.getComputedStyle(pageEl) : null;
+        const pl = styles ? parseFloat(styles.paddingLeft) || 0 : 0;
+        const pr = styles ? parseFloat(styles.paddingRight) || 0 : 0;
+        return Math.max(120, pageEl.clientWidth - pl - pr);
+    }
+    return 520;
+}
+
+/** Reserve only the height of notes that will actually fit (capped); else 0. */
+function footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds, pageEl, assignedAnchors) {
+    const queue = footnoteQueueForPage(bodyEl, defMap, extraEl, carryIds, assignedAnchors);
+    if (!queue.length) return 0;
+    const maxBand = footnoteBandHeight(spreadHeight);
+    const { height } = measureFittedFootnoteBand(
+        defMap,
+        queue,
+        maxBand,
+        footnoteProbeWidth(pageEl || bodyEl?.parentElement)
+    );
+    return height;
 }
 
 function elementOuterHeightWithMargins(el) {
@@ -1578,8 +1731,16 @@ function pageVerticalInsets(pageEl) {
     return pt + pb + bt + bb;
 }
 
-function pageBodyHeightBudget(pageEl, bodyEl, spreadHeight, defMap, extraEl, carryIds) {
-    const footReserve = footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds);
+function pageBodyHeightBudget(pageEl, bodyEl, spreadHeight, defMap, extraEl, carryIds, assignedAnchors) {
+    const footReserve = footnoteReserveForBody(
+        bodyEl,
+        defMap,
+        spreadHeight,
+        extraEl,
+        carryIds,
+        pageEl,
+        assignedAnchors
+    );
     const masthead = pageEl ? pageEl.querySelector('.article-inline-masthead') : null;
     const mastheadReserve = masthead ? elementOuterHeightWithMargins(masthead) : 0;
     const pageInsets = pageVerticalInsets(pageEl);
@@ -1604,8 +1765,8 @@ function footnoteSuperscriptNumberForId(bodyRoot, id) {
 }
 
 /**
- * Pack footnote defs into the fixed band. Carry-in notes first, then refs on this page.
- * Returns ids that did not fit (spill to the next page's footnote section).
+ * Pack footnote defs into a band sized to what fits (capped at max).
+ * Carry-in notes first, then refs on this page. Overflow spills to the next band.
  */
 function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadHeight) {
     pageEl.querySelector('.article-page-footnotes')?.remove();
@@ -1613,26 +1774,19 @@ function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadH
     const carry = Array.isArray(carryIn) ? carryIn.slice() : [];
     if (!body || !defMap || defMap.size === 0) return carry;
 
-    const pageRefs = collectFootnoteRefIdsFromNode(body);
-    const queue = [];
-    const seen = new Set();
-    const enqueue = (id) => {
-        if (!id || seen.has(id) || !defMap.has(id)) return;
-        if (assignedAnchors.has(id) && !carry.includes(id)) return;
-        seen.add(id);
-        queue.push(id);
-    };
-    carry.forEach(enqueue);
-    pageRefs.forEach(enqueue);
+    const queue = footnoteQueueForPage(body, defMap, null, carry, assignedAnchors);
     if (!queue.length) return [];
 
-    const band = footnoteBandHeight(spreadHeight);
+    const bandMax = footnoteBandHeight(spreadHeight);
     const foot = document.createElement('div');
     foot.className = 'article-page-footnotes';
     // Page-level sibling of the body (not inside it) so CSS can pin the band
     // to the sheet foot — same visual as the editor footer zone.
+    // Compose (and legacy comment-screen) sit above the footnote band when present.
+    const composeDock = pageEl.querySelector(':scope > #comment-compose');
     const commentScreen = pageEl.querySelector(':scope > #comment-screen');
-    if (commentScreen) commentScreen.before(foot);
+    if (composeDock) composeDock.after(foot);
+    else if (commentScreen) commentScreen.after(foot);
     else body.after(foot);
 
     const carryOut = [];
@@ -1666,13 +1820,13 @@ function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadH
         foot.appendChild(clone);
         void foot.offsetHeight;
         const used = elementOuterHeightWithMargins(foot);
-        if (used > band && foot.childElementCount > 1) {
+        if (used > bandMax && foot.childElementCount > 1) {
             foot.removeChild(clone);
             carryOut.push(id);
             accepting = false;
             return;
         }
-        // Single note taller than the band: keep it so we never infinite-loop empty pages.
+        // Single note taller than the max: keep it so we never infinite-loop empty pages.
         assignedAnchors.add(id);
     });
 
@@ -1800,10 +1954,12 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     const defMap = footnoteDefMap instanceof Map ? footnoteDefMap : new Map();
 
-    // Keep #comment-screen alive across reflows (innerHTML would destroy it).
-    if (commentScreenEl) {
-        const blogRoot = document.querySelector('.blog');
-        if (blogRoot) blogRoot.appendChild(commentScreenEl);
+    // Keep comment chrome alive across reflows (innerHTML would destroy it).
+    const blogRoot = document.querySelector('.blog');
+    if (blogRoot) {
+        const composeDock = document.getElementById('comment-compose');
+        if (composeDock) blogRoot.appendChild(composeDock);
+        if (commentScreenEl) blogRoot.appendChild(commentScreenEl);
     }
     lastArticlePageElForComments = null;
 
@@ -1893,7 +2049,8 @@ function renderArticleSpread(blocks, footnoteDefMap) {
             spreadHeight,
             defMap,
             null,
-            footnoteCarry
+            footnoteCarry,
+            assignedFootnoteAnchors
         );
         if (currentPageBody.scrollHeight > heightBudget && currentPageBody.childElementCount > 1) {
             currentPageBody.removeChild(node);
@@ -1903,7 +2060,8 @@ function renderArticleSpread(blocks, footnoteDefMap) {
                 spreadHeight,
                 defMap,
                 node,
-                footnoteCarry
+                footnoteCarry,
+                assignedFootnoteAnchors
             );
             const split = splitParagraphToFit(currentPageBody, node, splitBudget);
             if (split) {
@@ -1939,7 +2097,7 @@ function renderArticleSpread(blocks, footnoteDefMap) {
         );
     }
 
-    mountCommentScreenForLayout(currentPage);
+    mountCommentScreenForLayout(lastArticleContentPage(articleBody) || currentPage);
 
     applyPageNumbers(articleBody);
 

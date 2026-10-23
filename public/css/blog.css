@@ -165,14 +165,19 @@ body.reader-loading #comment-screen {
     flex: 0 1 auto;
 }
 
-/* Leave room above the page number when comments pin to the foot */
-#article-body .article-page #comment-screen.comment-screen--page-foot {
+/* Leave room above the page number when compose pins to the foot */
+#article-body .article-page #comment-screen.comment-screen--page-foot,
+#article-body .article-page #comment-compose.comment-compose--page-foot {
     padding-bottom: clamp(1.1rem, 2.2vh, 1.6rem);
 }
 
-/* Dedicated comments sheet — no first-page masthead inset */
+/*
+ * Dedicated comments sheet — no inline page pad so annotation bands paint
+ * edge-to-edge on the sheet. Text inset lives on .comment-shell / #commentInput.
+ */
 #article-body .article-page.article-page-comments {
     padding-top: clamp(24px, 2.9vh, 34px);
+    padding-inline: 0;
 }
 
 /* Footnotes: pinned to the sheet foot (editor footer-band parity), not under prose. */
@@ -189,10 +194,18 @@ body.reader-loading #comment-screen {
     border-top: 1px solid rgba(23, 23, 23, 0.78);
 }
 
-/* Empty-comment input sits just above the footnote band when both share a page */
-#article-body .article-page > #comment-screen.comment-screen--above-footnotes {
-    margin-top: 0;
+/* Compose / legacy comment-screen: pin above the footnote band */
+#article-body .article-page > #comment-screen.comment-screen--above-footnotes,
+#article-body .article-page > #comment-compose.comment-compose--above-footnotes {
+    margin-top: auto;
     margin-bottom: clamp(4px, 0.6vw, 8px);
+    flex: 0 0 auto;
+}
+
+/* Footnotes keep the bottom edge; don't double-consume flex free space with the input */
+#article-body .article-page > #comment-screen.comment-screen--above-footnotes + .article-page-footnotes,
+#article-body .article-page > #comment-compose.comment-compose--above-footnotes + .article-page-footnotes {
+    margin-top: 0;
 }
 
 #article-body .article-page-footnotes > p[data-variant="footnote"]:first-child {
@@ -473,6 +486,24 @@ body.reader-loading #comment-screen {
     font-weight: 700;
 }
 
+/* Paragraph / heading indent from editor ⇥⇤ (after margin shorthand) */
+#article-body .article-page p[data-indent="1"],
+#article-body .article-page h1[data-indent="1"],
+#article-body .article-page h2[data-indent="1"],
+#article-body .article-page h3[data-indent="1"] { margin-left: 1.35em; }
+#article-body .article-page p[data-indent="2"],
+#article-body .article-page h1[data-indent="2"],
+#article-body .article-page h2[data-indent="2"],
+#article-body .article-page h3[data-indent="2"] { margin-left: 2.7em; }
+#article-body .article-page p[data-indent="3"],
+#article-body .article-page h1[data-indent="3"],
+#article-body .article-page h2[data-indent="3"],
+#article-body .article-page h3[data-indent="3"] { margin-left: 4.05em; }
+#article-body .article-page p[data-indent="4"],
+#article-body .article-page h1[data-indent="4"],
+#article-body .article-page h2[data-indent="4"],
+#article-body .article-page h3[data-indent="4"] { margin-left: 5.4em; }
+
 #article-body .article-page .article-image {
     position: relative;
     z-index: 1;
@@ -504,6 +535,55 @@ body.reader-loading #comment-screen {
     max-width: 42%;
     height: auto;
     margin: 0 .35rem;
+}
+
+/* Float wrap (from editor image-align buttons — not text-align) */
+#article-body .article-page img[align="left"],
+#article-body .article-page .article-image[align="left"] {
+    float: left;
+    display: block;
+    width: auto;
+    max-width: min(48%, 280px);
+    height: auto;
+    margin: 0.25rem 1rem 0.85rem 0;
+    shape-outside: margin-box;
+}
+
+#article-body .article-page img[align="right"],
+#article-body .article-page .article-image[align="right"] {
+    float: right;
+    display: block;
+    width: auto;
+    max-width: min(48%, 280px);
+    height: auto;
+    margin: 0.25rem 0 0.85rem 1rem;
+    shape-outside: margin-box;
+}
+
+#article-body .article-page img[align="center"],
+#article-body .article-page .article-image[align="center"] {
+    float: none;
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    margin: clamp(12px, 1.5vw, 20px) auto;
+}
+
+/* Live-resized width from editor (style + data-width) beats default float caps */
+#article-body .article-page img[data-width] {
+    max-width: 100%;
+    height: auto;
+}
+
+#article-body .article-page-body::after {
+    content: '';
+    display: table;
+    clear: both;
+}
+
+#article-body .article-page > .article-page-footnotes {
+    clear: both;
 }
 
 #article-body .article-page p[data-variant="poetry"] {
@@ -578,11 +658,20 @@ body.reader-loading #comment-screen {
     font-style: italic;
 }
 
-#article-body .article-page blockquote p[data-variant="attribution"] {
+#article-body .article-page blockquote p[data-variant="attribution"],
+#article-body .article-page > .article-page-body > p[data-variant="attribution"],
+#article-body .article-page-body > p[data-variant="attribution"] {
     font-size: 0.92em;
     opacity: 0.88;
-    margin-top: 0.65rem;
+    margin-top: 0.35rem;
     font-style: normal;
+}
+
+#article-body .article-page-body > p[data-variant="epigraph"] + p[data-variant="attribution"] {
+    max-width: 76%;
+    margin-left: auto;
+    margin-right: 0;
+    text-align: right;
 }
 
 /* Lighter ink than body: quotes / poetry / linked footnotes */
@@ -697,17 +786,6 @@ body.reader-loading #comment-screen {
     font-style: italic;
 }
 
-#article-body .article-page p[data-variant="fieldnotes"] {
-    font-family: 'Courier New', monospace;
-    background: rgba(0, 0, 0, 0.04);
-    border-left: 3px solid rgba(0, 0, 0, 0.25);
-    padding: 8px 10px;
-}
-
-#article-body .article-page img[align="left"] { display: block; margin-right: auto; margin-left: 0; }
-#article-body .article-page img[align="center"] { display: block; margin-left: auto; margin-right: auto; }
-#article-body .article-page img[align="right"] { display: block; margin-left: auto; margin-right: 0; }
-
 /* Corner nav (match editor): Wall top-left, Dashboard bottom-right (authors only). */
 .reader-nav-wall {
     position: fixed;
@@ -749,9 +827,10 @@ body.reader-embed .reader-nav-dashboard {
     display: none !important;
 }
 
-/* No comments yet — shared chrome */
+/* Comment list host + compose dock chrome */
 .comment-block,
-#article-body .article-page #comment-screen {
+#article-body .article-page #comment-screen,
+#article-body .article-page #comment-compose {
     clear: none;
     padding: clamp(6px, 0.8vw, 10px) 0 0;
     width: 100%;
@@ -761,14 +840,66 @@ body.reader-embed .reader-nav-dashboard {
     box-sizing: border-box;
 }
 
-/* No footnotes: pin input to the foot of the last article page */
+/* Parked list host (no thread yet) must not paint between pages */
+#article-body > #comment-screen[hidden],
+#comment-screen[hidden] {
+    display: none !important;
+}
+
+/*
+ * Compose on last content page: nearly full sheet width with a small gap
+ * from the page edge (bleed past body pad, stay inside the sheet).
+ */
+#article-body .article-page > #comment-compose {
+    --comment-compose-edge-gap: clamp(8px, 1.4vw, 14px);
+    width: calc(
+        100% + 2 * var(--reader-page-pad-inline) - 2 * var(--comment-compose-edge-gap)
+    );
+    max-width: none;
+    margin-left: calc(-1 * var(--reader-page-pad-inline) + var(--comment-compose-edge-gap));
+    margin-right: calc(-1 * var(--reader-page-pad-inline) + var(--comment-compose-edge-gap));
+    padding-inline: 0;
+    padding-top: clamp(6px, 0.8vw, 10px);
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+#article-body .article-page > #comment-compose.comment-compose--page-foot {
+    margin-top: auto;
+    margin-bottom: 0;
+}
+
+#article-body .article-page > #comment-compose.comment-compose--above-footnotes {
+    margin-top: auto;
+    margin-bottom: clamp(4px, 0.6vw, 8px);
+}
+
+#article-body .article-page > #comment-compose #commentForm {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+#article-body .article-page > #comment-compose #commentInput {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    height: auto;
+}
+
+/* No footnotes: pin legacy comment-screen to the foot */
 #article-body .article-page > #comment-screen.comment-screen--page-foot {
     margin: auto 0 0;
 }
 
-/* Footnotes on last page: sit just above the note strip, not under it */
+/* Footnotes on last page: legacy comment-screen above the note strip */
 #article-body .article-page > #comment-screen.comment-screen--above-footnotes {
-    margin: clamp(10px, 1.2vw, 16px) 0 clamp(4px, 0.6vw, 8px);
+    margin-top: auto;
+    margin-bottom: clamp(4px, 0.6vw, 8px);
     padding-bottom: 0;
 }
 
@@ -776,8 +907,19 @@ body.reader-embed .reader-nav-dashboard {
 #article-body .article-page.article-page-comments > #comment-screen {
     margin: 0;
     flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
     min-height: 0;
     overflow: auto;
+    box-sizing: border-box;
+}
+
+#article-body .article-page.article-page-comments .comment-section {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .annotation-section {
@@ -1011,6 +1153,30 @@ body.reader-embed .reader-nav-dashboard {
     background: color-mix(in srgb, var(--ann-fill-active, rgba(255, 240, 166, 0.3)) 68%, white 32%);
 }
 
+/* Comments sheet: bands are full sheet width; keep copy inset like body text. */
+#article-body .article-page.article-page-comments .annotation-card,
+#article-body .article-page.article-page-comments .annotation-children > .threaded-comment {
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+#article-body .article-page.article-page-comments .comment-shell {
+    /* Pull copy toward the left sheet edge; keep a modest right inset for reply */
+    padding-left: clamp(8px, 1.4vw, 14px);
+    padding-right: clamp(8px, 1.4vw, 14px);
+    box-sizing: border-box;
+}
+
+#article-body .article-page.article-page-comments .comment-actions {
+    padding-right: 0;
+}
+
+#article-body .article-page.article-page-comments .comment-main {
+    padding-left: calc(var(--thread-depth, 0) * 16px);
+}
+
 .annotation-card::before {
     content: none;
 }
@@ -1024,16 +1190,41 @@ body.reader-embed .reader-nav-dashboard {
     margin: 0 0 2px 0 !important;
     position: static;
     left: auto;
-    padding-left: 6px;
+    padding-left: 0;
 }
 
-.annotation-card .annotation-comment {
+.annotation-card p.comment-content.annotation-comment {
     color: rgba(30, 24, 10, 0.96);
-    padding: 0 0 0 6px;
-    display: block;
+    padding: 0;
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4em;
     margin: 0;
     font-size: 14px;
     line-height: 1.45;
+}
+
+/* Article voice: Georgia like reader prose — baseline-aligned with comment body */
+.annotation-card .comment-content .annotation-quote {
+    display: inline;
+    font-family: Georgia, 'Times New Roman', serif !important;
+    font-size: 1em !important;
+    font-style: italic !important;
+    font-weight: 400 !important;
+    line-height: inherit !important;
+    vertical-align: baseline;
+    color: rgba(30, 24, 10, 0.72) !important;
+    -webkit-text-fill-color: rgba(30, 24, 10, 0.72) !important;
+    margin: 0;
+}
+
+.annotation-card .comment-content .annotation-comment-body {
+    display: inline;
+    font-style: normal !important;
+    font-size: 1em !important;
+    line-height: inherit !important;
+    vertical-align: baseline;
 }
 
 .annotation-card .comment-meat {
@@ -1075,10 +1266,13 @@ body.reader-embed .reader-nav-dashboard {
 
 /*
  * Comment field — same type size for placeholder + typed text; muted gray → black.
+ * Beat legacy `input[type=text] { max-width: 520px }` so the band spans the page.
  */
-#commentInput {
+#commentInput,
+#comment-screen input[type=text]#commentInput {
     display: block;
     width: 100%;
+    max-width: none;
     box-sizing: border-box;
     margin: 0;
     padding: 0.2rem 0.35rem;
@@ -1105,6 +1299,7 @@ body.reader-embed .reader-nav-dashboard {
     -moz-osx-font-smoothing: grayscale;
     transition: border-color 0.15s ease;
 }
+
 
 #commentInput::placeholder {
     color: rgba(0, 0, 0, 0.28);
@@ -1391,6 +1586,10 @@ body.reader-embed #commentInput {
         padding-bottom: clamp(24px, 3.4svh, 36px);
     }
 
+    #article-body .article-page.article-page-comments {
+        padding-inline: 0;
+    }
+
     #article-body .article-page.article-page-first {
         padding-top: clamp(56px, 8.5svh, 104px);
     }
@@ -1400,16 +1599,28 @@ body.reader-embed #commentInput {
     }
 
     #commentForm {
-        max-width: none;
+        max-width: 100%;
         width: 100%;
+        min-width: 0;
         padding-inline: 0;
         box-sizing: border-box;
     }
 
-    #commentInput {
+    #article-body .article-page > #comment-compose {
+        --comment-compose-edge-gap: clamp(6px, 2.2vw, 12px);
+    }
+
+    #commentInput,
+    #article-body .article-page > #comment-compose #commentInput {
         font-size: 16px;
         padding: 0.35rem 0.4rem;
         min-height: 2.5rem;
+        max-width: 100%;
+        min-width: 0;
+        width: 100%;
+        box-sizing: border-box;
+        height: auto;
+        flex: 0 0 auto;
     }
 
     .reader-nav-wall {

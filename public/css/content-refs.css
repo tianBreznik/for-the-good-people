@@ -1,4 +1,4 @@
-/* Shared @author / #article mention UI + inline refs */
+/* Shared @author / #article mention UI + inline refs — Win95 chrome (match editor dialogs) */
 
 .content-ref-menu {
     position: fixed;
@@ -10,9 +10,11 @@
     margin: 0;
     padding: 4px;
     box-sizing: border-box;
-    background: #f7f7f5;
-    border: 1px solid rgba(0, 0, 0, 0.22);
-    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+    background: #f3f3f3;
+    border: 1px solid #808080;
+    border-radius: 0;
+    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.18);
+    font-family: 'MS Sans Serif', Arial, sans-serif;
 }
 
 .content-ref-menu-item {
@@ -22,18 +24,29 @@
     gap: 1px;
     width: 100%;
     margin: 0;
-    padding: 7px 9px;
-    border: 0;
+    padding: 5px 7px;
+    border: 1px solid transparent;
+    border-radius: 0;
     background: transparent;
     text-align: left;
     cursor: pointer;
-    font: 500 13px/1.25 Georgia, 'Times New Roman', serif;
-    color: #171717;
+    font-family: 'MS Sans Serif', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.3;
+    color: #000;
 }
 
 .content-ref-menu-item:hover,
 .content-ref-menu-item.is-active {
-    background: rgba(0, 0, 0, 0.07);
+    background: #000080;
+    border-color: #000080;
+    color: #fff;
+}
+
+.content-ref-menu-item:hover .content-ref-menu-meta,
+.content-ref-menu-item.is-active .content-ref-menu-meta {
+    color: rgba(255, 255, 255, 0.78);
 }
 
 .content-ref-menu-primary {
@@ -42,13 +55,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-weight: 700;
 }
 
 .content-ref-menu-meta {
     display: block;
     font-size: 11px;
     font-weight: 400;
-    color: rgba(0, 0, 0, 0.48);
+    color: rgba(0, 0, 0, 0.55);
 }
 
 a.content-ref,
