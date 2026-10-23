@@ -94,7 +94,33 @@ function createTopInsetWidget(height) {
     return wrap;
 }
 
-function ensurePageBacks(host, pageCount, metrics, footerHeights = []) {
+function footnoteDomById(view, id) {
+    const root = view?.dom;
+    if (!id || !root) return null;
+    return root.querySelector(
+        `p[data-variant="footnote"][data-footnote-id="${escapeAttr(id)}"]`
+    );
+}
+
+function paintFooterNotes(zone, view, ids, pageStartN) {
+    if (!zone) return;
+    zone.querySelectorAll('.editor-footer-note').forEach((el) => el.remove());
+    if (!ids || !ids.length) return;
+    let n = Math.max(1, Number(pageStartN) || 1);
+    ids.forEach((id) => {
+        const src = footnoteDomById(view, id);
+        if (!src) return;
+        const clone = src.cloneNode(true);
+        clone.classList.add('editor-footer-note');
+        clone.removeAttribute('id');
+        clone.style.cssText = '';
+        clone.setAttribute('data-footnote-n', String(n));
+        zone.appendChild(clone);
+        n += 1;
+    });
+}
+
+function ensurePageBacks(host, pageCount, metrics, footerHeights = [], pageFootnoteIds = [], view = null) {
     if (!host) return;
     const canvas = host.closest('.editor-content');
     if (canvas) {
@@ -125,6 +151,7 @@ function ensurePageBacks(host, pageCount, metrics, footerHeights = []) {
         backs.appendChild(page);
     }
 
+    let noteOrdinal = 1;
     Array.from(backs.children).forEach((page, i) => {
         page.style.height = `${metrics.pageHeight}px`;
         page.style.width = `${metrics.pageWidth}px`;
@@ -138,6 +165,9 @@ function ensurePageBacks(host, pageCount, metrics, footerHeights = []) {
         }
         const footH = Math.max(minFooter, Number(footerHeights[i]) || minFooter);
         zone.style.height = `${Math.round(footH)}px`;
+        const ids = Array.isArray(pageFootnoteIds[i]) ? pageFootnoteIds[i] : [];
+        paintFooterNotes(zone, view, ids, noteOrdinal);
+        noteOrdinal += ids.length;
         const num = page.querySelector('.editor-page-back-number');
         if (num) num.textContent = String(i + 1);
     });
@@ -258,6 +288,12 @@ function buildDecorations(view) {
     let pageRefIds = [];
     let footerZone = footerMin;
     const pageFooterHeights = [];
+    const pageFootnoteIds = [];
+
+    const commitPageChrome = () => {
+        pageFooterHeights[pageIndex] = footerZone;
+        pageFootnoteIds[pageIndex] = pageRefIds.slice();
+    };
 
     for (let i = 0; i < blocks.length; i += 1) {
         const { pos, height, footnoteIds, hardBreak } = blocks[i];
@@ -267,7 +303,7 @@ function buildDecorations(view) {
             if (cursorY > padTop + 0.5) {
                 const nextOrigin = pageContentOriginY(pageIndex + 1, metrics, padTop);
                 const spacerH = Math.max(0, nextOrigin - cursorY);
-                pageFooterHeights[pageIndex] = footerZone;
+                commitPageChrome();
                 const afterBreak = pos + (blocks[i].nodeSize || 1);
                 decos.push(
                     Decoration.widget(afterBreak, () => createPageBreakWidget(spacerH), {
@@ -298,7 +334,7 @@ function buildDecorations(view) {
             const nextOrigin = pageContentOriginY(pageIndex + 1, metrics, padTop);
             const spacerH = Math.max(0, nextOrigin - cursorY);
 
-            pageFooterHeights[pageIndex] = footerZone;
+            commitPageChrome();
             decos.push(
                 Decoration.widget(pos, () => createPageBreakWidget(spacerH), {
                     side: 1,
@@ -320,9 +356,9 @@ function buildDecorations(view) {
         }
     }
 
-    pageFooterHeights[pageIndex] = footerZone;
+    commitPageChrome();
     const pageCount = pageIndex + 1;
-    ensurePageBacks(host || canvas, pageCount, metrics, pageFooterHeights);
+    ensurePageBacks(host || canvas, pageCount, metrics, pageFooterHeights, pageFootnoteIds, view);
 
     const stackH = pageCount * metrics.pageHeight + Math.max(0, pageCount - 1) * metrics.pageGap;
     view.dom.style.minHeight = `${stackH}px`;

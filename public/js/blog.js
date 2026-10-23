@@ -149,10 +149,9 @@ function mountCommentScreenForLayout(lastArticlePageEl) {
         if (anchor) {
             // Above the footnote strip when present; otherwise pin to the page foot.
             // Never sit below footnotes (that reads as page chrome / footer).
-            const footnotes = anchor.querySelector('.article-page-footnotes');
-            const body = anchor.querySelector('.article-page-body');
+            const footnotes = anchor.querySelector(':scope > .article-page-footnotes');
             commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
-            if (footnotes && body) {
+            if (footnotes) {
                 commentScreenEl.classList.add('comment-screen--above-footnotes');
                 footnotes.before(commentScreenEl);
             } else {
@@ -416,8 +415,14 @@ function textNodesUnder(root) {
             if (!node.nodeValue || !node.nodeValue.length) return NodeFilter.FILTER_REJECT;
             const parentEl = node.parentElement;
             if (!parentEl) return NodeFilter.FILTER_REJECT;
+            // Body prose only — chrome must not shift annotation offsets.
             if (parentEl.closest('#comment-screen')) return NodeFilter.FILTER_REJECT;
             if (parentEl.closest('.annotation-highlight')) return NodeFilter.FILTER_REJECT;
+            if (parentEl.closest('.article-inline-masthead')) return NodeFilter.FILTER_REJECT;
+            if (parentEl.closest('.article-title-block')) return NodeFilter.FILTER_REJECT;
+            if (parentEl.closest('.article-page-footnotes')) return NodeFilter.FILTER_REJECT;
+            if (parentEl.closest('.article-page-number')) return NodeFilter.FILTER_REJECT;
+            if (parentEl.closest('.article-page-comments')) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
         }
     });
@@ -476,6 +481,69 @@ function rangeFromOffsets(root, startOffset, endOffset) {
     return range;
 }
 
+function normalizeAnnotationQuote(s) {
+    return String(s || '').replace(/\s+/g, ' ').trim();
+}
+
+/** Locate quote in body text — survives chrome/offset-space churn after layout changes. */
+function rangeFromSelectedText(root, selectedText) {
+    const needle = normalizeAnnotationQuote(selectedText);
+    if (!needle || needle.length < 2) return null;
+    const nodes = textNodesUnder(root);
+    let hay = '';
+    const map = []; // hay index → { node, local }
+    nodes.forEach((node) => {
+        const value = node.nodeValue || '';
+        for (let i = 0; i < value.length; i += 1) {
+            map.push({ node, local: i });
+            hay += value[i];
+        }
+    });
+    const hayNorm = hay.replace(/\s+/g, ' ');
+    // Build index map from normalized hay → original hay index
+    const normToRaw = [];
+    let raw = 0;
+    let norm = '';
+    while (raw < hay.length) {
+        if (/\s/.test(hay[raw])) {
+            if (norm.length && norm[norm.length - 1] !== ' ') {
+                normToRaw.push(raw);
+                norm += ' ';
+            }
+            while (raw < hay.length && /\s/.test(hay[raw])) raw += 1;
+            continue;
+        }
+        normToRaw.push(raw);
+        norm += hay[raw];
+        raw += 1;
+    }
+    const idx = norm.indexOf(needle);
+    if (idx < 0) return null;
+    const startRaw = normToRaw[idx];
+    const endRaw = normToRaw[idx + needle.length - 1];
+    if (startRaw == null || endRaw == null || !map[startRaw] || !map[endRaw]) return null;
+    const range = document.createRange();
+    range.setStart(map[startRaw].node, map[startRaw].local);
+    range.setEnd(map[endRaw].node, map[endRaw].local + 1);
+    if (range.collapsed) return null;
+    return range;
+}
+
+function rangeForAnnotation(root, item) {
+    const byOffset =
+        Number.isFinite(item.startOffset) && Number.isFinite(item.endOffset)
+            ? rangeFromOffsets(root, item.startOffset, item.endOffset)
+            : null;
+    if (byOffset) {
+        const got = normalizeAnnotationQuote(byOffset.toString());
+        const want = normalizeAnnotationQuote(item.selectedText);
+        if (!want || got === want || got.includes(want) || want.includes(got)) {
+            return byOffset;
+        }
+    }
+    return rangeFromSelectedText(root, item.selectedText) || byOffset;
+}
+
 function unwrapNode(el) {
     if (!el || !el.parentNode) return;
     const parent = el.parentNode;
@@ -510,8 +578,7 @@ function applyAnnotationHighlights() {
     const sorted = sortAnnotationsLikeRenderer(annotationsState);
     sorted.forEach((item, idx) => {
         const tone = annotationSoftColor(item.id, idx);
-        if (!Number.isFinite(item.startOffset) || !Number.isFinite(item.endOffset)) return;
-        const range = rangeFromOffsets(root, item.startOffset, item.endOffset);
+        const range = rangeForAnnotation(root, item);
         if (!range) return;
         const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
         rects.forEach((rect) => {
@@ -657,6 +724,11 @@ function bindAnnotationSelectionUi() {
             };
         }
         pendingAnnotationRange = range;
+        // Cancel any pending hide (mousedown schedules one) so the button stays up.
+        if (annotationToolbarHideTimer) {
+            clearTimeout(annotationToolbarHideTimer);
+            annotationToolbarHideTimer = null;
+        }
         toolbar.hidden = false;
         applySelectionSessionToolbarToneOnly();
         const top = Math.max(8, window.scrollY + rect.top - 40);
@@ -665,7 +737,11 @@ function bindAnnotationSelectionUi() {
         toolbar.style.left = `${left}px`;
     });
 
-    root.addEventListener('mousedown', () => {
+    // Only dismiss when the press is outside a live selection gesture on the article.
+    // Hiding on every article mousedown raced selectionchange and killed the button.
+    document.addEventListener('mousedown', (e) => {
+        if (toolbar.contains(e.target)) return;
+        if (root.contains(e.target)) return;
         scheduleHideAnnotationToolbar();
     });
 }
@@ -1553,7 +1629,11 @@ function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadH
     const band = footnoteBandHeight(spreadHeight);
     const foot = document.createElement('div');
     foot.className = 'article-page-footnotes';
-    body.appendChild(foot);
+    // Page-level sibling of the body (not inside it) so CSS can pin the band
+    // to the sheet foot — same visual as the editor footer zone.
+    const commentScreen = pageEl.querySelector(':scope > #comment-screen');
+    if (commentScreen) commentScreen.before(foot);
+    else body.after(foot);
 
     const carryOut = [];
     let accepting = true;
@@ -1736,17 +1816,19 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     let currentPage = currentSpread.leftPage;
     currentPage.classList.add('article-page-first');
-    let currentPageBody = ensureArticlePageBody(currentPage);
 
     // Legacy posts: title lives only in meta — keep top masthead.
     // New posts: title heading is in the body; byline travels with it.
+    // Masthead MUST be inserted before the body (ensureArticlePageBody places
+    // body after masthead). Appending masthead after body put the title at the
+    // foot of page 1 and scrambled annotation offsets.
     const titleInBody =
         blocksIncludeDocTitle(blocks) ||
         blocksHaveHeadingMatchingTitle(blocks, currentBlogMeta?.title);
     if (!titleInBody) {
         currentPage.appendChild(createInlineMasthead(currentBlogMeta));
-        currentPageBody = ensureArticlePageBody(currentPage);
     }
+    let currentPageBody = ensureArticlePageBody(currentPage);
 
     const assignedFootnoteAnchors = new Set();
     let footnoteCarry = [];

@@ -1139,7 +1139,9 @@ function initializeEditor() {
             Subscript,
             Superscript,
             TextAlign.configure({
-                types: ['heading', 'paragraph']
+                types: ['heading', 'paragraph'],
+                alignments: ['left', 'center', 'right', 'justify'],
+                defaultAlignment: null,
             }),
             ContentRefLink.configure({
                 openOnClick: false,
@@ -1383,6 +1385,11 @@ function setupToolbar() {
     const highlightWrap = document.querySelector('.toolbar-color-wrap');
     
     toolbarBtns.forEach(btn => {
+        // Preserve editor selection — mousedown on a button would otherwise blur
+        // the editor and drop the range before click handlers run (breaks align, etc.).
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+        });
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const action = btn.dataset.action;

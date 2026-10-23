@@ -161,6 +161,7 @@ body.reader-loading #comment-screen {
 
 #article-body .article-page-body {
     min-width: 0;
+    /* Content-sized — do not flex-grow, or margin-top:auto on footnotes has no free space */
     flex: 0 1 auto;
 }
 
@@ -174,24 +175,24 @@ body.reader-loading #comment-screen {
     padding-top: clamp(24px, 2.9vh, 34px);
 }
 
-/*
- * Last block before the footnote strip: its margin-bottom collapses with .article-page-footnotes’
- * margin-top, so the visible gap was ~max(12–18px, footnote margin). Pull the rule up by capping
- * that bottom margin when the next sibling is the footnote area.
- */
-#article-body .article-page-body > *:has(+ .article-page-footnotes) {
-    margin-bottom: 0 !important;
-}
-
-/* Footnotes: full column width rule; text aligns with body (no extra horizontal inset). */
-#article-body .article-page-footnotes {
+/* Footnotes: pinned to the sheet foot (editor footer-band parity), not under prose. */
+#article-body .article-page > .article-page-footnotes {
     width: 100%;
     box-sizing: border-box;
-    margin-top: clamp(8px, 1.15vw, 16px);
+    flex: 0 0 auto;
+    margin-top: auto;
     margin-inline: 0;
+    margin-bottom: 0;
     padding-top: clamp(0.35rem, 0.55vw, 0.65rem);
     padding-inline: 0;
+    padding-bottom: clamp(0.15rem, 0.4vh, 0.35rem);
     border-top: 1px solid rgba(23, 23, 23, 0.78);
+}
+
+/* Empty-comment input sits just above the footnote band when both share a page */
+#article-body .article-page > #comment-screen.comment-screen--above-footnotes {
+    margin-top: 0;
+    margin-bottom: clamp(4px, 0.6vw, 8px);
 }
 
 #article-body .article-page-footnotes > p[data-variant="footnote"]:first-child {
@@ -766,7 +767,7 @@ body.reader-embed .reader-nav-dashboard {
 }
 
 /* Footnotes on last page: sit just above the note strip, not under it */
-#article-body .article-page-body > #comment-screen.comment-screen--above-footnotes {
+#article-body .article-page > #comment-screen.comment-screen--above-footnotes {
     margin: clamp(10px, 1.2vw, 16px) 0 clamp(4px, 0.6vw, 8px);
     padding-bottom: 0;
 }
