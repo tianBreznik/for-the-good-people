@@ -113,6 +113,10 @@ body {
 }
 
 .blog-date {
+    /* Fixed slot so titles share one left edge (widest form: 31.12.99). */
+    box-sizing: border-box;
+    width: 8ch;
+    min-width: 8ch;
     font-family: 'Times New Roman', Times, serif;
     font-size: clamp(18px, 2.2vw, 26px);
     font-variant-numeric: tabular-nums;
