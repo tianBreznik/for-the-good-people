@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>About stamp export</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #00ff00;
+      width: 380px;
+      height: 520px;
+      overflow: hidden;
+    }
+    .about-popup {
+      --stamp-r: 7px;
+      position: relative;
+      width: 340px;
+      box-sizing: border-box;
+      margin: 20px;
+      padding: calc(14px + var(--stamp-r)) calc(16px + var(--stamp-r));
+      background:
+        linear-gradient(#ffffff, #ffffff) content-box,
+        radial-gradient(50% 50%, #0000 65%, #ffffff 67%)
+          round var(--stamp-r) var(--stamp-r) / calc(2 * var(--stamp-r)) calc(2 * var(--stamp-r));
+      text-align: center;
+      isolation: isolate;
+    }
+    .about-popup::after {
+      content: '';
+      position: absolute;
+      inset: var(--stamp-r);
+      z-index: 0;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+      opacity: 0.28;
+      background-image:
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+        repeating-radial-gradient(
+          rgba(0, 0, 0, 0.14) 0 0.7px,
+          transparent 0.7px 2px
+        );
+      background-size: 120px 120px, 3.2px 3.2px;
+    }
+    .about-popup-crest {
+      position: absolute;
+      inset: var(--stamp-r);
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+      opacity: 0.36;
+      mix-blend-mode: multiply;
+    }
+    .about-popup-crest img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center center;
+    }
+    .about-popup p {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 0.95em;
+      font-family: Georgia, 'Times New Roman', Times, serif;
+      font-size: 1.0625rem;
+      font-weight: 400;
+      line-height: 1.42;
+      text-align: center;
+      color: #171717;
+      -webkit-text-fill-color: #171717;
+      text-shadow:
+        -1.25px -1.25px 0 #fff,
+        1.25px -1.25px 0 #fff,
+        -1.25px 1.25px 0 #fff,
+        1.25px 1.25px 0 #fff,
+        0 -1.25px 0 #fff,
+        0 1.25px 0 #fff,
+        -1.25px 0 0 #fff,
+        1.25px 0 0 #fff,
+        0 0 2.5px #fff,
+        0 0 4px rgba(255, 255, 255, 0.95);
+    }
+    .about-popup p.about-popup-lead {
+      margin-bottom: 0.7em;
+      font-weight: 600;
+    }
+    .about-popup p:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <aside class="about-popup" id="stamp">
+    <div class="about-popup-crest" aria-hidden="true">
+      <img src="/img/about-stamp-figures.png?v=export-1x" alt="" />
+    </div>
+    <p class="about-popup-lead">All you need is good people.</p>
+    <p>Good People Posting is a platform for writing drawn from ordinary life. We publish short texts that bear the mark of a particular person: one who was there, or one who could not let a thought go unwritten.</p>
+    <p>Reading is open to all. Writing is admitted by application. Our work is to recover what conversation carries and to leave it where others may find it.</p>
+  </aside>
+</body>
+</html>

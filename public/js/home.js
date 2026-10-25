@@ -72,7 +72,7 @@ function revealHomeTitlesWithEmerge(options) {
         document.body.classList.remove('home-titles-instant');
     }
     document.body.classList.add('home-titles-visible');
-    document.body.classList.remove('home-titles-emerging');
+        document.body.classList.remove('home-titles-emerging');
     if (titleEmergeClearTimer) {
         clearTimeout(titleEmergeClearTimer);
         titleEmergeClearTimer = null;
@@ -83,9 +83,9 @@ const JUST_LOGGED_IN_KEY = 'justLoggedIn';
 
 function dismissSplashImmediately() {
     if (!topdiv) return;
-    topdiv.style.transition = 'none';
-    topdiv.classList.add('fade');
-    topdiv.style.display = 'none';
+        topdiv.style.transition = 'none';
+        topdiv.classList.add('fade');
+        topdiv.style.display = 'none';
     markHomeEntryDismissed({ hideNow: true });
     requestAnimationFrame(() => {
         if (topdiv) topdiv.style.transition = '';
@@ -99,8 +99,8 @@ function applyHomeEntryAfterGridReady() {
         if (sessionStorage.getItem(JUST_LOGGED_IN_KEY) === '1') {
             sessionStorage.removeItem(JUST_LOGGED_IN_KEY);
             fromLogin = true;
-        }
-    } catch (e) {}
+    }
+} catch (e) {}
 
     const entryDismissed = isHomeEntryDismissed() || hasPendingAdminHomeAction();
 
@@ -277,7 +277,7 @@ let physicsActive = false; // Whether physics simulation is running
 let animationFrameId = null; // For the physics animation loop
 let articlePreviewUiBound = false;
 let bioHoverTimer = null; // Author tag click → bio strip (delay)
-let aboutHoverTimer = null; // About card → about panel
+let aboutHoverTimer = null; // About card hover → floating card
 /** Ignore hover open/close while deep-link bio settles (avoids close→reopen double paint). */
 let bioHoverQuietUntil = 0;
 /** Home author-tag click → bio strip (short beat after click). */
@@ -729,11 +729,11 @@ function constrainPreviewImageToBudget(bodyEl, node, budget) {
     if (!img || !bodyEl) return false;
     bodyEl.appendChild(node);
     void bodyEl.offsetHeight;
-    if (bodyEl.scrollHeight <= budget) return true;
+    if (previewBodyFitsBudget(bodyEl, budget)) return true;
 
     bodyEl.removeChild(node);
     void bodyEl.offsetHeight;
-    const remaining = budget - bodyEl.scrollHeight;
+    const remaining = budget - previewBodyContentExtent(bodyEl);
     if (remaining < 56) return false;
 
     img.style.maxHeight = `${Math.floor(remaining)}px`;
@@ -743,7 +743,7 @@ function constrainPreviewImageToBudget(bodyEl, node, budget) {
     img.style.objectFit = 'contain';
     bodyEl.appendChild(node);
     void bodyEl.offsetHeight;
-    if (bodyEl.scrollHeight <= budget) return true;
+    if (previewBodyFitsBudget(bodyEl, budget)) return true;
 
     bodyEl.removeChild(node);
     return false;
@@ -828,6 +828,28 @@ function previewBodyHeightBudget(bodyEl, extraEl) {
         budget -= previewFootnoteBandHeight(pageEl);
     }
     return Math.max(32, budget);
+}
+
+/**
+ * Laid-out content bottom inside the preview body.
+ * Do not use scrollHeight: .home-preview-body is flex-stretched, so scrollHeight
+ * stays ≈ clientHeight even when only a few lines of content are present — and
+ * that falsely fails once the footnote band shrinks the budget below clientHeight.
+ */
+function previewBodyContentExtent(bodyEl) {
+    if (!bodyEl || !bodyEl.children.length) return 0;
+    void bodyEl.offsetHeight;
+    let maxBottom = 0;
+    for (const child of bodyEl.children) {
+        const cs = getComputedStyle(child);
+        const mb = parseFloat(cs.marginBottom) || 0;
+        maxBottom = Math.max(maxBottom, child.offsetTop + child.offsetHeight + mb);
+    }
+    return maxBottom;
+}
+
+function previewBodyFitsBudget(bodyEl, budget) {
+    return previewBodyContentExtent(bodyEl) <= budget + 1;
 }
 
 function pruneEmptyInlineNodesForPreview(root) {
@@ -930,7 +952,7 @@ function splitPreviewBlockToFit(bodyEl, sourceBlock) {
         const wrapped = wrapSplitParagraphForPreview(probe, sourceBlock);
         bodyEl.appendChild(wrapped);
         void bodyEl.offsetHeight;
-        const fits = bodyEl.scrollHeight <= budget;
+        const fits = previewBodyFitsBudget(bodyEl, budget);
         bodyEl.removeChild(wrapped);
         if (fits) {
             best = mid;
@@ -987,7 +1009,7 @@ function fitPreviewBlocksToPage(bodyEl, blocks) {
 
         bodyEl.appendChild(node);
         void bodyEl.offsetHeight;
-        if (bodyEl.scrollHeight <= budget) continue;
+        if (previewBodyFitsBudget(bodyEl, budget)) continue;
 
         bodyEl.removeChild(node);
         const split = splitPreviewBlockToFit(bodyEl, blocks[i]);
@@ -1051,7 +1073,7 @@ function buildHomePreviewByline(author, published) {
         }
     } else {
         authorEl = document.createElement('span');
-        authorEl.className = 'article-byline-author home-preview-byline-author';
+    authorEl.className = 'article-byline-author home-preview-byline-author';
         const avatarUrl = avatarUrlForAuthor(handle);
         if (avatarUrl) {
             const avatarImg = document.createElement('img');
@@ -1136,7 +1158,7 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
         h1.textContent = title;
         masthead.appendChild(h1);
         masthead.appendChild(buildHomePreviewByline(author, published));
-        page.appendChild(masthead);
+    page.appendChild(masthead);
     } else {
         blocks[titleBlockIndex] = wrapHomePreviewTitleBlock(
             blocks[titleBlockIndex],
@@ -1161,17 +1183,17 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             prefetchPreviewBlockImages(blocks).finally(() => {
-                fitPreviewBlocksToPage(body, blocks);
+            fitPreviewBlocksToPage(body, blocks);
                 if (typeof ContentRefs !== 'undefined' && ContentRefs.linkifyElement) {
                     ContentRefs.linkifyElement(body);
                 }
-                if (typeof onReady === 'function') {
-                    requestAnimationFrame(() => {
-                        void panelEl.offsetHeight;
-                        panelEl.classList.remove('article-preview-layout');
-                        onReady();
-                    });
-                }
+            if (typeof onReady === 'function') {
+                requestAnimationFrame(() => {
+                    void panelEl.offsetHeight;
+                    panelEl.classList.remove('article-preview-layout');
+                    onReady();
+                });
+            }
             });
         });
     });
@@ -1703,7 +1725,6 @@ function mountHomeWall(blogs) {
             overflow-y: auto;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
-            scrollbar-gutter: stable;
         `;
         const pane = document.createElement('div');
         pane.className = 'home-main-pane';
@@ -1761,8 +1782,6 @@ function mountHomeWall(blogs) {
         uniqueAuthors.add('Anonymous');
     }
 
-    // Random avatars for authors without a saved profile picture.
-    reshuffleAuthorAvatars(Array.from(uniqueAuthors));
     // Warm profiles after first paint — don’t block the wall on N author fetches.
     const warmAuthorProfiles = () => {
         Array.from(uniqueAuthors).forEach((name) => {
@@ -1788,20 +1807,26 @@ function mountHomeWall(blogs) {
 
     // Desktop search control under author tags (hidden on mobile via CSS)
     createSearchCard(authorSection);
-
+    
     // Add a static ABOUT card under authors
     createAboutCard(authorSection);
 
-    // Create about panel element once
-    const aboutPanel = document.createElement('aside');
-    aboutPanel.className = 'about-panel';
-    aboutPanel.innerHTML = `
-        <div class="about-panel-copy">
-            <p class="about-panel-lead">All you need is good people.</p>
-            <p>Good People Posting is a platform for writing drawn from ordinary life. We publish short texts that bear the mark of a particular person: one who was there, or one who could not let a thought go unwritten.</p>
-            <p>Reading is open to all. Writing is admitted by application. Our work is to recover what conversation carries and to leave it where others may find it.</p>
-        </div>`;
-    document.body.appendChild(aboutPanel);
+    // About floating card (bio-card look — hover open, drag, click-away close)
+    const aboutPopup = document.createElement('aside');
+    aboutPopup.className = 'about-popup';
+    aboutPopup.id = 'about-popup';
+    aboutPopup.hidden = true;
+    aboutPopup.setAttribute('role', 'dialog');
+    aboutPopup.setAttribute('aria-label', 'About');
+    aboutPopup.innerHTML = `
+        <div class="about-popup-crest" aria-hidden="true">
+            <img src="/img/about-stamp-figures.png?v=outlines-restore-2" alt="" draggable="false" />
+        </div>
+        <p class="about-popup-lead">All you need is good people.</p>
+        <p>Good People Posting is a platform for writing drawn from ordinary life. We publish short texts that bear the mark of a particular person: one who was there, or one who could not let a thought go unwritten.</p>
+        <p>Reading is open to all. Writing is admitted by application. Our work is to recover what conversation carries and to leave it where others may find it.</p>`;
+    document.body.appendChild(aboutPopup);
+    setupAboutPopupInteractions(aboutPopup);
 
     // Create top bio / search strip (reuse if author deep-link mounted it early)
     const bioPanel = ensureHomeBioPanel();
@@ -1817,14 +1842,14 @@ function mountHomeWall(blogs) {
     ensureMobileReaderShell();
 
     console.log('Created author cards for:', Array.from(uniqueAuthors));
-
+    
     // Auth controls before first layout so author-column measure is final.
     createAuthControls(authorSection);
 
     const layoutHomeColumns = () => {
-        for (let i = 1; i <= 4; i++) {
-            positionCardsInSection(sections[i]);
-        }
+    for (let i = 1; i <= 4; i++) {
+        positionCardsInSection(sections[i]);
+    }
         positionCardsInSection(authorSection, { startY: getFirstContentRowTop(sections) });
         layoutAuthControls();
         syncHomeActiveColumnRef?.();
@@ -1857,66 +1882,10 @@ function mountHomeWall(blogs) {
         requestAnimationFrame(layoutHomeColumns);
     });
     setTimeout(revealLaidOutStage, 280);
-
+    
     // Add hover interactions after positioning (disable popup/physics in new design)
     setupHoverInteractions();
-
-    const aboutCard = document.getElementById('about-card');
-    if (aboutCard) {
-        const panelEl = document.querySelector('.about-panel');
-        if (homeFinePointerHoverUi()) {
-            let aboutCloser = null;
-            const attachAboutMoveCloser = () => {
-                if (aboutCloser) return;
-                setTimeout(() => {
-                    if (aboutCloser) return;
-                    aboutCloser = () => {
-                        document.body.classList.remove('about-open');
-                        document.removeEventListener('mousemove', aboutCloser, true);
-                        aboutCloser = null;
-                    };
-                    document.addEventListener('mousemove', aboutCloser, true);
-                }, 120);
-            };
-            const openAbout = () => {
-                closeHomeSearchStrip();
-                document.body.classList.add('about-open');
-                attachAboutMoveCloser();
-            };
-            aboutCard.addEventListener('mouseenter', () => {
-                clearAboutHoverTimer();
-                aboutHoverTimer = setTimeout(openAbout, PANEL_HOVER_DWELL_MS);
-            });
-            aboutCard.addEventListener('mouseleave', () => clearAboutHoverTimer());
-            aboutCard.addEventListener('focus', () => {
-                clearAboutHoverTimer();
-                openAbout();
-            });
-            if (panelEl) {
-                panelEl.addEventListener('mouseenter', () => {
-                    clearAboutHoverTimer();
-                    openAbout();
-                });
-            }
-        } else {
-            aboutCard.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeHomeSearchStrip();
-                document.body.classList.toggle('about-open');
-            });
-            document.addEventListener(
-                'click',
-                (e) => {
-                    if (!document.body.classList.contains('about-open')) return;
-                    if (e.target.closest('.about-panel') || e.target.closest('#about-card')) return;
-                    document.body.classList.remove('about-open');
-                },
-                true
-            );
-        }
-    }
-
+    
     const authorCardsForBio = Array.from(document.querySelectorAll('.blog-card.author-card')).filter(
         card => (card.getAttribute('data-author') || '').toLowerCase() !== 'about'
     );
@@ -1926,11 +1895,16 @@ function mountHomeWall(blogs) {
             if (isBioHoverQuiet()) return;
             cancelAuthorBioClosing();
             closeHomeSearchStrip({ switchToBio: true });
+            closeAboutPopup();
             fillAuthorBioPanel(authorName);
             clearColumnTransformTransitions();
             document.body.classList.add('bio-open');
             applyAuthorBioHighlight(authorName);
             detachBioMoveCloser();
+            requestAnimationFrame(() => {
+                const strip = document.querySelector('.bio-panel-cards');
+                if (strip) strip.scrollLeft = 0;
+            });
         };
 
         authorCardsForBio.forEach((card) => {
@@ -2089,10 +2063,16 @@ function openAuthorBioByHandle(handle, { instant = false } = {}) {
     }
     fillAuthorBioPanel(name);
     if (instant) quietBioHover(900);
+    closeAboutPopup();
     clearColumnTransformTransitions();
     document.body.classList.add('bio-open');
     applyAuthorBioHighlight(name);
     detachBioMoveCloser();
+    // Narrow strip is one-card snap — always start on the profile card.
+    requestAnimationFrame(() => {
+        const strip = document.querySelector('.bio-panel-cards');
+        if (strip) strip.scrollLeft = 0;
+    });
     return true;
 }
 
@@ -2386,40 +2366,19 @@ function anchorMobilePaneToViewport(card) {
     });
 }
 
-/** Preset author avatars — profile picker will choose among these later. */
-function shuffleInPlace(list) {
-    for (let i = list.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const tmp = list[i];
-        list[i] = list[j];
-        list[j] = tmp;
-    }
-    return list;
-}
-
-/** Fresh random assignment for all author tags — call once after authors are known. */
-function reshuffleAuthorAvatars(authorNames) {
-    Object.keys(authorAvatarByName).forEach((k) => delete authorAvatarByName[k]);
-    const deck = shuffleInPlace(AUTHOR_AVATAR_FILES.slice());
-    if (!deck.length) return;
-    let i = 0;
-    (authorNames || []).forEach((raw) => {
-        const name = raw || 'Anonymous';
-        if (authorAvatarByName[name]) return;
-        authorAvatarByName[name] = `/pfps/${deck[i % deck.length]}`;
-        i += 1;
-    });
-}
-
 function normalizeClientAvatarPath(raw) {
     const path = String(raw || '').trim();
-    const match = path.match(/^\/pfps\/([A-Za-z0-9_.-]+)$/);
-    if (!match) return '';
-    const file = match[1];
-    if (!AUTHOR_AVATAR_FILES.includes(file)) return '';
-    return `/pfps/${file}`;
+    const preset = path.match(/^\/?pfps\/([A-Za-z0-9_.-]+)$/);
+    if (preset) {
+        if (!AUTHOR_AVATAR_FILES.includes(preset[1])) return '';
+        return `/pfps/${preset[1]}`;
+    }
+    const uploaded = path.match(/^\/?uploads\/([A-Za-z0-9_.-]+)$/);
+    if (uploaded) return `/uploads/${uploaded[1]}`;
+    return '';
 }
 
+/** Saved profile avatar only — no random fallback. */
 function avatarUrlForAuthor(authorName) {
     const name = authorName || 'Anonymous';
     const fromProfile = normalizeClientAvatarPath(authorProfileCache[authorHandleKey(name)]?.avatar);
@@ -2427,13 +2386,27 @@ function avatarUrlForAuthor(authorName) {
         authorAvatarByName[name] = fromProfile;
         return fromProfile;
     }
-    if (authorAvatarByName[name]) return authorAvatarByName[name];
-    // Fallback if called before reshuffle (shouldn't happen on home).
-    const files = AUTHOR_AVATAR_FILES;
-    if (!files.length) return '';
-    const idx = Math.floor(Math.random() * files.length);
-    authorAvatarByName[name] = `/pfps/${files[idx]}`;
-    return authorAvatarByName[name];
+    const cached = normalizeClientAvatarPath(authorAvatarByName[name]);
+    return cached || '';
+}
+
+async function uploadAvatarImage(file) {
+    if (!file || !String(file.type || '').startsWith('image/')) {
+        throw new Error('not_an_image');
+    }
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error((data && data.error) || 'upload_failed');
+    }
+    const raw = typeof data === 'string' ? data : data.url || data.path || '';
+    const path = normalizeClientAvatarPath(
+        String(raw).startsWith('http') || String(raw).startsWith('/') ? raw : `/${raw}`
+    );
+    if (!path) throw new Error('invalid_avatar');
+    return path;
 }
 
 function noteAuthorLatestPost(authorName, blog, doc) {
@@ -2863,22 +2836,102 @@ function setBioAvatarSelection(path, { preview = true } = {}) {
     const menu = document.getElementById('bio-avatar-menu');
     if (menu) {
         menu.querySelectorAll('.bio-avatar-option').forEach((el) => {
-            const on = el.dataset.avatar === clean;
+            if (el.classList.contains('bio-avatar-upload')) return;
+            const on = Boolean(clean) && el.dataset.avatar === clean;
             el.classList.toggle('is-selected', on);
             el.setAttribute('aria-selected', on ? 'true' : 'false');
         });
     }
 }
 
+function appendBioAvatarUploadCell(menu) {
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'bio-avatar-option bio-avatar-upload';
+    cell.setAttribute('role', 'option');
+    cell.setAttribute('aria-label', 'Upload a profile picture');
+    cell.title = 'Upload';
+    cell.innerHTML = '<span class="bio-avatar-upload-plus" aria-hidden="true">+</span>';
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.hidden = true;
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = '';
+        if (!file) return;
+        cell.disabled = true;
+        try {
+            const path = await uploadAvatarImage(file);
+            ensureBioAvatarCustomOption(menu, path);
+            setBioAvatarSelection(path);
+            closeBioAvatarMenu();
+        } catch (err) {
+            console.error('Avatar upload', err);
+            alert('Failed to upload image. Please try again.');
+        } finally {
+            cell.disabled = false;
+        }
+    });
+
+    cell.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInput.click();
+    });
+
+    menu.appendChild(cell);
+    menu.appendChild(fileInput);
+}
+
+function ensureBioAvatarCustomOption(menu, path) {
+    const clean = normalizeClientAvatarPath(path);
+    if (!menu || !clean || clean.startsWith('/pfps/')) return;
+    let btn = menu.querySelector('.bio-avatar-option[data-avatar-custom="1"]');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'bio-avatar-option';
+        btn.setAttribute('role', 'option');
+        btn.dataset.avatarCustom = '1';
+        btn.title = 'Uploaded';
+        const img = document.createElement('img');
+        img.alt = '';
+        img.decoding = 'async';
+        btn.appendChild(img);
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const p = normalizeClientAvatarPath(btn.dataset.avatar);
+            if (!p) return;
+            setBioAvatarSelection(p);
+            closeBioAvatarMenu();
+        });
+        const uploadCell = menu.querySelector('.bio-avatar-upload');
+        if (uploadCell && uploadCell.nextSibling) {
+            menu.insertBefore(btn, uploadCell.nextSibling);
+        } else {
+            menu.appendChild(btn);
+        }
+    }
+    btn.dataset.avatar = clean;
+    const img = btn.querySelector('img');
+    if (img) img.src = clean;
+}
+
 function ensureBioAvatarMenu() {
     const menu = document.getElementById('bio-avatar-menu');
-    if (!menu || menu.childElementCount) return menu;
+    if (!menu) return null;
+    if (menu.dataset.ready === '1') return menu;
+    menu.innerHTML = '';
+    appendBioAvatarUploadCell(menu);
     AUTHOR_AVATAR_FILES.forEach((file) => {
         const path = `/pfps/${file}`;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'bio-avatar-option';
-        btn.role = 'option';
+        btn.setAttribute('role', 'option');
         btn.dataset.avatar = path;
         btn.title = file;
         const img = document.createElement('img');
@@ -2895,6 +2948,7 @@ function ensureBioAvatarMenu() {
         });
         menu.appendChild(btn);
     });
+    menu.dataset.ready = '1';
     return menu;
 }
 
@@ -3128,11 +3182,12 @@ function enterAuthorBioEditMode(profile) {
     const captureUrl = normalizeCaptureUrlClient(p.captureUrl);
     setVal('bio-edit-capture-url', captureUrl);
 
-    ensureBioAvatarMenu();
+    const menu = ensureBioAvatarMenu();
     const currentAvatar =
         normalizeClientAvatarPath(p.avatar) ||
         normalizeClientAvatarPath(document.getElementById('bio-avatar')?.getAttribute('src')) ||
         avatarUrlForAuthor(author);
+    if (menu && currentAvatar) ensureBioAvatarCustomOption(menu, currentAvatar);
     setBioAvatarSelection(currentAvatar);
     closeBioAvatarMenu();
 
@@ -3441,7 +3496,13 @@ function applyAuthorProfileToPanel(authorName, profile) {
         const fromProfile = normalizeClientAvatarPath(p.avatar);
         if (fromProfile) authorAvatarByName[name] = fromProfile;
         const url = fromProfile || avatarUrlForAuthor(name);
-        if (img.getAttribute('src') !== url) img.src = url;
+        if (url) {
+            if (img.getAttribute('src') !== url) img.src = url;
+            img.removeAttribute('hidden');
+        } else {
+            img.removeAttribute('src');
+            img.setAttribute('hidden', '');
+        }
         img.alt = `@${name}`;
     }
 
@@ -3646,7 +3707,7 @@ function createBlogCard(blog, section, sectionIndex) {
         // Mobile narrow: first tap opens in-app reader.
         if (homeDirectArticleTapNav()) {
             ensureAuthorBioClosed().then(() => {
-                expandArticlePanelAndNavigate(blog.id, card);
+        expandArticlePanelAndNavigate(blog.id, card);
             });
             return;
         }
@@ -3702,11 +3763,40 @@ function createSectionTitleCard(section, titleText) {
     section.appendChild(container);
 }
 
+/** Last signed-in author handle — paint "me" on first wall paint (no @handle → me flicker). */
+const HOME_SELF_AUTHOR_KEY = 'homeSelfAuthorHandle';
+
+function rememberedSelfAuthorHandle() {
+    try {
+        return authorHandleKey(sessionStorage.getItem(HOME_SELF_AUTHOR_KEY) || '');
+    } catch (_) {
+        return '';
+    }
+}
+
+function rememberSelfAuthorHandle(handle) {
+    try {
+        const key = authorHandleKey(handle);
+        if (key) sessionStorage.setItem(HOME_SELF_AUTHOR_KEY, key);
+        else sessionStorage.removeItem(HOME_SELF_AUTHOR_KEY);
+    } catch (_) {
+        /* private mode */
+    }
+}
+
 function createAuthorCard(authorName, section) {
+    const self = rememberedSelfAuthorHandle();
+    const isSelf = Boolean(self) && authorHandleKey(authorName) === self;
+    const label = isSelf ? 'me' : `@${authorName}`;
+    const selfClass = isSelf ? ' author-card-self' : '';
+    const safeName = String(authorName || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
     section.innerHTML += `
         <div class="cardcontainer">
-            <div class="blog-card author-card" data-author="${authorName}" style="cursor: pointer;">
-                <h1 class="blog-title" id="${authorName}" data-text="@${authorName}">@${authorName}</h1>
+            <div class="blog-card author-card${selfClass}" data-author="${safeName}" style="cursor: pointer;">
+                <h1 class="blog-title" id="${safeName}" data-text="${label}">${label}</h1>
             </div>
         </div>
     `;
@@ -3783,9 +3873,144 @@ function closeHomeSearchStrip(options = {}) {
     searchStripCloseTimer = setTimeout(finish, getAboutDurationMs() + 80);
 }
 
+function placeAboutPopupNearCard(popup, aboutCard) {
+    if (!popup || !aboutCard) return;
+    const rect = aboutCard.getBoundingClientRect();
+    const pad = 12;
+    const width = Math.min(340, window.innerWidth - pad * 2);
+    let left = rect.left - width - 16;
+    if (left < pad) left = Math.max(pad, rect.right + 16);
+    left = Math.min(left, window.innerWidth - width - pad);
+    let top = Math.max(pad, Math.min(rect.top, window.innerHeight - 120));
+    popup.style.width = `${width}px`;
+    popup.style.left = `${Math.round(left)}px`;
+    popup.style.top = `${Math.round(top)}px`;
+    popup.style.right = 'auto';
+    popup.style.bottom = 'auto';
+}
+
+function openAboutPopup({ reposition = true } = {}) {
+    clearAboutHoverTimer();
+    const popup = document.getElementById('about-popup');
+    if (!popup) return;
+    const aboutCard = document.getElementById('about-card');
+    if (reposition || !popup.style.left) {
+        placeAboutPopupNearCard(popup, aboutCard);
+    }
+    popup.hidden = false;
+    closeHomeSearchStrip();
+}
+
+function closeAboutPopup() {
+    clearAboutHoverTimer();
+    const popup = document.getElementById('about-popup');
+    if (!popup || popup.hidden) return;
+    popup.hidden = true;
+    popup.classList.remove('is-dragging');
+}
+
+function setupAboutPopupInteractions(popup) {
+    if (!popup) return;
+    const aboutCard = () => document.getElementById('about-card');
+
+    const scheduleOpen = () => {
+        if (!popup.hidden) return;
+        clearAboutHoverTimer();
+        aboutHoverTimer = setTimeout(() => {
+            if (popup.hidden) openAboutPopup({ reposition: true });
+        }, PANEL_HOVER_DWELL_MS);
+    };
+
+    // Hover (fine pointer) opens; click also opens on touch / as a fallback.
+    document.addEventListener(
+        'pointerover',
+        (e) => {
+            if (!homeFinePointerHoverUi()) return;
+            if (e.target.closest('#about-card') || e.target.closest('#about-popup')) {
+                scheduleOpen();
+            }
+        },
+        true
+    );
+    document.addEventListener(
+        'pointerout',
+        (e) => {
+            if (!homeFinePointerHoverUi()) return;
+            const next = e.relatedTarget;
+            if (next && (next.closest?.('#about-card') || next.closest?.('#about-popup'))) return;
+            if (e.target.closest('#about-card') || e.target.closest('#about-popup')) {
+                clearAboutHoverTimer();
+            }
+        },
+        true
+    );
+
+    document.addEventListener(
+        'click',
+        (e) => {
+            const card = aboutCard();
+            if (card && (e.target === card || card.contains(e.target))) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (popup.hidden) openAboutPopup({ reposition: true });
+                return;
+            }
+            if (popup.hidden) return;
+            if (e.target.closest('#about-popup')) return;
+            closeAboutPopup();
+        },
+        true
+    );
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (popup.hidden) return;
+        closeAboutPopup();
+    });
+
+    // Drag anywhere on the card (ignore text selection drags that start on a long-press select).
+    let drag = null;
+    popup.addEventListener('pointerdown', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        if (e.target.closest('a, button, input, textarea')) return;
+        const r = popup.getBoundingClientRect();
+        drag = {
+            pointerId: e.pointerId,
+            offsetX: e.clientX - r.left,
+            offsetY: e.clientY - r.top,
+            moved: false
+        };
+        popup.classList.add('is-dragging');
+        try {
+            popup.setPointerCapture(e.pointerId);
+        } catch (_) {}
+        e.preventDefault();
+    });
+    popup.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        drag.moved = true;
+        const width = popup.offsetWidth;
+        const height = popup.offsetHeight;
+        const pad = 8;
+        let left = e.clientX - drag.offsetX;
+        let top = e.clientY - drag.offsetY;
+        left = Math.max(pad, Math.min(left, window.innerWidth - width - pad));
+        top = Math.max(pad, Math.min(top, window.innerHeight - height - pad));
+        popup.style.left = `${Math.round(left)}px`;
+        popup.style.top = `${Math.round(top)}px`;
+    });
+    const endDrag = (e) => {
+        if (!drag || (e && e.pointerId !== drag.pointerId)) return;
+        drag = null;
+        popup.classList.remove('is-dragging');
+    };
+    popup.addEventListener('pointerup', endDrag);
+    popup.addEventListener('pointercancel', endDrag);
+}
+
 function openHomeSearchStrip() {
     document.body.classList.remove('bio-open');
-    document.body.classList.remove('about-open');
+    closeAboutPopup();
     document.body.classList.remove('search-closing');
     if (searchStripCloseTimer) {
         clearTimeout(searchStripCloseTimer);
@@ -3895,17 +4120,21 @@ function layoutAuthControlTitle(titleEl, { align = 'left' } = {}) {
     document.body.appendChild(probe);
     // Extra slack for Impact emboss (::before + text-shadow) so the last glyph
     // isn't clipped by the author column's overflow-x: hidden.
-    const w = Math.ceil(probe.getBoundingClientRect().width + 12);
+    const w = Math.ceil(probe.getBoundingClientRect().width + 8);
     const h = Math.ceil(probe.getBoundingClientRect().height + 2);
     document.body.removeChild(probe);
     const card = titleEl.closest('.blog-card');
     const container = titleEl.closest('.cardcontainer');
     if (card) {
         card.style.position = 'relative';
-        card.style.width = `${w + 14}px`;
-        card.style.height = `${h + 6}px`;
+        card.style.width = `${w}px`;
+        card.style.height = `${h + 4}px`;
         card.style.overflow = 'visible';
         card.style.flexShrink = '0';
+        card.style.padding = '0';
+        // Default .blog-card is flex-centered — that left a gap beside right-rail LOGIN.
+        card.style.justifyContent = align === 'right' ? 'flex-end' : 'flex-start';
+        card.style.alignItems = 'center';
     }
     if (container) {
         container.style.flexShrink = '0';
@@ -4014,8 +4243,8 @@ function closeAuthMenu() {
 }
 
 function layoutAuthControls() {
-    layoutAuthControlTitle(document.getElementById('auth-login-text'));
-    // Menu items sit on the right edge — right-align so any width slack grows left.
+    // Same right rail as author tags / SEARCH / ABOUT — left-align left a gap beside LOGIN.
+    layoutAuthControlTitle(document.getElementById('auth-login-text'), { align: 'right' });
     layoutAuthControlTitle(document.getElementById('auth-menu-logout-text'), { align: 'right' });
     ['auth-editor-card', 'auth-dashboard-card'].forEach((id) => {
         const card = document.getElementById(id);
@@ -4024,7 +4253,7 @@ function layoutAuthControls() {
     });
     const applyCard = document.getElementById('auth-apply-card');
     if (applyCard && applyCard.style.display !== 'none' && !applyCard.hidden) {
-        layoutAuthControlTitle(applyCard.querySelector('.blog-title'));
+        layoutAuthControlTitle(applyCard.querySelector('.blog-title'), { align: 'right' });
     }
 }
 
@@ -4208,8 +4437,11 @@ function updateAuthControls(user, isRealPerson) {
 function syncSelfAuthorTagLabel(user, isRealPerson) {
     const selfId =
         isRealPerson && user && typeof getAuthorIdFromUser === 'function'
-            ? String(getAuthorIdFromUser(user) || '').trim().toLowerCase()
+            ? authorHandleKey(getAuthorIdFromUser(user) || '')
             : '';
+
+    if (selfId) rememberSelfAuthorHandle(selfId);
+    else if (!user) rememberSelfAuthorHandle('');
 
     document.querySelectorAll('.blog-card.author-card').forEach((card) => {
         const name = (card.getAttribute('data-author') || '').trim();
@@ -4217,7 +4449,7 @@ function syncSelfAuthorTagLabel(user, isRealPerson) {
         const title = card.querySelector('.blog-title');
         if (!title) return;
 
-        const isSelf = Boolean(selfId) && name.toLowerCase() === selfId;
+        const isSelf = Boolean(selfId) && authorHandleKey(name) === selfId;
         if (isSelf) {
             title.textContent = 'me';
             title.setAttribute('data-text', 'me');
@@ -4369,6 +4601,7 @@ function positionCardsInSection(section, options = {}) {
         title.style.removeProperty('text-overflow');
         title.style.removeProperty('-webkit-line-clamp');
         title.style.removeProperty('display');
+        title.style.removeProperty('font-size');
         const deskCard = title.closest('.blog-card');
         if (deskCard) {
             deskCard.style.removeProperty('box-sizing');
@@ -4376,6 +4609,7 @@ function positionCardsInSection(section, options = {}) {
             deskCard.style.removeProperty('min-width');
             deskCard.style.removeProperty('max-width');
             deskCard.style.removeProperty('position');
+            deskCard.style.removeProperty('font-size');
         }
         card.style.removeProperty('box-sizing');
         card.style.removeProperty('min-width');
@@ -4422,8 +4656,89 @@ function positionCardsInSection(section, options = {}) {
             rect = title.getBoundingClientRect();
         }
 
+        const isSectionHeading = card.classList.contains('section-title-container');
+        const isAuthorSection = section.classList.contains('author-section');
+
+        // Author rail: keep one line, shrink type to fit the column; ellipsis only if still too wide.
+        if (isAuthorSection && !isSectionHeading) {
+            const railPad = 8;
+            const maxTagW = Math.max(48, Math.floor(colInner - railPad * 2));
+            title.style.textAlign = 'right';
+            title.style.whiteSpace = 'nowrap';
+            title.style.display = 'inline-block';
+            title.style.boxSizing = 'border-box';
+            // Measure unconstrained width first — max-width would hide overflow and skip shrink.
+            title.style.removeProperty('max-width');
+            title.style.removeProperty('width');
+            title.style.removeProperty('overflow');
+            title.style.removeProperty('text-overflow');
+            title.offsetHeight;
+            let naturalW = title.getBoundingClientRect().width;
+
+            if (naturalW > maxTagW + 0.5) {
+                const base = parseFloat(getComputedStyle(title).fontSize) || 28;
+                const minPx = Math.max(11, Math.round(base * 0.55));
+                let lo = minPx;
+                let hi = base;
+                let best = minPx;
+                for (let i = 0; i < 14; i++) {
+                    const mid = (lo + hi) / 2;
+                    title.style.fontSize = `${mid}px`;
+                    title.offsetHeight;
+                    const w = title.getBoundingClientRect().width;
+                    if (w <= maxTagW) {
+                        best = mid;
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                title.style.fontSize = `${best}px`;
+                title.offsetHeight;
+                naturalW = title.getBoundingClientRect().width;
+                if (naturalW > maxTagW + 0.5) {
+                    title.style.display = 'block';
+                    title.style.width = `${maxTagW}px`;
+                    title.style.maxWidth = `${maxTagW}px`;
+                    title.style.overflow = 'hidden';
+                    title.style.textOverflow = 'ellipsis';
+                    title.offsetHeight;
+                    naturalW = title.getBoundingClientRect().width;
+                }
+            }
+
+            title.style.maxWidth = `${maxTagW}px`;
+            rect = title.getBoundingClientRect();
+            const tagW = Math.min(maxTagW, Math.ceil(Math.max(naturalW, rect.width)) + 4);
+            const tagH = Math.ceil(rect.height) + 2;
+            card.style.position = 'absolute';
+            card.style.top = `${y}px`;
+            card.style.width = `${tagW}px`;
+            card.style.height = `${tagH}px`;
+            card.style.right = 'var(--author-rail-inset)';
+            card.style.left = 'auto';
+            y += tagH + 4;
+            return;
+        }
+
         const width = isTitleSection && isMultiColumn ? stripW + 4 : rect.width + 4;
         const height = rect.height + 2;
+
+        if (isTitleSection && isSectionHeading) {
+            // In-flow sticky: pins at column top; articles stay absolutely positioned below.
+            card.style.position = 'sticky';
+            card.style.top = '0';
+            card.style.zIndex = '6';
+            card.style.left = '0';
+            card.style.right = 'auto';
+            card.style.width = '100%';
+            card.style.removeProperty('height');
+            title.style.textAlign = 'left';
+            card.offsetHeight;
+            // Same 4px stack gap as between article cards — don't add extra air under the label.
+            y = card.offsetHeight + 4;
+            return;
+        }
 
         card.style.position = 'absolute';
         card.style.top = `${y}px`;
@@ -4455,13 +4770,19 @@ function positionCardsInSection(section, options = {}) {
         section.appendChild(spacer);
     }
     const baseH = Math.max(y, startY);
+    // Sticky section titles already contribute their height in normal flow — don't double-count.
+    const stickyTitle = isTitleSection
+        ? section.querySelector(':scope > .section-title-container')
+        : null;
+    const stickyH = stickyTitle ? stickyTitle.offsetHeight : 0;
+    const spacerH = Math.max(0, baseH - stickyH);
     spacer.dataset.baseHeight = String(baseH);
     if (section.classList.contains('author-section')) {
         const clearance = measureAuthChromeClearancePx();
         section.style.setProperty('--author-auth-clearance', `${clearance}px`);
-        spacer.style.height = `${baseH + clearance}px`;
+        spacer.style.height = `${spacerH + clearance}px`;
     } else {
-        spacer.style.height = `${baseH}px`;
+        spacer.style.height = `${spacerH}px`;
     }
 }
 
@@ -4515,7 +4836,7 @@ function closeArticlePreview() {
     // Keep seam for one frame in closing state so slabs have a concrete shifted state to animate back from.
     requestAnimationFrame(() => {
         if (closeSeq !== articlePreviewCloseSeq) return;
-        clearActivePreviewSeam();
+    clearActivePreviewSeam();
     });
     const panel = document.querySelector('.article-panel');
     if (panel) {
@@ -4528,14 +4849,14 @@ function closeArticlePreview() {
         panel.style.removeProperty('--articleExpandPanelShiftX');
         panel.classList.add('article-preview-closing');
     }
-    if (articlePreviewClosingTimer) clearTimeout(articlePreviewClosingTimer);
+        if (articlePreviewClosingTimer) clearTimeout(articlePreviewClosingTimer);
     articlePreviewClosePromise = new Promise((resolve) => {
         articlePreviewCloseResolve = resolve;
         articlePreviewClosingTimer = setTimeout(() => {
             if (closeSeq !== articlePreviewCloseSeq) return;
             articlePreviewClosingTimer = null;
             if (panel) {
-                panel.classList.remove('article-preview-closing');
+            panel.classList.remove('article-preview-closing');
                 delete panel.dataset.handoffTitle;
                 delete panel.dataset.handoffAuthor;
                 delete panel.dataset.handoffPublishedAt;
@@ -4616,7 +4937,7 @@ function ensureArticlePreviewUi() {
                 closeMobileInAppReader();
                 return;
             }
-            closeArticlePreview();
+                        closeArticlePreview();
         },
         true
     );
@@ -4664,10 +4985,10 @@ async function applyArticlePreviewFromBlogCard(card, seamIndex) {
     ) {
         const swapSeq = ++articlePreviewOpenSeq;
         articleEl.dataset.blogId = blogId;
-        articleEl.dataset.handoffTitle = title;
-        articleEl.dataset.handoffAuthor = author;
-        articleEl.dataset.handoffPublishedAt = publishedAt;
-        articleEl.dataset.handoffArticle = rawArticle;
+    articleEl.dataset.handoffTitle = title;
+    articleEl.dataset.handoffAuthor = author;
+    articleEl.dataset.handoffPublishedAt = publishedAt;
+    articleEl.dataset.handoffArticle = rawArticle;
         setPreviewSourceHighlight(card);
         renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
             if (swapSeq !== articlePreviewOpenSeq) return;
@@ -4705,13 +5026,13 @@ async function applyArticlePreviewFromBlogCard(card, seamIndex) {
 
     const startPreview = () => {
         if (openSeq !== articlePreviewOpenSeq) return;
-        setActivePreviewSeam(seamIndex);
-        renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
+    setActivePreviewSeam(seamIndex);
+    renderFirstPagePreview(articleEl, { title, article: rawArticle, author, publishedAt }, () => {
             if (openSeq !== articlePreviewOpenSeq) return;
             if (document.body.classList.contains('bio-closing') || document.body.classList.contains('bio-open')) {
                 return;
             }
-            document.body.classList.add('article-open');
+        document.body.classList.add('article-open');
             document.body.classList.remove('wall-hover-freeze');
             setPreviewSourceHighlight(card);
         });
@@ -4804,24 +5125,24 @@ function setupHoverInteractions() {
             card.addEventListener('mouseleave', () => {
                 if (bioInteractionsLocked()) return;
                 scheduleCrossHighlightClear();
-            });
         });
+    });
 
         authorCards.forEach((authorCard) => {
-            const authorName = authorCard.getAttribute('data-author');
-
-            authorCard.addEventListener('mouseenter', () => {
+        const authorName = authorCard.getAttribute('data-author');
+        
+        authorCard.addEventListener('mouseenter', () => {
                 if (bioInteractionsLocked()) return;
-                if ((authorName || '').toLowerCase() === 'about') return;
+            if ((authorName || '').toLowerCase() === 'about') return;
                 if (authorCard.id === 'search-card') return;
                 applyCrossHighlight(authorName, { washOthers: true });
-            });
-
-            authorCard.addEventListener('mouseleave', () => {
+        });
+        
+        authorCard.addEventListener('mouseleave', () => {
                 if (bioInteractionsLocked()) return;
                 scheduleCrossHighlightClear();
-            });
         });
+    });
     }
 
     ensureArticlePreviewUi();
@@ -4966,21 +5287,21 @@ function playExpandFullscreenThenNavigate(blogId) {
     };
     requestAnimationFrame(() => {
         // Start grow on the earliest painted frame after article-open to avoid a visible dead interval.
-        void articlePanel.offsetHeight;
-        articlePanel.classList.add('article-expand-run');
-        const expandMs = getExpandNavigateMs();
-        const onTransitionEnd = (e) => {
-            if (e.target !== articlePanel) return;
-            if (e.propertyName !== 'clip-path' && e.propertyName !== 'transform') return;
-            articlePanel.removeEventListener('transitionend', onTransitionEnd);
+            void articlePanel.offsetHeight;
+                articlePanel.classList.add('article-expand-run');
+            const expandMs = getExpandNavigateMs();
+            const onTransitionEnd = (e) => {
+                if (e.target !== articlePanel) return;
+                if (e.propertyName !== 'clip-path' && e.propertyName !== 'transform') return;
+                articlePanel.removeEventListener('transitionend', onTransitionEnd);
             onExpandComplete();
-        };
-        articlePanel.addEventListener('transitionend', onTransitionEnd);
-        // Fallback in case transitionend does not fire.
-        articleExpandNavigateTimer = setTimeout(() => {
-            articlePanel.removeEventListener('transitionend', onTransitionEnd);
+            };
+            articlePanel.addEventListener('transitionend', onTransitionEnd);
+            // Fallback in case transitionend does not fire.
+            articleExpandNavigateTimer = setTimeout(() => {
+                articlePanel.removeEventListener('transitionend', onTransitionEnd);
             onExpandComplete();
-        }, expandMs + 80);
+            }, expandMs + 80);
     });
 }
 

@@ -24,7 +24,6 @@ import {
     StyledHeading,
     createTitleBylineExtension,
     ensureDocTitleHeading,
-    markDocTitleAt,
 } from './title-byline.js';
 // Editor functionality with Tiptap and auto-save
 
@@ -631,8 +630,10 @@ function syncToolbarFromSelection() {
         : null;
     const imageAlign = selectedImageAlignForToolbar();
     const inDocTitle =
-        editor.isActive('heading', { level: 1 }) &&
+        editor.isActive('heading') &&
         Boolean(editor.getAttributes('heading').docTitle);
+    const inSubheading =
+        editor.isActive('heading', { level: 2 }) && !inDocTitle;
 
     /** Only stateful / toggleable actions — not one-shot inserts (dinkus, footnote, …). */
     const activeByAction = {
@@ -649,7 +650,7 @@ function syncToolbarFromSelection() {
         'align-right': editor.isActive({ textAlign: 'right' }),
         'align-justify': editor.isActive({ textAlign: 'justify' }),
         link: editor.isActive('link'),
-        'title-toggle': inDocTitle,
+        subheading: inSubheading,
         blockquote: editor.isActive('blockquote') && bqVariant !== 'quote',
         poetry: paraVariant === 'poetry' || paraVariant === 'poetry-author',
         'intro-paragraph': paraVariant === 'intro',
@@ -1745,7 +1746,9 @@ function initializeEditor() {
                 showOnlyWhenEditable: true,
                 showOnlyCurrent: false,
                 placeholder: ({ node }) => {
-                    if (node.type.name === 'heading') return 'Title';
+                    if (node.type.name === 'heading') {
+                        return node.attrs?.docTitle ? 'Title' : 'Subheading';
+                    }
                     return '#IKFLY';
                 },
             }),
@@ -2038,18 +2041,18 @@ function setupToolbar() {
                 case 'line-break':
                     chain.setHardBreak().run();
                     break;
-                case 'title-toggle': {
-                    // Move the doc-title marker here — never remove it (title + byline are required).
-                    if (editor.isActive('heading', { level: 1 }) && editor.getAttributes('heading').docTitle) {
+                case 'subheading': {
+                    // Don't convert the article title — marker is required.
+                    if (editor.isActive('heading') && editor.getAttributes('heading').docTitle) {
                         break;
                     }
-                    chain.setHeading({ level: 1 }).updateAttributes('heading', { docTitle: true }).run();
-                    const { $from } = editor.state.selection;
-                    let depth = $from.depth;
-                    while (depth > 0 && $from.node(depth).type.name !== 'heading') depth -= 1;
-                    if (depth > 0) {
-                        const pos = $from.before(depth);
-                        markDocTitleAt(editor, pos);
+                    if (editor.isActive('heading', { level: 2 })) {
+                        chain.setParagraph().run();
+                    } else {
+                        chain
+                            .setHeading({ level: 2 })
+                            .updateAttributes('heading', { docTitle: false })
+                            .run();
                     }
                     break;
                 }
@@ -2251,8 +2254,11 @@ async function handleImageUpload(event) {
         const data = await response.json();
         if (data.error) throw new Error(data.error);
 
+        // /upload returns "/uploads/…" (or legacy "uploads/…" without a slash).
         const imageSrc =
-            typeof data === 'string' && !data.startsWith('http') && !data.startsWith('/') ? `/${data}` : data;
+            typeof data === 'string' && !data.startsWith('http') && !data.startsWith('/')
+                ? `/${data}`
+                : data;
 
         if (editor) {
             const display = pendingImageMode === 'inline' ? 'inline' : 'block';

@@ -560,10 +560,14 @@ body.editor-page {
     font-weight: 700;
 }
 
-.tiptap-editor .ProseMirror > h2 {
-    font-size: clamp(0.95rem, 0.98vw, 1.08rem);
-    line-height: 1.25;
-    font-weight: 700;
+/* Body subheading — clearly below title (size + weight), above body. */
+.tiptap-editor .ProseMirror > h2:not([data-doc-title="true"]) {
+    font-size: clamp(1.02rem, 1.12vw, 1.18rem);
+    line-height: 1.28;
+    font-weight: 600;
+    margin-top: 1.15em;
+    margin-bottom: 0.35em;
+    color: #141414;
 }
 
 .tiptap-editor .ProseMirror > h3:not([data-doc-title="true"]) {

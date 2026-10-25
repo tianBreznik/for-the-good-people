@@ -303,24 +303,100 @@
         }
     }
 
+    function normalizeApplyAvatarPath(raw) {
+        const path = String(raw || '').trim();
+        const preset = path.match(/^\/?pfps\/([A-Za-z0-9_.-]+)$/);
+        if (preset) {
+            if (!avatarFiles().includes(preset[1])) return '';
+            return `/pfps/${preset[1]}`;
+        }
+        const uploaded = path.match(/^\/?uploads\/([A-Za-z0-9_.-]+)$/);
+        if (uploaded) return `/uploads/${uploaded[1]}`;
+        return '';
+    }
+
     function getSelectedAvatar() {
-        return String(document.getElementById('home-apply-avatar')?.value || '').trim();
+        return normalizeApplyAvatarPath(document.getElementById('home-apply-avatar')?.value || '');
+    }
+
+    async function uploadApplyAvatarImage(file) {
+        if (!file || !String(file.type || '').startsWith('image/')) {
+            throw new Error('not_an_image');
+        }
+        const formData = new FormData();
+        formData.append('image', file);
+        const response = await fetch('/upload', { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error((data && data.error) || 'upload_failed');
+        }
+        const raw = typeof data === 'string' ? data : data.url || data.path || '';
+        const path = normalizeApplyAvatarPath(
+            String(raw).startsWith('http') || String(raw).startsWith('/') ? raw : `/${raw}`
+        );
+        if (!path) throw new Error('invalid_avatar');
+        return path;
+    }
+
+    function ensureApplyAvatarCustomOption(menu, path) {
+        const clean = normalizeApplyAvatarPath(path);
+        if (!menu || !clean || clean.startsWith('/pfps/')) return;
+        let btn = menu.querySelector('.home-apply-avatar-option[data-avatar-custom="1"]');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'home-apply-avatar-option';
+            btn.setAttribute('role', 'option');
+            btn.dataset.avatarCustom = '1';
+
+            const img = document.createElement('img');
+            img.alt = 'Uploaded';
+            img.decoding = 'async';
+
+            const label = document.createElement('span');
+            label.className = 'home-apply-avatar-option-name';
+            label.textContent = 'Uploaded';
+
+            btn.appendChild(img);
+            btn.appendChild(label);
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const p = normalizeApplyAvatarPath(btn.dataset.avatar);
+                if (!p) return;
+                setSelectedAvatar(p);
+                setApplyError('');
+                closeAvatarMenu();
+            });
+
+            const uploadCell = menu.querySelector('.home-apply-avatar-upload');
+            if (uploadCell && uploadCell.nextSibling) {
+                menu.insertBefore(btn, uploadCell.nextSibling);
+            } else {
+                menu.appendChild(btn);
+            }
+        }
+        btn.dataset.avatar = clean;
+        const img = btn.querySelector('img');
+        if (img) img.src = clean;
     }
 
     function setSelectedAvatar(path) {
+        const clean = normalizeApplyAvatarPath(path);
         const hidden = document.getElementById('home-apply-avatar');
         const img = document.getElementById('home-apply-avatar-trigger-img');
         const text = document.getElementById('home-apply-avatar-trigger-text');
         const menu = document.getElementById('home-apply-avatar-menu');
 
-        if (hidden) hidden.value = path || '';
+        if (hidden) hidden.value = clean || '';
 
-        if (path) {
+        if (clean) {
             if (img) {
-                img.src = path;
+                img.src = clean;
                 img.hidden = false;
             }
             if (text) text.textContent = 'Selected';
+            if (menu) ensureApplyAvatarCustomOption(menu, clean);
         } else {
             if (img) {
                 img.removeAttribute('src');
@@ -331,7 +407,8 @@
 
         if (menu) {
             menu.querySelectorAll('.home-apply-avatar-option').forEach((el) => {
-                const on = el.dataset.avatar === path;
+                if (el.classList.contains('home-apply-avatar-upload')) return;
+                const on = el.dataset.avatar === clean;
                 el.classList.toggle('is-selected', on);
                 el.setAttribute('aria-selected', on ? 'true' : 'false');
             });
@@ -380,6 +457,49 @@
         if (!menu) return;
         menu.innerHTML = '';
         const selected = getSelectedAvatar();
+
+        const uploadCell = document.createElement('button');
+        uploadCell.type = 'button';
+        uploadCell.className = 'home-apply-avatar-option home-apply-avatar-upload';
+        uploadCell.setAttribute('role', 'option');
+        uploadCell.setAttribute('aria-label', 'Upload a profile picture');
+        uploadCell.setAttribute('aria-selected', 'false');
+        uploadCell.innerHTML =
+            '<span class="home-apply-avatar-upload-plus" aria-hidden="true">+</span>' +
+            '<span class="home-apply-avatar-option-name">Upload</span>';
+
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.hidden = true;
+        fileInput.addEventListener('change', async () => {
+            const file = fileInput.files && fileInput.files[0];
+            fileInput.value = '';
+            if (!file) return;
+            uploadCell.disabled = true;
+            try {
+                const path = await uploadApplyAvatarImage(file);
+                ensureApplyAvatarCustomOption(menu, path);
+                setSelectedAvatar(path);
+                setApplyError('');
+                closeAvatarMenu();
+            } catch (err) {
+                console.error('Avatar upload', err);
+                setApplyError('Failed to upload image. Please try again.');
+            } finally {
+                uploadCell.disabled = false;
+            }
+        });
+        uploadCell.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            fileInput.click();
+        });
+        menu.appendChild(uploadCell);
+        menu.appendChild(fileInput);
+
+        if (selected) ensureApplyAvatarCustomOption(menu, selected);
+
         avatarFiles().forEach((file) => {
             const path = `/pfps/${file}`;
             const btn = document.createElement('button');

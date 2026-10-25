@@ -627,17 +627,28 @@ app.get('/editor', (req, res) => {
 });
 
 app.post('/upload', (req, res) => {
-    let file = req.files.image;
-    let date = new Date();
-    let imagename = date.getDate() + date.getTime() + file.name;
-    let uploadPath = 'public/uploads/' + imagename;
+    if (!req.files || !req.files.image) {
+        return res.status(400).json({ error: 'missing_image' });
+    }
+    const file = req.files.image;
+    const mime = String(file.mimetype || '');
+    if (!mime.startsWith('image/')) {
+        return res.status(400).json({ error: 'not_an_image' });
+    }
+    const rawName = String(file.name || 'image')
+        .replace(/[^A-Za-z0-9._-]+/g, '_')
+        .replace(/^\.+/, '')
+        .slice(0, 80) || 'image';
+    const imagename = `${Date.now()}-${rawName}`;
+    const uploadPath = path.join(uploadsDir, imagename);
 
-    file.mv(uploadPath, (err, result) => {
+    file.mv(uploadPath, (err) => {
         if (err) {
-            throw err;
-        } else {
-            res.json(`uploads/${imagename}`);
+            console.error('upload', err);
+            return res.status(500).json({ error: 'upload_failed' });
         }
+        // Leading slash so avatar paths normalize as /uploads/...
+        res.json(`/uploads/${imagename}`);
     });
 });
 

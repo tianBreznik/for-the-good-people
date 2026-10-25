@@ -1,0 +1,533 @@
+/*
+ * Shared article prose — home wall preview + published reader.
+ * Scope: .article-page (both surfaces). Keep home.css / blog.css for chrome only.
+ */
+
+/* —— Base ink type —— */
+.article-page p,
+.article-page h1,
+.article-page h2,
+.article-page h3,
+.article-page h4,
+.article-page h5,
+.article-page h6 {
+    position: relative;
+    z-index: 1;
+    word-break: break-word;
+    margin: clamp(0.5625rem, 0.92vw, 0.75rem) 0;
+    break-inside: avoid;
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.42;
+    font-size: clamp(0.9375rem, 1.1vw, 1.0625rem);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-image:
+        linear-gradient(#171717, #171717),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 48px 48px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.45);
+    text-shadow: 0 0 0.45px rgba(0, 0, 0, 0.32);
+    -webkit-font-smoothing: none;
+}
+
+.article-page h1 {
+    font-size: clamp(1rem, 1.15vw, 1.22rem);
+    line-height: 1.2;
+    font-weight: 700;
+}
+
+/* Body h1 only — masthead title stays flush via its own rules. */
+.article-page-body > h1 {
+    margin-top: 0.35em;
+}
+
+/* Body subheading — below title (size + weight), above body. */
+.article-page h2:not([data-doc-title]) {
+    font-size: clamp(1.02rem, 1.12vw, 1.18rem);
+    line-height: 1.28;
+    font-weight: 600;
+    margin-top: 1.15em;
+    margin-bottom: 0.35em;
+}
+
+.article-page h3 {
+    font-size: clamp(0.9rem, 0.88vw, 0.98rem);
+    line-height: 1.24;
+    font-weight: 700;
+}
+
+.article-page h4,
+.article-page h5,
+.article-page h6 {
+    font-size: clamp(0.92rem, 0.92vw, 1rem);
+    font-weight: 700;
+}
+
+/* Indent (editor ⇥⇤) */
+.article-page p[data-indent="1"],
+.article-page h1[data-indent="1"],
+.article-page h2[data-indent="1"],
+.article-page h3[data-indent="1"] { margin-left: 1.35em; }
+.article-page p[data-indent="2"],
+.article-page h1[data-indent="2"],
+.article-page h2[data-indent="2"],
+.article-page h3[data-indent="2"] { margin-left: 2.7em; }
+.article-page p[data-indent="3"],
+.article-page h1[data-indent="3"],
+.article-page h2[data-indent="3"],
+.article-page h3[data-indent="3"] { margin-left: 4.05em; }
+.article-page p[data-indent="4"],
+.article-page h1[data-indent="4"],
+.article-page h2[data-indent="4"],
+.article-page h3[data-indent="4"] { margin-left: 5.4em; }
+
+/* —— Title / masthead (no ink) —— */
+.article-title-block {
+    margin: 0 0 clamp(0.35rem, 0.7vw, 0.65rem);
+    break-inside: avoid;
+}
+
+.article-title-block > .title,
+.article-title-block > h1,
+.article-title-block > h2,
+.article-title-block > h3 {
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
+}
+
+.article-page .article-title-block > .title,
+.article-page .article-title-block > h1[data-doc-title],
+.article-page .article-title-block > h2[data-doc-title],
+.article-page .article-title-block > h3[data-doc-title] {
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
+    color: #141414;
+    -webkit-text-fill-color: #141414;
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(1.14rem, 1.38vw, 1.42rem);
+    line-height: 1.16;
+    font-weight: 700;
+    letter-spacing: normal;
+}
+
+.article-page .article-title-block .article-byline {
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+.article-inline-masthead .title {
+    margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
+}
+
+.article-page .article-inline-masthead .title {
+    color: #141414;
+    -webkit-text-fill-color: #141414;
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    -webkit-font-smoothing: antialiased;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(1.14rem, 1.38vw, 1.42rem);
+    line-height: 1.16;
+    font-weight: 700;
+    letter-spacing: normal;
+    margin-top: 0;
+    margin-bottom: clamp(0.125rem, 0.35vw, 0.3125rem);
+}
+
+.article-byline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4em;
+    margin: 0;
+    padding: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(0.74rem, 0.82vw, 0.84rem);
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+}
+
+.article-byline-by {
+    color: rgba(0, 0, 0, 0.48);
+    font-weight: 400;
+    font-style: normal;
+}
+
+.article-byline-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28em;
+    font-weight: 600;
+    font-style: normal;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.article-byline-author:hover {
+    text-decoration: none;
+}
+
+.article-byline-author .content-ref-author-avatar {
+    width: 1.05em;
+    height: 1.05em;
+    vertical-align: middle;
+}
+
+.article-byline-onthe {
+    color: rgba(0, 0, 0, 0.48);
+    font-weight: 400;
+    font-style: normal;
+}
+
+.article-byline-date {
+    font-weight: 400;
+    font-style: italic;
+    color: rgba(0, 0, 0, 0.48);
+}
+
+/* First body block after inline masthead */
+.article-page:has(> .article-inline-masthead) .article-page-body > :first-child {
+    margin-top: clamp(0.125rem, 0.35vw, 0.375rem);
+}
+
+/* —— Images —— */
+.article-page .article-image {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: auto;
+    display: block;
+    margin: clamp(12px, 1.5vw, 20px) 0 clamp(18px, 2vw, 28px);
+    object-fit: contain;
+    break-inside: avoid;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+.article-page img[data-display="block"] {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: clamp(12px, 1.5vw, 20px) 0 clamp(18px, 2vw, 28px);
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+.article-page img[data-display="inline"] {
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 42%;
+    height: auto;
+    margin: 0 0.35rem;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    filter: none;
+}
+
+.article-page img[align="left"],
+.article-page .article-image[align="left"] {
+    float: left;
+    display: block;
+    width: auto;
+    max-width: min(48%, 280px);
+    height: auto;
+    margin: 0.25rem 1rem 0.85rem 0;
+    shape-outside: margin-box;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    filter: none;
+}
+
+.article-page img[align="right"],
+.article-page .article-image[align="right"] {
+    float: right;
+    display: block;
+    width: auto;
+    max-width: min(48%, 280px);
+    height: auto;
+    margin: 0.25rem 0 0.85rem 1rem;
+    shape-outside: margin-box;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    filter: none;
+}
+
+.article-page img[align="center"],
+.article-page .article-image[align="center"] {
+    float: none;
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    margin: clamp(12px, 1.5vw, 20px) auto;
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    filter: none;
+}
+
+.article-page img[data-width],
+.article-page .article-image[data-width] {
+    max-width: 100%;
+    height: auto;
+}
+
+.article-page-body::after {
+    content: '';
+    display: table;
+    clear: both;
+}
+
+.article-page p:has(> img:only-child),
+.article-page p:has(> img:only-of-type):not(:has(br)) {
+    color: unset;
+    -webkit-text-fill-color: unset;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+/* —— Variants —— */
+.article-page p[data-variant="poetry"] {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    text-align: center;
+    max-width: 28em;
+    margin-left: auto;
+    margin-right: auto;
+    white-space: pre-wrap;
+    line-height: 1.75;
+}
+
+.article-page p[data-variant="poetry"][style*="text-align: left"],
+.article-page p[data-variant="poetry"][style*="text-align: start"] {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+.article-page p[data-variant="poetry"][style*="text-align: right"],
+.article-page p[data-variant="poetry"][style*="text-align: end"] {
+    margin-left: auto;
+    margin-right: 0;
+}
+
+.article-page p[data-variant="poetry"][data-poetry-italic="true"] {
+    font-style: italic;
+}
+
+.article-page p[data-variant="poetry-author"] {
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    text-align: center;
+    max-width: 28em;
+    margin: 0.65rem auto 0;
+    font-size: 0.92em;
+    opacity: 0.88;
+}
+
+.article-page p[data-variant="poetry-author"][style*="text-align: left"],
+.article-page p[data-variant="poetry-author"][style*="text-align: start"] {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+.article-page p[data-variant="poetry-author"][style*="text-align: right"],
+.article-page p[data-variant="poetry-author"][style*="text-align: end"] {
+    margin-left: auto;
+    margin-right: 0;
+}
+
+.article-page p[data-variant="epigraph"] {
+    font-style: italic;
+    max-width: 76%;
+    margin-left: auto;
+    margin-right: 0;
+    opacity: 0.92;
+}
+
+.article-page blockquote:not([data-variant]) {
+    margin: clamp(0.5rem, 1vh, 0.75rem) 0;
+    padding-left: 1rem;
+    border-left: 3px solid rgba(0, 0, 0, 0.22);
+}
+
+.article-page blockquote p:not([data-variant="attribution"]) {
+    white-space: pre-wrap;
+}
+
+.article-page blockquote[data-variant="quote"] {
+    border-left: none;
+    padding-left: 0;
+    margin: clamp(0.5rem, 1vh, 0.75rem) 0;
+    font-style: italic;
+}
+
+.article-page blockquote p[data-variant="attribution"],
+.article-page-body > p[data-variant="attribution"] {
+    font-size: 0.92em;
+    opacity: 0.88;
+    margin-top: 0.35rem;
+    font-style: normal;
+}
+
+.article-page-body > p[data-variant="epigraph"] + p[data-variant="attribution"] {
+    max-width: 76%;
+    margin-left: auto;
+    margin-right: 0;
+    text-align: right;
+}
+
+/* Lighter ink: quotes / poetry / linked footnotes */
+.article-page blockquote p,
+.article-page p[data-variant="poetry"],
+.article-page p[data-variant="poetry-author"],
+.article-page p[data-variant="footnote"][data-footnote-id] {
+    color: #1a1a1a;
+    -webkit-text-fill-color: #1a1a1a;
+    background-image: linear-gradient(#1a1a1a, #1a1a1a);
+    background-size: auto;
+    background-blend-mode: normal;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.06px rgba(0, 0, 0, 0.18);
+    text-shadow: 0 0 0.18px rgba(0, 0, 0, 0.1);
+    -webkit-font-smoothing: antialiased;
+}
+
+.article-page hr[data-variant="dinkus"] {
+    border: 0;
+    text-align: center;
+    margin: 1.5rem 0;
+}
+
+.article-page hr[data-variant="dinkus"]::after {
+    content: '✶ ✶ ✶';
+    color: rgba(0, 0, 0, 0.55);
+    letter-spacing: 0.4rem;
+    font-size: 0.9rem;
+}
+
+.article-page hr[data-variant="page-break"],
+.article-page hr[data-page-break="true"] {
+    display: none !important;
+}
+
+.article-page p[data-variant="dropcap"]::first-letter {
+    float: left;
+    font-size: 3.2em;
+    line-height: 0.85;
+    margin-right: 0.1em;
+    font-weight: 700;
+}
+
+.article-page p[data-variant="footnote"] {
+    font-size: 0.86em;
+    line-height: 1.45;
+    opacity: 0.92;
+}
+
+.article-page p[data-variant="footnote"][id^='fn-'] {
+    scroll-margin-top: 6rem;
+}
+
+.article-page .footnote-ref {
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
+    color: rgba(0, 50, 120, 0.92);
+    -webkit-text-fill-color: rgba(0, 50, 120, 0.92);
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+.article-page .footnote-ref-mark {
+    font-size: 0.72em;
+    font-weight: 700;
+    vertical-align: super;
+    line-height: 0;
+}
+
+.article-page p[data-variant="smallcaps"] {
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+}
+
+.article-page p[data-variant="intro"] {
+    font-style: italic;
+}
+
+.article-page p[data-variant="whisper"] {
+    color: rgba(0, 0, 0, 0.68);
+    -webkit-text-fill-color: rgba(0, 0, 0, 0.68);
+    background: none;
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    font-style: italic;
+}
+
+/* Custom TipTap colors / highlights — escape ink clip */
+.article-page span[style*="color"] {
+    -webkit-text-fill-color: currentColor;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
+.article-page mark {
+    color: #171717;
+    -webkit-text-fill-color: currentColor;
+    background-image: none;
+    background-clip: border-box;
+    -webkit-background-clip: border-box;
+    padding: 0 0.08em;
+    border-radius: 2px;
+}
+
+.article-page span[style*="color"] mark {
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+}
+
+.article-page mark span[style*="color"] {
+    -webkit-text-fill-color: currentColor;
+}

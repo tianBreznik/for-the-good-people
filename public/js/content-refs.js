@@ -33,35 +33,24 @@
             .replace(/\s+/g, '_');
     }
 
-    function hashHandle(s) {
-        let h = 0;
-        const str = String(s || '');
-        for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-        return Math.abs(h);
-    }
-
     function normalizeAvatarPath(path) {
         const raw = String(path || '').trim();
         if (!raw) return '';
-        const m = raw.match(/(?:^|\/)pfps\/([^/?#]+)$/i);
-        if (!m) return '';
-        const files = Array.isArray(global.AUTHOR_AVATAR_FILES) ? global.AUTHOR_AVATAR_FILES : [];
-        if (files.length && !files.includes(m[1])) return '';
-        return `/pfps/${m[1]}`;
-    }
-
-    function fallbackAvatarUrl(handle) {
-        const files = Array.isArray(global.AUTHOR_AVATAR_FILES) ? global.AUTHOR_AVATAR_FILES : [];
-        if (!files.length) return '';
-        const key = normalizeAuthor(handle).toLowerCase();
-        return `/pfps/${files[hashHandle(key) % files.length]}`;
+        const preset = raw.match(/(?:^|\/)pfps\/([A-Za-z0-9_.-]+)$/i);
+        if (preset) {
+            const files = Array.isArray(global.AUTHOR_AVATAR_FILES) ? global.AUTHOR_AVATAR_FILES : [];
+            if (files.length && !files.includes(preset[1])) return '';
+            return `/pfps/${preset[1]}`;
+        }
+        const uploaded = raw.match(/(?:^|\/)uploads\/([A-Za-z0-9_.-]+)$/i);
+        if (uploaded) return `/uploads/${uploaded[1]}`;
+        return '';
     }
 
     function cachedAvatarUrl(handle) {
         const key = normalizeAuthor(handle).toLowerCase();
         if (!key) return '';
-        if (avatarByHandle[key]) return avatarByHandle[key];
-        return fallbackAvatarUrl(key);
+        return avatarByHandle[key] || '';
     }
 
     function resolveAuthorAvatar(handle) {
@@ -72,16 +61,11 @@
         avatarFetchInflight[key] = fetch(`/api/author-profile/${encodeURIComponent(key)}`)
             .then((res) => (res.ok ? res.json() : null))
             .then((data) => {
-                const fromProfile = normalizeAvatarPath(data && data.profile && data.profile.avatar);
-                const url = fromProfile || fallbackAvatarUrl(key);
-                avatarByHandle[key] = url;
-                return url;
+                const url = normalizeAvatarPath(data && data.profile && data.profile.avatar);
+                if (url) avatarByHandle[key] = url;
+                return url || '';
             })
-            .catch(() => {
-                const url = fallbackAvatarUrl(key);
-                avatarByHandle[key] = url;
-                return url;
-            })
+            .catch(() => '')
             .finally(() => {
                 delete avatarFetchInflight[key];
             });
