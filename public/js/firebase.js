@@ -131,10 +131,11 @@ if (restoreAuthReturnOriginIfNeeded()) {
     function getAuthSignInOptions() {
         return [
             firebase.auth.GoogleAuthProvider.PROVIDER_ID,
-            {
-                provider: 'apple.com',
-                iconUrl: AUTH_PROVIDER_ICONS.apple,
-            },
+            // Sign in with Apple — needs Apple Developer + Firebase setup; re-enable when ready.
+            // {
+            //     provider: 'apple.com',
+            //     iconUrl: AUTH_PROVIDER_ICONS.apple,
+            // },
             {
                 provider: 'twitter.com',
                 iconUrl: AUTH_PROVIDER_ICONS.twitter,

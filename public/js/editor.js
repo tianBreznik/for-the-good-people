@@ -357,29 +357,29 @@ function setupBlockquoteDialog() {
     const bqAuthor = document.getElementById('blockquote-dialog-author');
     if (!bq || !bqBody || !bqAuthor) return;
 
-    bq.querySelector('[data-bq-cancel]')?.addEventListener('click', closeBlockquoteDialog);
-    bq.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeBlockquoteDialog);
-    bq.querySelector('[data-bq-insert]')?.addEventListener('click', () => {
-        if (!editor) return;
-        const raw = bqBody.value.replace(/\r\n/g, '\n');
-        if (!raw.trim()) {
-            bqBody.focus();
-            return;
-        }
-        const author = bqAuthor.value.trim();
-        const inner = [{ type: 'paragraph', content: [{ type: 'text', text: raw }] }];
-        if (author) {
-            inner.push({
-                type: 'paragraph',
-                attrs: { variant: 'attribution' },
+        bq.querySelector('[data-bq-cancel]')?.addEventListener('click', closeBlockquoteDialog);
+        bq.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeBlockquoteDialog);
+        bq.querySelector('[data-bq-insert]')?.addEventListener('click', () => {
+            if (!editor) return;
+            const raw = bqBody.value.replace(/\r\n/g, '\n');
+            if (!raw.trim()) {
+                bqBody.focus();
+                return;
+            }
+            const author = bqAuthor.value.trim();
+            const inner = [{ type: 'paragraph', content: [{ type: 'text', text: raw }] }];
+            if (author) {
+                inner.push({
+                    type: 'paragraph',
+                    attrs: { variant: 'attribution' },
                 content: [{ type: 'text', text: `- ${author}` }],
-            });
-        }
-        editor.chain().focus().insertContent({ type: 'blockquote', content: inner }).run();
-        closeBlockquoteDialog();
-        triggerAutoSave();
-    });
-}
+                });
+            }
+            editor.chain().focus().insertContent({ type: 'blockquote', content: inner }).run();
+            closeBlockquoteDialog();
+            triggerAutoSave();
+        });
+    }
 
 function setupInsertDialogEscape() {
     document.addEventListener('keydown', (e) => {
@@ -2292,7 +2292,7 @@ async function commitPublish({ openNotes = false } = {}) {
     try {
         publishBtn.disabled = true;
         publishBtn.textContent = 'Publishing...';
-
+        
         // Prefer edit URL id, then draft-linked id (continues an edit opened via /editor).
         const candidateId =
             (isEditing ? decodePathSegment(blogID[0]) : '') ||
@@ -2479,19 +2479,19 @@ function applyDraftToEditor(draft, { statusText = 'Draft loaded' } = {}) {
     if (!draft || !editor || isEditing) return false;
     if (!draftHasContent(draft)) return false;
     try {
-        if (draft.title) titleInput.value = draft.title;
+            if (draft.title) titleInput.value = draft.title;
         if (draft.contentType) setContentTypeSelect(draft.contentType);
-        if (draft.contentHtml) {
-            isHydratingEditor = true;
+            if (draft.contentHtml) {
+                isHydratingEditor = true;
             editor
                 .chain()
                 .setMeta('titleBylineSkipGuard', true)
                 .setContent(draft.contentHtml, false, { preserveWhitespace: 'full' })
                 .run();
             stripOrphanAuthorAvatarImages();
-            isHydratingEditor = false;
-        } else if (draft.content) {
-            isHydratingEditor = true;
+                isHydratingEditor = false;
+            } else if (draft.content) {
+                isHydratingEditor = true;
             editor
                 .chain()
                 .setMeta('titleBylineSkipGuard', true)
@@ -2499,8 +2499,8 @@ function applyDraftToEditor(draft, { statusText = 'Draft loaded' } = {}) {
                     preserveWhitespace: 'full',
                 })
                 .run();
-            isHydratingEditor = false;
-        }
+                isHydratingEditor = false;
+            }
         isHydratingEditor = true;
         ensureDocTitleHeading(editor, draft.title || titleInput.value || '');
         isHydratingEditor = false;
@@ -2509,11 +2509,11 @@ function applyDraftToEditor(draft, { statusText = 'Draft loaded' } = {}) {
         resetEditorPageScrollMemory();
         requestEditorPaginationRefresh(editor);
         bumpTitleBylineDecoration();
-        markChangesSaved();
+            markChangesSaved();
         updateAutosaveStatus(statusText, 'saved');
         setTimeout(() => updateAutosaveStatus('Ready', ''), 2000);
         return true;
-    } catch (error) {
+        } catch (error) {
         console.error('Error applying draft:', error);
         isHydratingEditor = false;
         return false;

@@ -768,13 +768,29 @@ body.reader-loading #comment-screen {
     text-shadow: none;
 }
 
+/*
+ * Highlights escape ink clip. Use currentColor for fill so TipTap Color marks
+ * (e.g. white on red) paint through — a fixed #171717 fill was killing them.
+ */
 #article-body .article-page mark {
     color: #171717;
-    -webkit-text-fill-color: #171717;
+    -webkit-text-fill-color: currentColor;
+    background-image: none;
     background-clip: border-box;
     -webkit-background-clip: border-box;
     padding: 0 .08em;
     border-radius: 2px;
+}
+
+/* Color outside highlight: inherit into the mark */
+#article-body .article-page span[style*="color"] mark {
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+}
+
+/* Color inside highlight */
+#article-body .article-page mark span[style*="color"] {
+    -webkit-text-fill-color: currentColor;
 }
 
 #article-body .article-page p[data-variant="intro"] {
@@ -847,17 +863,15 @@ body.reader-embed .reader-nav-dashboard {
 }
 
 /*
- * Compose on last content page: nearly full sheet width with a small gap
- * from the page edge (bleed past body pad, stay inside the sheet).
+ * Compose on last content page: match footnote rule width, with a slight
+ * overhang past the content column (not out to the sheet edge).
  */
 #article-body .article-page > #comment-compose {
-    --comment-compose-edge-gap: clamp(8px, 1.4vw, 14px);
-    width: calc(
-        100% + 2 * var(--reader-page-pad-inline) - 2 * var(--comment-compose-edge-gap)
-    );
+    --comment-compose-overhang: clamp(3px, 0.45vw, 6px);
+    width: calc(100% + 2 * var(--comment-compose-overhang));
     max-width: none;
-    margin-left: calc(-1 * var(--reader-page-pad-inline) + var(--comment-compose-edge-gap));
-    margin-right: calc(-1 * var(--reader-page-pad-inline) + var(--comment-compose-edge-gap));
+    margin-left: calc(-1 * var(--comment-compose-overhang));
+    margin-right: calc(-1 * var(--comment-compose-overhang));
     padding-inline: 0;
     padding-top: clamp(6px, 0.8vw, 10px);
     min-width: 0;
@@ -1607,7 +1621,7 @@ body.reader-embed #commentInput {
     }
 
     #article-body .article-page > #comment-compose {
-        --comment-compose-edge-gap: clamp(6px, 2.2vw, 12px);
+        --comment-compose-overhang: clamp(2px, 0.8vw, 5px);
     }
 
     #commentInput,

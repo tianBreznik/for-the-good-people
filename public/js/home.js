@@ -1614,7 +1614,70 @@ function dismissPopup() {
     });
 }
 
-db.collection("blogs").get().then((blogs) => {
+const HOME_WALL_CACHE_KEY = 'homeWallBlogsV1';
+
+function readHomeWallCache() {
+    try {
+        const raw = sessionStorage.getItem(HOME_WALL_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.blogs) || !parsed.blogs.length) return null;
+        if (Date.now() - (parsed.savedAt || 0) > 45 * 60 * 1000) return null;
+        return parsed.blogs.map((entry) => ({
+            id: entry.id,
+            data: () => entry.data || {},
+        }));
+    } catch (_) {
+        return null;
+    }
+}
+
+function writeHomeWallCache(snap) {
+    try {
+        const blogs = snap.docs.map((d) => {
+            const data = d.data() || {};
+            return {
+                id: d.id,
+                data: {
+                    title: data.title || '',
+                    author: data.author || '',
+                    publishedAt: data.publishedAt || '',
+                    lastModified: data.lastModified || '',
+                    contentType: data.contentType || '',
+                    preview:
+                        typeof data.preview === 'string' ? data.preview.slice(0, 600) : '',
+                    // Omit full article HTML from cache — fetch on preview click.
+                },
+            };
+        });
+        sessionStorage.setItem(
+            HOME_WALL_CACHE_KEY,
+            JSON.stringify({ savedAt: Date.now(), blogs })
+        );
+    } catch (_) {
+        /* quota / private mode */
+    }
+}
+
+async function ensureBlogCardArticle(card) {
+    if (!card) return '';
+    if (card.dataset.article) return card.dataset.article;
+    const id = card.dataset.blogId;
+    if (!id || !db) return '';
+    try {
+        const snap = await db.collection('blogs').doc(id).get();
+        const article =
+            snap.exists && typeof snap.data().article === 'string' ? snap.data().article : '';
+        card.dataset.article = article;
+        return article;
+    } catch (_) {
+        return '';
+    }
+}
+
+let homeWallMounted = false;
+
+function mountHomeWall(blogs) {
     const existingSection = document.querySelector('.blogs-section');
     if (existingSection) existingSection.remove();
 
@@ -1700,21 +1763,28 @@ db.collection("blogs").get().then((blogs) => {
 
     // Random avatars for authors without a saved profile picture.
     reshuffleAuthorAvatars(Array.from(uniqueAuthors));
-    // Warm author profile cache (emoji on tags, saved avatars, faster bio open).
-    Array.from(uniqueAuthors).forEach((name) => {
-        fetchAuthorProfile(name).then((profile) => {
-            syncAuthorCardEmoji(name);
-            const avatar = normalizeClientAvatarPath(profile.avatar);
-            if (avatar) {
-                authorAvatarByName[name] = avatar;
-                const panel = document.querySelector('.bio-panel');
-                if (panel && panel.dataset.author === name) {
-                    const img = document.getElementById('bio-avatar');
-                    if (img && img.getAttribute('src') !== avatar) img.src = avatar;
+    // Warm profiles after first paint — don’t block the wall on N author fetches.
+    const warmAuthorProfiles = () => {
+        Array.from(uniqueAuthors).forEach((name) => {
+            fetchAuthorProfile(name).then((profile) => {
+                syncAuthorCardEmoji(name);
+                const avatar = normalizeClientAvatarPath(profile.avatar);
+                if (avatar) {
+                    authorAvatarByName[name] = avatar;
+                    const panel = document.querySelector('.bio-panel');
+                    if (panel && panel.dataset.author === name) {
+                        const img = document.getElementById('bio-avatar');
+                        if (img && img.getAttribute('src') !== avatar) img.src = avatar;
+                    }
                 }
-            }
+            });
         });
-    });
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(warmAuthorProfiles, { timeout: 2200 });
+    } else {
+        setTimeout(warmAuthorProfiles, 900);
+    }
 
     // Desktop search control under author tags (hidden on mobile via CSS)
     createSearchCard(authorSection);
@@ -1768,21 +1838,25 @@ db.collection("blogs").get().then((blogs) => {
         }
         stageRevealed = true;
         layoutHomeColumns();
+        // Show underlay panels and the wall in the same turn so bio/about
+        // card outlines never flash while the stage is still hidden.
+        document.body.classList.add('home-wall-ready');
         stage.style.visibility = '';
         // Open author bio only once the grid is actually visible.
         consumeHomeAuthorQuery();
     };
 
-    // Prefer fonts.ready so Impact metrics don’t shift titles after first paint.
-    const fontsReady = document.fonts && document.fonts.ready
-        ? document.fonts.ready.catch(() => {})
-        : Promise.resolve();
-    fontsReady.then(() => {
+    // Don’t wait on Google fonts (Literata etc.) — Impact/system metrics are enough
+    // for first paint; a short race avoids a long blank while webfonts download.
+    const fontsReady =
+        document.fonts && document.fonts.ready
+            ? document.fonts.ready.catch(() => {})
+            : Promise.resolve();
+    Promise.race([fontsReady, new Promise((r) => setTimeout(r, 80))]).then(() => {
         revealLaidOutStage();
         requestAnimationFrame(layoutHomeColumns);
     });
-    // Fallback if fonts.ready hangs — never leave the grid invisible.
-    setTimeout(revealLaidOutStage, 480);
+    setTimeout(revealLaidOutStage, 280);
 
     // Add hover interactions after positioning (disable popup/physics in new design)
     setupHoverInteractions();
@@ -1952,10 +2026,34 @@ db.collection("blogs").get().then((blogs) => {
     window.visualViewport?.addEventListener('resize', onHomeResize);
 
     applyHomeEntryAfterGridReady();
-}).catch((err) => {
-    console.error('Failed to load home blogs', err);
-    showHomeBlogsLoadFailure(err);
-});
+}
+
+function tryMountHomeWall(blogs) {
+    if (homeWallMounted || !blogs) return false;
+    homeWallMounted = true;
+    mountHomeWall(blogs);
+    return true;
+}
+
+function bootHomeWall() {
+    const cached = readHomeWallCache();
+    if (cached && cached.length) tryMountHomeWall(cached);
+
+    if (!db) {
+        if (!homeWallMounted) showHomeBlogsLoadFailure(new Error('Firestore unavailable'));
+        return;
+    }
+    db.collection('blogs')
+        .get()
+        .then((snap) => {
+            writeHomeWallCache(snap);
+            tryMountHomeWall(snap);
+        })
+        .catch((err) => {
+            console.error('Failed to load home blogs', err);
+            if (!homeWallMounted) showHomeBlogsLoadFailure(err);
+        });
+}
 
 /** Drop stuck column `transform` transitions so they can’t pin the wall in place. */
 function clearColumnTransformTransitions() {
@@ -2048,6 +2146,25 @@ function showHomeBlogsLoadFailure(err) {
     document.getElementById('home-load-retry')?.addEventListener('click', () => location.reload());
 }
 
+let firebaseUiLoadPromise = null;
+
+function loadFirebaseUi() {
+    if (typeof firebaseui !== 'undefined') return Promise.resolve();
+    if (firebaseUiLoadPromise) return firebaseUiLoadPromise;
+    firebaseUiLoadPromise = new Promise((resolve, reject) => {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = 'https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.css';
+        document.head.appendChild(css);
+        const script = document.createElement('script');
+        script.src = 'https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load FirebaseUI'));
+        document.body.appendChild(script);
+    });
+    return firebaseUiLoadPromise;
+}
+
 function getHomeLoginUi() {
     if (typeof firebaseui === 'undefined') return null;
     return firebaseui.auth.AuthUI.getInstance() || new firebaseui.auth.AuthUI(auth);
@@ -2092,7 +2209,9 @@ function openHomeLoginOverlay() {
     overlay.setAttribute('aria-hidden', 'false');
     document.body.classList.add('home-login-open');
 
-    startHomeLoginUi();
+    loadFirebaseUi()
+        .then(() => startHomeLoginUi())
+        .catch((err) => console.warn('FirebaseUI load failed', err));
 }
 
 function openHomeAuthorApplyOverlay() {
@@ -3442,22 +3561,16 @@ function applyAuthorProfileToPanel(authorName, profile) {
                 li.className = 'bio-index-item' + (i === 0 ? ' is-latest' : '');
                 const meta = document.createElement('span');
                 meta.className = 'bio-index-meta';
-                if (i === 0) {
-                    meta.textContent = 'Latest';
-                } else {
-                    const d = new Date(post.publishedAt || post.ms || 0);
-                    if (Number.isNaN(d.getTime())) {
-                        meta.textContent = '';
-                    } else {
-                        const dd = String(d.getDate()).padStart(2, '0');
-                        const mm = String(d.getMonth() + 1).padStart(2, '0');
-                        meta.textContent = `${dd}.${mm}.${d.getFullYear()}`;
-                    }
+                const d = new Date(post.publishedAt || post.ms || 0);
+                if (!Number.isNaN(d.getTime())) {
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    meta.textContent = `${dd}.${mm}.${d.getFullYear()}`;
                 }
                 const a = document.createElement('a');
                 a.className = 'bio-index-link';
                 a.href = `/${post.id}`;
-                a.textContent = (post.title || 'Untitled').toUpperCase();
+                a.textContent = post.title || 'Untitled';
                 if (meta.textContent) li.appendChild(meta);
                 li.appendChild(a);
                 indexList.appendChild(li);
@@ -3772,7 +3885,7 @@ function createWriteBlogCard(section) {
     `;
 }
 
-function layoutAuthControlTitle(titleEl) {
+function layoutAuthControlTitle(titleEl, { align = 'left' } = {}) {
     if (!titleEl) return;
     const probe = titleEl.cloneNode(true);
     probe.style.position = 'absolute';
@@ -3780,14 +3893,16 @@ function layoutAuthControlTitle(titleEl) {
     probe.style.whiteSpace = 'nowrap';
     probe.style.width = 'auto';
     document.body.appendChild(probe);
-    const w = Math.ceil(probe.getBoundingClientRect().width + 6);
+    // Extra slack for Impact emboss (::before + text-shadow) so the last glyph
+    // isn't clipped by the author column's overflow-x: hidden.
+    const w = Math.ceil(probe.getBoundingClientRect().width + 12);
     const h = Math.ceil(probe.getBoundingClientRect().height + 2);
     document.body.removeChild(probe);
     const card = titleEl.closest('.blog-card');
     const container = titleEl.closest('.cardcontainer');
     if (card) {
         card.style.position = 'relative';
-        card.style.width = `${w + 10}px`;
+        card.style.width = `${w + 14}px`;
         card.style.height = `${h + 6}px`;
         card.style.overflow = 'visible';
         card.style.flexShrink = '0';
@@ -3800,59 +3915,207 @@ function layoutAuthControlTitle(titleEl) {
     titleEl.style.position = 'relative';
     titleEl.style.left = '0';
     titleEl.style.top = '0';
-    titleEl.style.textAlign = 'left';
+    titleEl.style.textAlign = align;
     titleEl.style.whiteSpace = 'nowrap';
     titleEl.style.width = `${w}px`;
     titleEl.style.display = 'block';
 }
 
+const AUTH_FOLDER_CLOSED = '📁';
+const AUTH_FOLDER_OPEN = '📂';
+
+/** Bottom inset so author tags can sit clear of the folder / open stack. */
+function measureAuthChromeClearancePx() {
+    const controls = document.getElementById('auth-controls');
+    if (!controls || controls.offsetParent === null) return 0;
+    const menu = document.getElementById('auth-menu');
+    const toggle = document.getElementById('auth-menu-toggle');
+    const stack = document.getElementById('auth-menu-stack');
+    const bottomPad = 14;
+    let h = bottomPad;
+    if (toggle && menu && !menu.hidden) {
+        h += toggle.getBoundingClientRect().height || 36;
+        if (menu.classList.contains('is-open') && stack) {
+            let stackH = 0;
+            stack.querySelectorAll(':scope > .cardcontainer').forEach((card) => {
+                stackH += (card.getBoundingClientRect().height || 28) + 6;
+            });
+            h += stackH + 4;
+        }
+    } else {
+        // Flat LOGIN / APPLY row
+        h += controls.getBoundingClientRect().height || 36;
+    }
+    return Math.ceil(h);
+}
+
+function syncAuthorAuthClearance({ scrollTagsClear = false } = {}) {
+    const section = document.querySelector('.author-section');
+    if (!section) return;
+    const clearance = measureAuthChromeClearancePx();
+    section.style.setProperty('--author-auth-clearance', `${clearance}px`);
+
+    const spacer = section.querySelector(':scope > .column-scroll-spacer');
+    if (spacer) {
+        const base = Number(spacer.dataset.baseHeight);
+        const baseH = Number.isFinite(base) ? base : parseFloat(spacer.style.height) || 0;
+        spacer.dataset.baseHeight = String(baseH);
+        spacer.style.height = `${baseH + clearance}px`;
+    }
+
+    if (!scrollTagsClear) return;
+    const menu = document.getElementById('auth-menu');
+    const controls = document.getElementById('auth-controls');
+    const stack = document.getElementById('auth-menu-stack');
+    if (!menu?.classList.contains('is-open') || !controls) return;
+
+    // After open animation starts, measure the menu band and scroll tags out from under it.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            const controlsRect = controls.getBoundingClientRect();
+            let bandTop = controlsRect.top;
+            if (stack) {
+                const sr = stack.getBoundingClientRect();
+                if (sr.height > 0) bandTop = Math.min(bandTop, sr.top);
+            }
+            bandTop -= 8;
+            const bandBottom = controlsRect.bottom;
+            let overlap = 0;
+            section.querySelectorAll(':scope > .cardcontainer').forEach((card) => {
+                if (card.closest('#auth-controls')) return;
+                const r = card.getBoundingClientRect();
+                if (r.bottom > bandTop && r.top < bandBottom) {
+                    overlap = Math.max(overlap, r.bottom - bandTop);
+                }
+            });
+            if (overlap > 0) {
+                section.scrollBy({ top: overlap + 6, behavior: 'smooth' });
+            }
+        });
+    });
+}
+
+function setAuthMenuOpen(open) {
+    const menu = document.getElementById('auth-menu');
+    const toggle = document.getElementById('auth-menu-toggle');
+    const icon = document.getElementById('auth-menu-icon');
+    const stack = document.getElementById('auth-menu-stack');
+    if (!menu || !toggle || !icon) return;
+    const next = Boolean(open);
+    menu.classList.toggle('is-open', next);
+    toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+    icon.textContent = next ? AUTH_FOLDER_OPEN : AUTH_FOLDER_CLOSED;
+    if (stack) stack.setAttribute('aria-hidden', next ? 'false' : 'true');
+    syncAuthorAuthClearance({ scrollTagsClear: next });
+}
+
+function closeAuthMenu() {
+    setAuthMenuOpen(false);
+}
+
 function layoutAuthControls() {
     layoutAuthControlTitle(document.getElementById('auth-login-text'));
-    const editorCard = document.getElementById('auth-editor-card');
-    if (editorCard && editorCard.style.display !== 'none') {
-        layoutAuthControlTitle(editorCard.querySelector('.blog-title'));
-    }
+    // Menu items sit on the right edge — right-align so any width slack grows left.
+    layoutAuthControlTitle(document.getElementById('auth-menu-logout-text'), { align: 'right' });
+    ['auth-editor-card', 'auth-dashboard-card'].forEach((id) => {
+        const card = document.getElementById(id);
+        if (!card || card.style.display === 'none' || card.hidden) return;
+        layoutAuthControlTitle(card.querySelector('.blog-title'), { align: 'right' });
+    });
     const applyCard = document.getElementById('auth-apply-card');
-    if (applyCard && applyCard.style.display !== 'none') {
+    if (applyCard && applyCard.style.display !== 'none' && !applyCard.hidden) {
         layoutAuthControlTitle(applyCard.querySelector('.blog-title'));
     }
 }
 
 function createAuthControls(section) {
-    // container pinned to bottom-right
+    // Pinned to bottom-right. Authors get a folder menu; guests / applicants stay flat.
     const wrapper = document.createElement('div');
     wrapper.id = 'auth-controls';
     wrapper.style.cssText = `
         position: absolute;
-        right: 14px;
-        bottom: 8px;
+        right: var(--author-rail-inset);
+        bottom: 10px;
         display: flex;
         gap: 8px;
-        align-items: center;
+        align-items: flex-end;
         z-index: 10;
     `;
 
-    // login/logout card
-    const login = document.createElement('div');
-    login.className = 'cardcontainer';
-    login.innerHTML = `
-        <div class="blog-card auth-plain" id="auth-login-card" style="cursor: pointer;">
-            <h1 class="blog-title" id="auth-login-text" data-text="LOGIN">LOGIN</h1>
+    const menu = document.createElement('div');
+    menu.id = 'auth-menu';
+    menu.className = 'auth-menu';
+    menu.hidden = true;
+
+    const stack = document.createElement('div');
+    stack.id = 'auth-menu-stack';
+    stack.className = 'auth-menu-stack';
+    stack.setAttribute('role', 'menu');
+    stack.setAttribute('aria-hidden', 'true');
+
+    const logoutInMenu = document.createElement('div');
+    logoutInMenu.className = 'cardcontainer';
+    logoutInMenu.id = 'auth-menu-logout-card';
+    logoutInMenu.setAttribute('role', 'menuitem');
+    logoutInMenu.innerHTML = `
+        <div class="blog-card auth-plain" id="auth-menu-logout-btn" data-logout="true" style="cursor: pointer;">
+            <h1 class="blog-title" id="auth-menu-logout-text" data-text="LOGOUT">LOGOUT</h1>
         </div>
     `;
-    login.onclick = () => handleActionCard('login');
+    logoutInMenu.onclick = () => {
+        closeAuthMenu();
+        handleActionCard('login');
+    };
 
-    // editor card (hidden by default; visible for role)
+    const dashboard = document.createElement('div');
+    dashboard.className = 'cardcontainer';
+    dashboard.id = 'auth-dashboard-card';
+    dashboard.setAttribute('role', 'menuitem');
+    dashboard.innerHTML = `
+        <div class="blog-card auth-plain" style="cursor: pointer;">
+            <h1 class="blog-title" data-text="DASHBOARD">DASHBOARD</h1>
+        </div>
+    `;
+    dashboard.onclick = () => {
+        closeAuthMenu();
+        window.location.href = '/admin';
+    };
+
     const editor = document.createElement('div');
     editor.className = 'cardcontainer';
     editor.id = 'auth-editor-card';
-    editor.style.display = 'none';
+    editor.setAttribute('role', 'menuitem');
     editor.innerHTML = `
         <div class="blog-card auth-plain" style="cursor: pointer;">
             <h1 class="blog-title" data-text="EDITOR">EDITOR</h1>
         </div>
     `;
-    editor.onclick = () => window.location.href = '/editor';
+    editor.onclick = () => {
+        closeAuthMenu();
+        window.location.href = '/editor';
+    };
+
+    // Stack above folder, top→bottom: LOGOUT, DASHBOARD, EDITOR (EDITOR nearest the toggle).
+    stack.appendChild(logoutInMenu);
+    stack.appendChild(dashboard);
+    stack.appendChild(editor);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.id = 'auth-menu-toggle';
+    toggle.className = 'auth-menu-toggle';
+    toggle.setAttribute('aria-label', 'Author menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', 'auth-menu-stack');
+    toggle.innerHTML = `<span id="auth-menu-icon" class="auth-menu-icon" aria-hidden="true">${AUTH_FOLDER_CLOSED}</span>`;
+    toggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setAuthMenuOpen(!menu.classList.contains('is-open'));
+    });
+
+    menu.appendChild(stack);
+    menu.appendChild(toggle);
 
     const apply = document.createElement('div');
     apply.className = 'cardcontainer';
@@ -3865,43 +4128,80 @@ function createAuthControls(section) {
     `;
     apply.onclick = () => openHomeAuthorApplyOverlay();
 
-    wrapper.appendChild(editor);
+    const login = document.createElement('div');
+    login.className = 'cardcontainer';
+    login.id = 'auth-login-wrap';
+    login.innerHTML = `
+        <div class="blog-card auth-plain" id="auth-login-card" style="cursor: pointer;">
+            <h1 class="blog-title" id="auth-login-text" data-text="LOGIN">LOGIN</h1>
+        </div>
+    `;
+    login.onclick = () => handleActionCard('login');
+
+    wrapper.appendChild(menu);
     wrapper.appendChild(apply);
     wrapper.appendChild(login);
     section.appendChild(wrapper);
+
+    if (!wrapper.dataset.menuOutsideBound) {
+        wrapper.dataset.menuOutsideBound = '1';
+        document.addEventListener(
+            'click',
+            (e) => {
+                if (!menu.classList.contains('is-open')) return;
+                if (e.target.closest('#auth-menu')) return;
+                closeAuthMenu();
+            },
+            true
+        );
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeAuthMenu();
+        });
+    }
 
     layoutAuthControls();
 }
 
 function updateAuthControls(user, isRealPerson) {
     const loginText = document.getElementById('auth-login-text');
-    const editorCard = document.getElementById('auth-editor-card');
+    const loginWrap = document.getElementById('auth-login-wrap');
     const applyCard = document.getElementById('auth-apply-card');
-    if (!loginText) return;
+    const authMenu = document.getElementById('auth-menu');
+    const controls = document.getElementById('auth-controls');
+    if (!loginText || !authMenu || !controls) return;
 
-    if (user) {
+    closeAuthMenu();
+
+    if (user && isRealPerson) {
+        controls.classList.add('is-author-menu');
+        authMenu.hidden = false;
+        if (loginWrap) loginWrap.style.display = 'none';
+        if (applyCard) applyCard.style.display = 'none';
+    } else if (user) {
+        controls.classList.remove('is-author-menu');
+        authMenu.hidden = true;
+        if (loginWrap) loginWrap.style.display = '';
         loginText.textContent = 'LOGOUT';
         loginText.setAttribute('data-text', 'LOGOUT');
-        // Mark as logout for red glow
         const loginCard = document.getElementById('auth-login-card');
         if (loginCard) loginCard.setAttribute('data-logout', 'true');
-        if (editorCard) editorCard.style.display = isRealPerson ? 'block' : 'none';
-        if (applyCard) applyCard.style.display = isRealPerson ? 'none' : 'block';
+        if (applyCard) applyCard.style.display = 'block';
     } else {
+        controls.classList.remove('is-author-menu');
+        authMenu.hidden = true;
+        if (loginWrap) loginWrap.style.display = '';
         loginText.textContent = 'LOGIN';
         loginText.setAttribute('data-text', 'LOGIN');
-        // Remove logout marker for green glow
         const loginCard = document.getElementById('auth-login-card');
         if (loginCard) loginCard.removeAttribute('data-logout');
-        if (editorCard) editorCard.style.display = 'none';
         if (applyCard) applyCard.style.display = 'none';
     }
 
     syncSelfAuthorTagLabel(user, isRealPerson);
     layoutAuthControls();
-    if (typeof window.matchMedia !== 'undefined' && window.matchMedia(HOME_NARROW_QUERY).matches) {
-        relayoutHomeSectionsRef?.();
-    }
+    syncAuthorAuthClearance();
+    // Relayout after @handle → "me" so the tag keeps the right rail (desktop too).
+    relayoutHomeSectionsRef?.();
 }
 
 /** Signed-in authors see their own column tag as "me" (data-author stays the real handle). */
@@ -4134,8 +4434,8 @@ function positionCardsInSection(section, options = {}) {
             card.style.right = 'auto';
             title.style.textAlign = 'left';
         } else {
-            const rightOffset = 8;
-            card.style.right = `${rightOffset}px`;
+            // Same rail as #auth-controls (--author-rail-inset).
+            card.style.right = 'var(--author-rail-inset)';
             card.style.left = 'auto';
             title.style.textAlign = 'right';
             title.style.whiteSpace = 'nowrap';
@@ -4154,7 +4454,15 @@ function positionCardsInSection(section, options = {}) {
         spacer.style.cssText = 'position:relative;width:1px;pointer-events:none;visibility:hidden;';
         section.appendChild(spacer);
     }
-    spacer.style.height = `${Math.max(y, startY)}px`;
+    const baseH = Math.max(y, startY);
+    spacer.dataset.baseHeight = String(baseH);
+    if (section.classList.contains('author-section')) {
+        const clearance = measureAuthChromeClearancePx();
+        section.style.setProperty('--author-auth-clearance', `${clearance}px`);
+        spacer.style.height = `${baseH + clearance}px`;
+    } else {
+        spacer.style.height = `${baseH}px`;
+    }
 }
 
 function getArticlePreviewRevealMs() {
@@ -4335,6 +4643,7 @@ async function applyArticlePreviewFromBlogCard(card, seamIndex) {
     if (!articleEl) return;
 
     const title = card.dataset.title || '';
+    await ensureBlogCardArticle(card);
     const rawArticle = card.dataset.article || '';
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
@@ -4678,6 +4987,7 @@ function playExpandFullscreenThenNavigate(blogId) {
 async function expandArticlePanelAndNavigate(blogId, card) {
     await ensureAuthorBioClosed();
     const title = card.dataset.title || '';
+    await ensureBlogCardArticle(card);
     const rawArticle = card.dataset.article || '';
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
@@ -5169,3 +5479,7 @@ async function runHomeAdminAction({ action, token, handle }) {
         }
     } catch (_) {}
 })();
+
+// After all lets/consts in this file exist — cache mount is sync and would
+// otherwise hit TDZ (bioEditorBound / authorProfileCache) on second refresh.
+bootHomeWall();

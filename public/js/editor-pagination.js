@@ -108,14 +108,184 @@ function footerZoneHeight(footContent, emptyChromeMin, footerMax) {
 }
 
 function createPageBreakWidget(height) {
-    const wrap = document.createElement('div');
+    // <span display:block> stays valid inside <p> for mid-paragraph splits.
+    const wrap = document.createElement('span');
     wrap.className = 'editor-page-break';
     wrap.contentEditable = 'false';
     wrap.setAttribute('data-page-break', 'true');
     wrap.setAttribute('aria-hidden', 'true');
     const px = `${Math.max(0, Math.round(height))}px`;
-    wrap.style.cssText = `display:block;height:${px};min-height:${px};max-height:${px};margin:0;padding:0;border:0;overflow:hidden;pointer-events:none;`;
+    wrap.style.cssText = `display:block;width:100%;height:${px};min-height:${px};max-height:${px};margin:0;padding:0;border:0;overflow:hidden;pointer-events:none;`;
     return wrap;
+}
+
+/** Words with doc positions (start of each word) for mid-paragraph splits. */
+function buildWordIndex(node, blockPos) {
+    const words = [];
+    if (!node) return words;
+    node.descendants((child, relPos) => {
+        if (!child.isText || !child.text) return;
+        const absBase = blockPos + 1 + relPos;
+        const re = /\S+/g;
+        let m;
+        while ((m = re.exec(child.text))) {
+            words.push({ text: m[0], pos: absBase + m.index, len: m[0].length });
+        }
+    });
+    return words;
+}
+
+function canSplitBlock(node) {
+    if (!node) return false;
+    if (node.type.name !== 'paragraph') return false;
+    const v = node.attrs?.variant;
+    if (v === 'footnote' || v === 'poetry' || v === 'poetry-author') return false;
+    return true;
+}
+
+/**
+ * Height of a block clone with page-break spacers stripped.
+ * Must measure inside .ProseMirror so editor typography CSS still applies —
+ * measuring under document.body underestimates and mid-para chunks overflow.
+ *
+ * @param {{ continuation?: boolean, includeMarginBottom?: boolean }} [opts]
+ *   continuation — collapse margin-top (inter-block margins owned by Y-distance).
+ *   includeMarginBottom — only for the final chunk of a paragraph; mid chunks have
+ *   no margin box between them and the next in-paragraph break.
+ */
+function measureDomCloneHeight(sourceEl, mutateClone, opts = {}) {
+    if (!sourceEl || !sourceEl.cloneNode) return 0;
+    const width = sourceEl.getBoundingClientRect().width || sourceEl.clientWidth || 520;
+    const pm = sourceEl.closest('.ProseMirror') || sourceEl.parentElement || document.body;
+    let tray = pm.querySelector(':scope > .editor-measure-tray');
+    if (!tray) {
+        tray = document.createElement('div');
+        tray.className = 'editor-measure-tray';
+        tray.setAttribute('aria-hidden', 'true');
+        tray.style.cssText =
+            'position:absolute;left:-99999px;top:0;width:100%;height:0;overflow:hidden;visibility:hidden;pointer-events:none;';
+        pm.appendChild(tray);
+    }
+    const probe = sourceEl.cloneNode(true);
+    probe.querySelectorAll('.editor-page-break, .editor-page-top-inset, .editor-title-byline, .editor-measure-tray').forEach((el) => {
+        el.remove();
+    });
+    if (typeof mutateClone === 'function') mutateClone(probe);
+    probe.setAttribute('aria-hidden', 'true');
+    const marginTop = opts.continuation ? 'margin-top:0' : '';
+    const marginBot = opts.includeMarginBottom ? '' : 'margin-bottom:0';
+    probe.style.cssText = [
+        'position:relative',
+        'left:0',
+        'top:0',
+        `width:${Math.max(120, Math.round(width))}px`,
+        'visibility:hidden',
+        'pointer-events:none',
+        marginTop,
+        marginBot,
+        'height:auto',
+        'max-height:none',
+    ].filter(Boolean).join(';');
+    tray.appendChild(probe);
+    try {
+        const h = probe.getBoundingClientRect().height;
+        const mb = opts.includeMarginBottom ? marginBottom(probe) : 0;
+        return Math.max(0, Math.round(h + mb));
+    } finally {
+        probe.remove();
+    }
+}
+
+/** Keep words [0, wordCount) in a cloned element; clear the rest. */
+function truncateCloneToWordCount(root, wordCount) {
+    const limit = Math.max(0, wordCount | 0);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let n;
+    while ((n = walker.nextNode())) nodes.push(n);
+    let seen = 0;
+    let done = false;
+    nodes.forEach((tn) => {
+        if (done) {
+            tn.textContent = '';
+            return;
+        }
+        const parts = tn.textContent.split(/(\s+)/);
+        let out = '';
+        for (const token of parts) {
+            if (/\S/.test(token)) {
+                if (seen >= limit) {
+                    done = true;
+                    break;
+                }
+                seen += 1;
+            }
+            if (!done) out += token;
+        }
+        tn.textContent = out;
+    });
+}
+
+/**
+ * Max words from `fromWord` that fit in maxHeightPx (prefix of the remaining text).
+ * Returns 0 if even one word is too tall.
+ */
+function maxWordsFitting(dom, totalWords, fromWord, maxHeightPx) {
+    const remaining = Math.max(0, totalWords - fromWord);
+    if (remaining <= 0 || maxHeightPx < 8) return 0;
+    let low = 1;
+    let high = remaining;
+    let best = 0;
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const h = measureDomCloneHeight(dom, (clone) => {
+            if (fromWord > 0) {
+                truncateCloneToWordCount(clone, fromWord + mid);
+                truncateCloneDropPrefix(clone, fromWord);
+            } else {
+                truncateCloneToWordCount(clone, mid);
+            }
+        // Collapse margins: inter-block margins are owned by Y-distance packing;
+        // mid-chunk fits never include the paragraph's end margin.
+        }, { continuation: true, includeMarginBottom: false });
+        if (h <= maxHeightPx + 0.5) {
+            best = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return best;
+}
+
+/** Drop the first `wordCount` words from a clone (keep the suffix). */
+function truncateCloneDropPrefix(root, wordCount) {
+    const drop = Math.max(0, wordCount | 0);
+    if (drop <= 0) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let n;
+    while ((n = walker.nextNode())) nodes.push(n);
+    let seen = 0;
+    let started = false;
+    nodes.forEach((tn) => {
+        if (started) return;
+        const parts = tn.textContent.split(/(\s+)/);
+        let out = '';
+        for (const token of parts) {
+            if (/\S/.test(token)) {
+                if (seen < drop) {
+                    seen += 1;
+                    continue;
+                }
+                started = true;
+            }
+            if (started || !/\S/.test(token)) {
+                if (started) out += token;
+            }
+        }
+        tn.textContent = started ? out : '';
+    });
 }
 
 function createTopInsetWidget(height) {
@@ -262,7 +432,16 @@ function collectTopLevelBlocks(view) {
             }
         }
 
-        let height = Math.max(0, bottom - top);
+        // Y-distance (margin-collapse accurate). Strip mid-para break spacers so a
+        // prior pass doesn't inflate the next pack. Clone measure is for mid-para
+        // chunks only — whole-block clones miss sibling margin collapse.
+        const breaks = dom.querySelectorAll('.editor-page-break');
+        let breakH = 0;
+        breaks.forEach((b) => {
+            breakH += b.getBoundingClientRect().height || 0;
+        });
+        let height = Math.max(0, bottom - top - breakH);
+
         const align = node.attrs?.align;
         const isFloatImg =
             node.type.name === 'image' && (align === 'left' || align === 'right');
@@ -273,7 +452,7 @@ function collectTopLevelBlocks(view) {
             pendingFloatBottom = top + height;
         } else if (pendingFloatBottom != null && top < pendingFloatBottom - 1) {
             // Text wrapping beside the float: only count height past the float bottom.
-            height = Math.max(0, bottom - pendingFloatBottom);
+            height = Math.max(0, bottom - top - breakH - Math.max(0, pendingFloatBottom - top));
             if (bottom >= pendingFloatBottom - 1) pendingFloatBottom = null;
         } else {
             pendingFloatBottom = null;
@@ -289,6 +468,8 @@ function collectTopLevelBlocks(view) {
         blocks.push({
             pos,
             nodeSize: node.nodeSize,
+            node,
+            dom,
             // Sentinel: don't consume body budget — spacer handles the jump.
             height: hardBreak ? 0 : height,
             hardBreak,
@@ -353,24 +534,29 @@ function buildDecorations(view) {
         pageFootnoteIds[pageIndex] = pageRefIds.slice();
     };
 
+    const advanceToNextPage = (breakPos, side, key) => {
+        const nextOrigin = pageContentOriginY(pageIndex + 1, metrics, padTop);
+        const spacerH = Math.max(0, nextOrigin - cursorY);
+        commitPageChrome();
+        decos.push(
+            Decoration.widget(breakPos, () => createPageBreakWidget(spacerH), {
+                side,
+                key,
+            })
+        );
+        pageIndex += 1;
+        cursorY = nextOrigin;
+        return spacerH;
+    };
+
     for (let i = 0; i < blocks.length; i += 1) {
-        const { pos, height, footnoteIds, hardBreak } = blocks[i];
+        const { pos, height, footnoteIds, hardBreak, node, dom } = blocks[i];
 
         // Author page break: finish this sheet and start the next (even if space remains).
         if (hardBreak) {
             if (cursorY > padTop + 0.5) {
-                const nextOrigin = pageContentOriginY(pageIndex + 1, metrics, padTop);
-                const spacerH = Math.max(0, nextOrigin - cursorY);
-                commitPageChrome();
                 const afterBreak = pos + (blocks[i].nodeSize || 1);
-                decos.push(
-                    Decoration.widget(afterBreak, () => createPageBreakWidget(spacerH), {
-                        side: -1,
-                        key: `editor-pagebreak-hard-${pos}-${pageIndex + 1}`,
-                    })
-                );
-                pageIndex += 1;
-                cursorY = nextOrigin;
+                advanceToNextPage(afterBreak, -1, `editor-pagebreak-hard-${pos}-${pageIndex + 1}`);
             }
             applyFittedNotes(footnoteSpill.slice());
             continue;
@@ -381,31 +567,134 @@ function buildDecorations(view) {
         const trialIds = unionIds(unionIds(pageRefIds, footnoteSpill), footnoteIds);
         const trialFit = fitFootnotesToBand(view, trialIds, footerMax);
         const trialFooter = footerZoneHeight(trialFit.height, emptyFooterChrome, footerMax);
-        const limitY = pageContentLimitY(pageIndex, metrics, trialFooter);
+        footerZone = trialFooter;
+        const limitY = pageContentLimitY(pageIndex, metrics, footerZone);
 
-        const blockStartsNewPage = cursorY > padTop + 0.5
-            && cursorY + height > limitY + 0.5;
-
-        if (blockStartsNewPage) {
-            // Jump from current cursor to the next page's content origin.
-            const nextOrigin = pageContentOriginY(pageIndex + 1, metrics, padTop);
-            const spacerH = Math.max(0, nextOrigin - cursorY);
-
-            commitPageChrome();
-            decos.push(
-                Decoration.widget(pos, () => createPageBreakWidget(spacerH), {
-                    side: 1,
-                    key: `editor-pagebreak-${pos}-${pageIndex + 1}`,
-                })
-            );
-            pageIndex += 1;
-            cursorY = nextOrigin + height;
-            applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
-        } else {
+        const fitsWhole = cursorY + height <= limitY + 0.5;
+        if (fitsWhole) {
             cursorY += height;
             pageRefIds = trialFit.fittedIds;
             footnoteSpill = trialFit.spillIds;
             footerZone = trialFooter;
+            continue;
+        }
+
+        const words = canSplitBlock(node) ? buildWordIndex(node, pos) : [];
+        const canMidSplit = words.length >= 12 && dom;
+
+        // Non-splittable (or too short): keep whole-block jump to next page.
+        if (!canMidSplit) {
+            if (cursorY > padTop + 0.5) {
+                advanceToNextPage(pos, 1, `editor-pagebreak-${pos}-${pageIndex + 1}`);
+            }
+            cursorY += height;
+            applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
+            continue;
+        }
+
+        // Mid-paragraph split — fill each page, spacer, continue remainder (reader parity).
+        let wordOffset = 0;
+        let placedNotes = false;
+        let guard = 0;
+
+        const breakBeforeRemainder = () => {
+            if (wordOffset === 0) {
+                advanceToNextPage(pos, 1, `editor-pagebreak-${pos}-${pageIndex + 1}`);
+            } else {
+                advanceToNextPage(
+                    words[wordOffset].pos,
+                    -1,
+                    `editor-pagebreak-mid-${pos}-${pageIndex}-${wordOffset}`
+                );
+            }
+        };
+
+        const measureChunk = (count, isLast) => measureDomCloneHeight(dom, (clone) => {
+            if (wordOffset > 0) {
+                truncateCloneToWordCount(clone, wordOffset + count);
+                truncateCloneDropPrefix(clone, wordOffset);
+            } else {
+                truncateCloneToWordCount(clone, count);
+            }
+        }, { continuation: true, includeMarginBottom: Boolean(isLast) });
+
+        while (wordOffset < words.length && guard < 40) {
+            guard += 1;
+            footerZone = footerZoneHeight(
+                measureFootnoteContentHeight(
+                    view,
+                    placedNotes ? pageRefIds : unionIds(pageRefIds, footnoteIds)
+                ),
+                emptyFooterChrome,
+                footerMax
+            );
+            const pageLimit = pageContentLimitY(pageIndex, metrics, footerZone);
+            const remaining = pageLimit - cursorY;
+            const leftAfter = words.length - wordOffset;
+
+            if (remaining < 28 && cursorY > padTop + 0.5) {
+                breakBeforeRemainder();
+                continue;
+            }
+
+            const fitCount = maxWordsFitting(dom, words.length, wordOffset, remaining);
+
+            if (fitCount <= 0) {
+                if (cursorY > padTop + 0.5) {
+                    breakBeforeRemainder();
+                    continue;
+                }
+                // Full page still can't take a word — force a chunk to avoid a stuck loop.
+                const force = Math.min(Math.max(8, Math.ceil(leftAfter * 0.35)), leftAfter);
+                cursorY += Math.max(measureChunk(force, force >= leftAfter), 20);
+                wordOffset += force;
+                if (!placedNotes) {
+                    applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
+                    placedNotes = true;
+                }
+                if (wordOffset < words.length) breakBeforeRemainder();
+                continue;
+            }
+
+            // Remainder fits on this page.
+            if (fitCount >= leftAfter) {
+                cursorY += wordOffset === 0 ? height : Math.max(measureChunk(leftAfter, true), 12);
+                wordOffset = words.length;
+                if (!placedNotes) {
+                    applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
+                    placedNotes = true;
+                }
+                break;
+            }
+
+            // Reader parity: refuse crumb splits on the first break of a paragraph.
+            let useCount = fitCount;
+            if (wordOffset === 0 && (useCount <= 3 || leftAfter - useCount <= 3)) {
+                advanceToNextPage(pos, 1, `editor-pagebreak-${pos}-${pageIndex + 1}`);
+                cursorY += height;
+                applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
+                placedNotes = true;
+                wordOffset = words.length;
+                break;
+            }
+            // Continuations: never leave fewer than 3 words behind a break.
+            if (leftAfter - useCount < 3) useCount = leftAfter - 3;
+            if (useCount < 3) useCount = fitCount;
+
+            cursorY += Math.max(measureChunk(useCount, false), 12);
+            wordOffset += useCount;
+
+            if (!placedNotes) {
+                applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
+                placedNotes = true;
+            }
+
+            if (wordOffset >= words.length) break;
+            breakBeforeRemainder();
+        }
+
+        if (!placedNotes) {
+            applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
         }
     }
 
