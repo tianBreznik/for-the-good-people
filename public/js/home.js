@@ -5479,7 +5479,8 @@ function handleActionCard(cardId) {
     }
 }
 
-const SPLASH_MID_LINE = 'HAVE GOOD PERSPECTIVES, LETS LINK AND BUILD THROUGH';
+/** Hard break before THROUGH so wrap doesn’t drift with viewport/type size. */
+const SPLASH_MID_LINE = 'HAVE GOOD PERSPECTIVES, LETS LINK AND BUILD\nTHROUGH';
 
 function runSplashMidTypewriter(midEl) {
     return new Promise((resolve) => {
@@ -5498,7 +5499,7 @@ function runSplashMidTypewriter(midEl) {
                 return;
             }
             const ch = SPLASH_MID_LINE[i - 1];
-            const delay = ch === ',' ? 520 : ch === ' ' ? 210 : 140;
+            const delay = ch === ',' ? 520 : ch === '\n' ? 280 : ch === ' ' ? 210 : 140;
             setTimeout(step, delay);
         };
         midEl.textContent = '';

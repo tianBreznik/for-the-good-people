@@ -1924,7 +1924,8 @@ body.home-titles-instant .home-main-stage {
     font-family: 'Impact', sans-serif;
     text-align: center;
     color: transparent;
-    white-space: normal;
+    /* Preserve the locked break before THROUGH (see SPLASH_MID_LINE). */
+    white-space: pre-line;
     background-image: var(--bg-image);
     background-position: center;
     -webkit-background-clip: text;
