@@ -429,9 +429,9 @@ body.search-closing {
     align-items: stretch;
     gap: 0;
     padding: 0;
-    background: #111;
-    /* Same gray the other cards get from rgba(0,0,0,0.12) on white — not black-on-dark. */
-    border: 1px solid #e0e0e0;
+    /* Same shell as profile / latest — white card + shared gray border. */
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .bio-capture-card.is-video {
@@ -1260,6 +1260,7 @@ body.bio-editing .bio-panel #bio-capture-card {
         scroll-padding-inline: 0;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-x: contain;
+        touch-action: pan-x;
         scrollbar-width: thin;
     }
 
@@ -1270,6 +1271,28 @@ body.bio-editing .bio-panel #bio-capture-card {
         max-width: 100%;
         scroll-snap-align: start;
         scroll-snap-stop: always;
+    }
+
+    /*
+     * Capture iframe steals horizontal swipes. Pass touches through so the strip
+     * scrolls; PLAY stays clickable. Videos play via the facade button only.
+     */
+    .bio-capture-card iframe,
+    .bio-capture-card .bio-capture-media,
+    .bio-capture-card .bio-capture-yt-host,
+    .bio-capture-card .bio-capture-yt-host > div {
+        pointer-events: none !important;
+    }
+
+    .bio-capture-card .bio-capture-play-btn,
+    .bio-capture-card .bio-capture-facade,
+    .bio-capture-card .bio-capture-input {
+        pointer-events: auto !important;
+    }
+
+    .bio-capture-card {
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: #ffffff;
     }
 }
 
@@ -2061,8 +2084,30 @@ body.home-titles-instant .home-main-stage {
         background-size: 50vw auto;
         background-position: 0 0;
         background-repeat: repeat;
-        --splash-type-size: min(12.5vw, 15.5vh);
-        padding: max(2px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(2px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+        /*
+         * Mobile fill: open leading so mid lines breathe; keep width under the
+         * longest token (PERSPECTIVES) so nothing clips.
+         */
+        --splash-type-leading: 1.38;
+        --splash-type-width-cap: 14.8vw;
+        --splash-type-size: min(var(--splash-type-width-cap), 12.5vh);
+        padding: max(2px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(2px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+    }
+
+    /*
+     * Desktop parks the stage 1px into the splash for a stone seam. On mobile
+     * that peek reads as a pink/magenta hairline (column accent / slab edge).
+     * Keep the stage fully off-screen until the curtain lifts.
+     */
+    body:not(.home-titles-visible) .home-main-stage {
+        transform: translate3d(0, 100%, 0);
+    }
+
+    #first-container {
+        overflow: hidden;
+        /* Prefer % over 100vw — vw includes scrollbar gutters and can flash a 1px seam. */
+        width: 100%;
+        max-width: 100%;
     }
 
     #top-text,
@@ -2071,6 +2116,9 @@ body.home-titles-instant .home-main-stage {
         background-size: cover;
         background-position: var(--home-mobile-first-slab-bg-x) 0;
         background-attachment: scroll;
+        line-height: var(--splash-type-leading);
+        max-width: 100%;
+        overflow: hidden;
     }
 
     #top-text::before,
@@ -2419,14 +2467,14 @@ body.home-titles-instant .home-main-stage {
     z-index: 2; /* Ensure it's on top of other card content if necessary, same as .blog-title for example */
 }
 
-/* Pearl glow hover — skip author @tags (they use white-rim + stone fill instead) */
+/* Pearl glow hover — skip author @tags (they use white-rim + stone fill instead).
+ * No magenta in the halo — it read as a pink underline on tap/light textures. */
 .blog-card:not(.author-card):hover .blog-title {
     color: #fdf6e3; /* pearl white/beige */
     -webkit-text-fill-color: #fdf6e3;
     text-shadow:
         0 0 1px #fffbe6,
         0 0 1px #fffbe6,
-        0 0 1px #ffe6fb,
         0 0 1.5px #e6f7ff,
         0 0 1px #fffbe6;
     filter: blur(0.3px) brightness(1.2) contrast(0.9) saturate(1.1);
@@ -2456,15 +2504,13 @@ html[data-home-texture] .title-section .blog-card.preview-source .blog-title {
 }
 
 /*
- * SEARCH / EDITOR / LOGIN / LOGOUT: same solid white hover as article titles
+ * SEARCH / LOGIN: same solid white hover as article titles
  * (texture packs use background-clip; no texture uses plain fill).
+ * Folder-popup items stay black ink on white paper — no white hover wash.
  */
 #search-card:hover .blog-title,
 #auth-login-card:hover .blog-title,
-#auth-login-card[data-logout="true"]:hover .blog-title,
-#auth-menu-logout-btn:hover .blog-title,
-#auth-editor-card:hover .blog-title,
-#auth-dashboard-card:hover .blog-title {
+#auth-login-card[data-logout="true"]:hover .blog-title {
     color: #fff;
     -webkit-text-fill-color: #fff;
     -webkit-text-stroke: 0;
@@ -2475,10 +2521,7 @@ html[data-home-texture] .title-section .blog-card.preview-source .blog-title {
 
 html[data-home-texture] #search-card:hover .blog-title,
 html[data-home-texture] #auth-login-card:hover .blog-title,
-html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title,
-html[data-home-texture] #auth-menu-logout-btn:hover .blog-title,
-html[data-home-texture] #auth-editor-card:hover .blog-title,
-html[data-home-texture] #auth-dashboard-card:hover .blog-title {
+html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title {
     background-image: linear-gradient(#fff, #fff) !important;
     background-size: auto !important;
     background-position: center !important;
@@ -2493,14 +2536,11 @@ html[data-home-texture] #auth-dashboard-card:hover .blog-title {
 }
 
 #search-card:hover .blog-title::before,
-#auth-login-card:hover .blog-title::before,
-#auth-menu-logout-btn:hover .blog-title::before,
-#auth-editor-card:hover .blog-title::before,
-#auth-dashboard-card:hover .blog-title::before {
+#auth-login-card:hover .blog-title::before {
     display: none;
 }
 
-/* Author folder menu — collapsed footprint is just the toggle; stack pans up above it. */
+/* Author folder popup — white grain panel anchored on the folder emoji (right). */
 .auth-menu {
     position: relative;
     display: flex;
@@ -2513,53 +2553,285 @@ html[data-home-texture] #auth-dashboard-card:hover .blog-title {
     display: none !important;
 }
 
+.auth-menu-panel {
+    position: relative;
+    display: flex;
+    /* Items stack above the folder; folder stays the bottom-right anchor. */
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    isolation: isolate;
+    /* Clip crest/tagline/stack so they can’t spill when the square collapses. */
+    overflow: hidden;
+    transition:
+        background-color 0.18s ease,
+        box-shadow 0.18s ease,
+        padding 0.18s ease,
+        gap 0.18s ease;
+}
+
+.auth-menu-panel::before,
+.auth-menu-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    border-radius: inherit;
+}
+
+.auth-menu-panel::after {
+    background-size: 120px 120px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.auth-menu-panel::before {
+    background-image: repeating-radial-gradient(
+        rgba(0, 0, 0, 0.14) 0 0.7px,
+        transparent 0.7px 2px
+    );
+    background-size: 3.2px 3.2px;
+}
+
+.auth-menu.is-open .auth-menu-panel {
+    /* Mid square — between the first pass and the too-tight one. */
+    box-sizing: border-box;
+    width: min(236px, 68vw);
+    height: min(236px, 68vw);
+    aspect-ratio: 1 / 1;
+    gap: 8px;
+    padding: 16px 8px 6px 18px;
+    background: #ececec;
+    border: 0;
+    outline: none;
+    /*
+     * Physical gray bevel: lighter gray top-left, darker bottom-right.
+     * Keep the lit edge gray — not white — so the whole rim reads as metal/stone.
+     */
+    box-shadow:
+        inset 2px 2px 0 #c8c8c8,
+        inset 3px 3px 0 #d6d6d6,
+        inset -2px -2px 0 #6a6a6a,
+        inset -3px -3px 0 #848484,
+        inset 0 0 0 1px #9e9e9e,
+        1px 1px 0 #5a5a5a,
+        0 2px 3px rgba(0, 0, 0, 0.14),
+        0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+.auth-menu.is-open .auth-menu-panel::after {
+    opacity: 0.22;
+}
+
+.auth-menu.is-open .auth-menu-panel::before {
+    opacity: 0.12;
+}
+
+/* Ink crest — closed↔open eyes (same multiply treatment as about-stamp figures). */
+.auth-menu-crest {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    mix-blend-mode: multiply;
+    /* Dissolve any residual photo-plate rim into the panel. */
+    -webkit-mask-image: radial-gradient(
+        ellipse 82% 68% at 50% 48%,
+        #000 28%,
+        rgba(0, 0, 0, 0.75) 55%,
+        transparent 78%
+    );
+    mask-image: radial-gradient(
+        ellipse 82% 68% at 50% 48%,
+        #000 28%,
+        rgba(0, 0, 0, 0.75) 55%,
+        transparent 78%
+    );
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+}
+
+.auth-menu.is-open .auth-menu-crest {
+    opacity: 0.64;
+    visibility: visible;
+    transition: opacity 0.2s ease;
+}
+
+.auth-menu-tagline {
+    position: absolute;
+    left: 16px;
+    bottom: 10px;
+    z-index: 1;
+    margin: 0;
+    max-width: calc(100% - 3.2rem);
+    pointer-events: none;
+    font-family: 'Snell Roundhand', 'Apple Chancery', 'Segoe Script', 'Brush Script MT', 'Palatino Linotype', cursive;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(0.95rem, 2.4vw, 1.15rem);
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    color: #2a2a2a;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(4px);
+}
+
+.auth-menu.is-open .auth-menu-tagline {
+    opacity: 0.78;
+    visibility: visible;
+    transform: translateY(0);
+    transition:
+        opacity 0.28s ease 0.08s,
+        transform 0.28s ease 0.08s;
+}
+
+.auth-menu-eyes {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 48%;
+    user-select: none;
+    -webkit-user-drag: none;
+    transition: opacity 0.4s ease;
+}
+
+.auth-menu-eyes-closed {
+    opacity: 1;
+}
+
+.auth-menu-eyes-open {
+    opacity: 0;
+}
+
+.auth-menu.is-eyes-open .auth-menu-eyes-closed {
+    opacity: 0;
+}
+
+.auth-menu.is-eyes-open .auth-menu-eyes-open {
+    opacity: 1;
+}
+
+.auth-menu-panel > *:not(.auth-menu-crest):not(.auth-menu-tagline) {
+    position: relative;
+    z-index: 1;
+}
+
 .auth-menu-toggle {
     appearance: none;
     border: 0;
     margin: 0;
-    /* No right padding — emoji’s right edge matches EDITOR / DASHBOARD / tags. */
-    padding: 4px 0 4px 6px;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    /* Fixed footprint — open/close must not resize or shift the anchor. */
+    box-sizing: border-box;
+    width: 2.35rem;
+    height: 2.35rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
     background: transparent;
     cursor: pointer;
     line-height: 1;
-    font-size: clamp(1.85rem, 2.4vw, 2.2rem);
+    font-size: 2rem;
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
     -webkit-tap-highlight-color: transparent;
+    transform: none !important;
+}
+
+.auth-menu-toggle:hover,
+.auth-menu-toggle:active,
+.auth-menu-toggle:focus,
+.auth-menu.is-open .auth-menu-toggle {
+    transform: none !important;
+    font-size: 2rem;
 }
 
 #auth-controls {
     right: var(--author-rail-inset) !important;
 }
 
+#auth-controls.is-author-menu {
+    z-index: 40;
+}
+
 .auth-menu-icon {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15em;
+    height: 1.15em;
     line-height: 1;
+    text-align: center;
+    font-size: 1em;
+    /* Open/closed glyphs differ in ink — keep visual weight in the same box. */
+    overflow: hidden;
     user-select: none;
+    pointer-events: none;
 }
 
 .auth-menu-stack {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 4px);
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    align-self: stretch;
+    padding-right: 12px;
+    max-width: 0;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
     pointer-events: none;
+    transform: translateY(10px);
+}
+
+.auth-menu.is-open .auth-menu-stack {
+    flex: 1 1 auto;
+    max-width: 100%;
+    max-height: 160px;
+    opacity: 1;
+    visibility: visible;
+    overflow: hidden;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition:
+        max-width 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        max-height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.18s ease,
+        transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.auth-menu-stack .blog-title {
+    font-size: clamp(1.85rem, 2.6vw, 2.25rem) !important;
 }
 
 .auth-menu-stack .cardcontainer {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(8px);
     transition:
-        opacity 0.2s ease,
-        transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+        opacity 0.18s ease,
+        transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
     pointer-events: none;
-}
-
-/* Nearest the folder opens first (EDITOR), then DASHBOARD, then LOGOUT. */
-.auth-menu.is-open .auth-menu-stack {
-    pointer-events: auto;
 }
 
 .auth-menu.is-open .auth-menu-stack .cardcontainer {
@@ -2568,28 +2840,88 @@ html[data-home-texture] #auth-dashboard-card:hover .blog-title {
     pointer-events: auto;
 }
 
+/* Nearest the folder opens first (EDITOR), then DASHBOARD, then LOGOUT. */
 .auth-menu.is-open #auth-editor-card {
     transition-delay: 0.02s;
 }
 
 .auth-menu.is-open #auth-dashboard-card {
-    transition-delay: 0.07s;
+    transition-delay: 0.06s;
 }
 
 .auth-menu.is-open #auth-menu-logout-card {
-    transition-delay: 0.12s;
-}
-
-.auth-menu:not(.is-open) #auth-editor-card {
     transition-delay: 0.1s;
 }
 
+.auth-menu:not(.is-open) #auth-editor-card {
+    transition-delay: 0.08s;
+}
+
 .auth-menu:not(.is-open) #auth-dashboard-card {
-    transition-delay: 0.05s;
+    transition-delay: 0.04s;
 }
 
 .auth-menu:not(.is-open) #auth-menu-logout-card {
     transition-delay: 0s;
+}
+
+/*
+ * Solid black Impact + letterpress offset — no wall stone fill.
+ * Must beat html[data-home-texture] .blog-title { background-image: url(...) !important }.
+ */
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+.auth-menu-stack .blog-title,
+.auth-menu-stack .blog-title::before {
+    font-family: 'Impact', Haettenschweiler, 'Arial Narrow Bold', sans-serif !important;
+    background-image: none !important;
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    background-size: auto !important;
+    background-position: center !important;
+    background-attachment: scroll !important;
+    mix-blend-mode: normal !important;
+    filter: none !important;
+    -webkit-text-stroke: 0 !important;
+}
+
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+.auth-menu-stack .blog-title {
+    --auth-ink: #111111;
+    color: var(--auth-ink) !important;
+    -webkit-text-fill-color: var(--auth-ink) !important;
+    text-shadow: none !important;
+}
+
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+.auth-menu-stack .blog-title::before {
+    color: var(--auth-ink) !important;
+    -webkit-text-fill-color: var(--auth-ink) !important;
+    top: 1px;
+    left: 1px;
+    display: block !important;
+    /* Soft paper emboss — ink stamp without texture fill */
+    text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.7);
+    opacity: 0.55;
+}
+
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):hover .blog-title,
+.auth-menu-stack .blog-card:hover .blog-title,
+.auth-menu-stack .blog-card:not(.author-card):hover .blog-title {
+    background-image: none !important;
+    filter: none !important;
+    text-shadow: none !important;
+    /* --auth-ink set by JS on pointerenter for a random hue */
+}
+
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):hover .blog-title::before,
+.auth-menu-stack .blog-card:hover .blog-title::before,
+.auth-menu-stack .blog-card:not(.author-card):hover .blog-title::before {
+    display: block !important;
+    background-image: none !important;
+    filter: none !important;
+    opacity: 0.7;
 }
 
 /* Wash non-matching cards when an author is hovered — never wash about.
@@ -3516,7 +3848,15 @@ body.search-closing .home-main-stage {
     }
 
     .author-section {
-        padding-bottom: max(100px, env(safe-area-inset-bottom, 0px));
+        /* Clear Safari chrome + emboss bleed so the rail isn't clipped off-screen. */
+        --author-rail-inset: max(14px, env(safe-area-inset-right, 0px));
+        padding-right: max(10px, env(safe-area-inset-right, 0px));
+        padding-bottom: max(120px, env(safe-area-inset-bottom, 0px) + 72px);
+    }
+
+    /* Beat `.home-main-pane > .column-section[data-col] { overflow-x: hidden }` cropping tags. */
+    .home-main-pane > .column-section.author-section {
+        overflow-x: visible;
     }
 
     /* Search is desktop-only for now */
@@ -3541,10 +3881,27 @@ body.search-closing .home-main-stage {
         overflow: visible;
     }
 
-    /* Bio cards — width-led on narrow viewports */
-    .bio-panel {
-        --authorBioHeight: clamp(200px, 58vw, 280px);
+    /* Kill iOS gray tap wash on author handles (the brief “bar lights up”). */
+    .author-section .blog-card.author-card,
+    .author-section .blog-card.author-card *,
+    .author-section .cardcontainer:has(> .blog-card.author-card),
+    .author-section .cardcontainer:has(> .blog-card.author-card) * {
+        -webkit-tap-highlight-color: transparent !important;
+        tap-highlight-color: transparent !important;
+        outline: none;
+        -webkit-user-select: none;
+        user-select: none;
     }
+
+    .author-section .blog-card.author-card:active,
+    .author-section .blog-card.author-card:focus,
+    .author-section .blog-card.author-card:focus-visible {
+        outline: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Bio strip height is set with the stage-translate block below (tighter hug). */
 
     .home-main-pane .cardcontainer {
         min-width: 0;
@@ -3553,8 +3910,9 @@ body.search-closing .home-main-stage {
     .author-section #auth-controls {
         box-sizing: border-box;
         left: auto !important;
-        right: max(var(--author-rail-inset), env(safe-area-inset-right, 0px)) !important;
-        bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+        right: var(--author-rail-inset) !important;
+        /* Sit above iOS Safari’s bottom chrome (safe-area alone isn’t enough). */
+        bottom: max(56px, env(safe-area-inset-bottom, 0px) + 48px) !important;
         width: auto !important;
         max-width: none;
         flex-wrap: nowrap;
@@ -3594,10 +3952,21 @@ body.search-closing .home-main-stage {
         text-align: right;
     }
 
+    .author-section #auth-controls .auth-menu-stack .blog-title {
+        text-align: left;
+    }
+
+    .author-section #auth-controls .auth-menu-stack .blog-card {
+        justify-content: flex-start;
+    }
+
     .author-section #auth-controls .auth-menu-toggle {
-        font-size: clamp(2rem, 8vw, 2.35rem);
-        padding: 6px 0 6px 8px;
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 2.1rem;
+        padding: 0;
         touch-action: manipulation;
+        transform: none !important;
     }
 
     #auth-login-wrap .blog-title,
@@ -3605,14 +3974,21 @@ body.search-closing .home-main-stage {
         text-align: left;
     }
 
-    /* Scroll-driven active column; disable desktop hover rails on narrow layout. */
+    /* Disable desktop hover rails on narrow layout. */
     .home-main-pane:has(.section-title-container:hover)::before,
     .home-main-pane:has(.section-title-container:hover)::after {
         content: none;
     }
 
+    /* Scroll-active is haptic/bookkeeping only — no always-on rails. */
     .home-main-pane.home-column-active::before,
     .home-main-pane.home-column-active::after {
+        content: none;
+    }
+
+    /* Section separation lines: only while the section title is tapped. */
+    .home-main-pane.home-column-lines::before,
+    .home-main-pane.home-column-lines::after {
         content: '';
         position: absolute;
         top: 0;
@@ -3622,8 +3998,74 @@ body.search-closing .home-main-stage {
         z-index: 8;
         pointer-events: none;
     }
-    .home-main-pane.home-column-active::before { left: 0; }
-    .home-main-pane.home-column-active::after { right: 0; }
+    .home-main-pane.home-column-lines::before { left: 0; }
+    .home-main-pane.home-column-lines::after { right: 0; }
+
+    /*
+     * Light textures: crimson/blue rails read as a pink edge. Keep rails on stone only.
+     */
+    html[data-home-texture='stucco'] .home-main-pane.home-column-lines::before,
+    html[data-home-texture='stucco'] .home-main-pane.home-column-lines::after,
+    html[data-home-texture='stucco8'] .home-main-pane.home-column-lines::before,
+    html[data-home-texture='stucco8'] .home-main-pane.home-column-lines::after {
+        content: none;
+    }
+
+    /*
+     * Touch: ignore sticky :hover on titles/headings.
+     * Do NOT touch author-card :hover — stripping text-shadow/filter on the
+     * emboss ::before made the handle vanish until the next tap elsewhere.
+     */
+    @media (hover: none) {
+        .blog-card:not(.author-card):not(.preview-source):hover .blog-title,
+        .title-section .blog-card:not(.section-heading-card):not(.preview-source):hover .blog-title,
+        .section-title-container:hover .blog-title,
+        .section-heading-card:hover .blog-title {
+            text-decoration: none !important;
+            text-shadow: none !important;
+            filter: none !important;
+        }
+
+        /*
+         * Opaque white fill — never transparent + bg-clip (that blanked the
+         * handle when ::before was hidden and text-shadow was cleared).
+         */
+        .author-section .blog-card.author-card.tap-active .blog-title,
+        html[data-home-texture] .author-section .blog-card.author-card.tap-active .blog-title {
+            color: #fff !important;
+            -webkit-text-fill-color: #fff !important;
+            -webkit-text-stroke: 0 !important;
+            background-image: none !important;
+            -webkit-background-clip: border-box !important;
+            background-clip: border-box !important;
+            text-shadow: none !important;
+            filter: none !important;
+            transform: none !important;
+        }
+
+        .author-section .blog-card.author-card.tap-active .blog-title::before {
+            display: none !important;
+        }
+
+        /* After close: restore emboss even if iOS keeps :hover stuck on the tag. */
+        .author-section .blog-card.author-card:not(.tap-active):not(.bio-dim):not(.link-glow) .blog-title::before {
+            display: block !important;
+            filter: brightness(0.65) contrast(1.4);
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.55);
+        }
+
+        .title-section .blog-card.preview-source .blog-title,
+        html[data-home-texture] .title-section .blog-card.preview-source .blog-title {
+            color: #fff !important;
+            -webkit-text-fill-color: #fff !important;
+            -webkit-text-stroke: 0 !important;
+            text-shadow: none !important;
+            filter: none !important;
+            background-image: linear-gradient(#fff, #fff) !important;
+            -webkit-background-clip: text !important;
+            background-clip: text !important;
+        }
+    }
 
     body.article-open .article-panel .article-panel-close,
     body.article-closing .article-panel .article-panel-close {
@@ -3716,9 +4158,79 @@ body.search-closing .home-main-stage {
 
     /* Prevent the track's fallback stone texture from filling the opening gap. */
     body.article-open .home-main-track,
-    body.article-closing .home-main-track {
+    body.article-closing .home-main-track,
+    body.bio-open .home-main-track,
+    body.bio-closing .home-main-track,
+    body.search-open .home-main-track,
+    body.search-closing .home-main-track {
         background-image: none;
         background: transparent;
+    }
+
+    /*
+     * Bio / search reveal on mobile: slide the whole stage down. Column-only
+     * translate left the track stone covering the bio strip (z-index under stage).
+     * Keep desktop timing (--aboutDuration); tap responsiveness is handled in JS.
+     */
+    body.bio-open .home-main-stage,
+    body.bio-closing .home-main-stage,
+    body.search-open .home-main-stage,
+    body.search-closing .home-main-stage {
+        translate: 0 var(--wallRevealY);
+        transition: translate var(--aboutDuration) ease-in-out;
+    }
+
+    body.bio-open .column-section,
+    body.bio-closing .column-section,
+    body.search-open .column-section,
+    body.search-closing .column-section {
+        translate: none;
+    }
+
+    /* Keep bio under the stage (z-index 1) — wall slides away to reveal, like desktop. */
+
+    /*
+     * Tall cards again; only trim bottom padding so the wall sits tight under
+     * the card bottoms (previous shrink made cards shorter + gap worse).
+     */
+    .bio-panel {
+        --authorBioHeight: clamp(220px, 58vw, 280px);
+        padding: 10px 12px 2px;
+        align-items: stretch;
+        box-sizing: border-box;
+    }
+
+    .bio-panel-cards {
+        --bio-card-height: calc(var(--authorBioHeight) - 12px);
+        height: var(--bio-card-height);
+        max-height: none;
+    }
+
+    /* Same gray frame as profile / latest cards (capture was near-invisible on dark fill). */
+    .bio-capture-card {
+        border: 1px solid rgba(20, 20, 20, 0.14);
+        box-shadow: none;
+    }
+
+    /*
+     * Capture iframes steal horizontal pan once you snap to that card — disable
+     * pointer events until the facade starts playback.
+     */
+    .bio-panel-cards iframe.bio-capture-media,
+    .bio-panel-cards .bio-capture-yt-host,
+    .bio-panel-cards .bio-capture-yt-host iframe {
+        pointer-events: none;
+    }
+
+    .bio-capture-shell.is-playing .bio-capture-yt-host,
+    .bio-capture-shell.is-playing .bio-capture-yt-host iframe,
+    .bio-capture-shell.is-playing iframe.bio-capture-media {
+        pointer-events: auto;
+    }
+
+    .bio-panel-cards {
+        overscroll-behavior-x: contain;
+        touch-action: pan-x;
     }
 
     /* Mobile preview: fit page fully inside panel during edge-open animation. */
@@ -3931,6 +4443,16 @@ body.password-reset-page .home-login-create-account {
     .home-texture-swatch {
         width: 24px;
         height: 24px;
+    }
+
+    /* Hide texture picker while the in-app article reader / preview is open. */
+    body.article-open .home-texture-switcher,
+    body.article-closing .home-texture-switcher,
+    body.mobile-reader-open .home-texture-switcher {
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        transform: translateY(10px);
     }
 }
 

@@ -175,8 +175,15 @@ function mountCommentScreenForLayout(lastArticlePageEl) {
     if (!commentScreenEl) return;
 
     const composeDock = ensureCommentComposeDock();
+    const articleBody = document.getElementById('article-body');
 
-    if (READER_EMBED) {
+    /*
+     * Desktop embed (?embed=1) used to park comments outside pages for an old
+     * iOS caret bug. On mobile that made compose + bands full-bleed under the
+     * paper cards. Always use in-page mounting when we have article pages —
+     * including the home mobile iframe reader.
+     */
+    if (READER_EMBED && !articleBody) {
         const blogRoot = document.querySelector('.blog');
         if (blogRoot) {
             blogRoot.appendChild(composeDock);
@@ -185,7 +192,6 @@ function mountCommentScreenForLayout(lastArticlePageEl) {
         return;
     }
 
-    const articleBody = document.getElementById('article-body');
     if (!articleBody) return;
 
     // Park list host so tearing down an old comments sheet doesn't destroy it.
@@ -212,13 +218,12 @@ function mountCommentScreenForLayout(lastArticlePageEl) {
     if (anchor) lastArticlePageElForComments = anchor;
 
     commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
+    composeDock.classList.remove('comment-compose--page-foot', 'comment-compose--above-footnotes');
 
-    if (anchor) {
-        pinComposeToContentPageFoot(composeDock, anchor);
-    }
+    // Same as desktop: compose on last content page foot; thread on its own sheet.
+    if (anchor) pinComposeToContentPageFoot(composeDock, anchor);
 
     if (!articleHasCommentThread()) {
-        // No list yet — park the list host off-sheet.
         commentScreenEl.hidden = true;
         applyPageNumbers(articleBody);
         return;
@@ -1440,15 +1445,47 @@ function createTitleBlockNode(blockHtml, meta) {
     return wrap;
 }
 
+/** Cached for one pack pass — avoid re-probing CSS vars on every block. */
+let cachedSpreadTargetHeight = 0;
+let cachedSpreadTargetHeightAt = 0;
+
 function getSpreadTargetHeight() {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    // Reuse within a short window (one renderArticleSpread + sibling calls).
+    if (cachedSpreadTargetHeight > 100 && now - cachedSpreadTargetHeightAt < 2500) {
+        return cachedSpreadTargetHeight;
+    }
+    const narrow = isReaderNarrow();
+    /*
+     * Mobile: measure the same --reader-page-height the CSS uses. Packing against
+     * visualViewport while pages used a taller svh min-height left empty footers.
+     */
+    let measured = 0;
+    if (narrow && typeof document !== 'undefined') {
+        const probe = document.createElement('div');
+        probe.setAttribute('aria-hidden', 'true');
+        probe.style.cssText =
+            'position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;width:0;' +
+            'height:var(--reader-page-height);';
+        document.documentElement.appendChild(probe);
+        measured = Math.floor(probe.getBoundingClientRect().height);
+        probe.remove();
+        if (measured > 100) {
+            cachedSpreadTargetHeight = measured;
+            cachedSpreadTargetHeightAt = now;
+            return measured;
+        }
+    }
     const viewportH = window.visualViewport
         ? Math.floor(window.visualViewport.height)
         : window.innerHeight;
-    const narrow = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
     const inset = narrow
         ? Math.max(16, Math.min(36, Math.round(viewportH * 0.028)))
         : Math.max(30, Math.min(52, Math.round(viewportH * 0.048)));
-    return Math.max(viewportH - inset, 440);
+    measured = Math.max(viewportH - inset, 440);
+    cachedSpreadTargetHeight = measured;
+    cachedSpreadTargetHeightAt = now;
+    return measured;
 }
 
 function createSpread() {
@@ -1608,13 +1645,23 @@ function collectFootnoteRefIdsUnion(bodyEl, extraEl) {
     return out;
 }
 
+function isReaderNarrow() {
+    return (
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(max-width: 900px)').matches
+    );
+}
+
 /**
  * Max footnote band (px). Band sizes to notes that fit; anything past this spills
  * to the next page so a spam of notes cannot eat the whole sheet.
  */
 function footnoteBandHeight(spreadHeight) {
     const h = Number(spreadHeight) || 0;
-    if (h <= 0) return 112;
+    const narrow = isReaderNarrow();
+    if (h <= 0) return narrow ? 88 : 112;
+    // Mobile: room for a short note + clearance (too-tight bands clipped off the sheet).
+    if (narrow) return Math.min(132, Math.max(72, Math.round(h * 0.135)));
     return Math.min(168, Math.max(96, Math.round(h * 0.155)));
 }
 
@@ -1697,17 +1744,43 @@ function footnoteProbeWidth(pageEl) {
     return 520;
 }
 
-/** Reserve only the height of notes that will actually fit (capped); else 0. */
+/** Breathing room between body and footnote rule on mobile (px). */
+const MOBILE_BODY_FOOT_GAP = 12;
+
+/**
+ * Reserve footnote band height while packing body.
+ * Mobile: carry-in (full) + a modest stub only for refs *already on this page*
+ * (not extraEl — those may land on the next sheet after a split).
+ * Notes that still don't fit spill to the next footnote section (Word/Docs-like).
+ * Desktop keeps full measured reserve.
+ */
 function footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds, pageEl, assignedAnchors) {
+    const narrow = isReaderNarrow();
+    const carry = Array.isArray(carryIds) ? carryIds : [];
+    const maxBand = footnoteBandHeight(spreadHeight);
+    const probeW = footnoteProbeWidth(pageEl || bodyEl?.parentElement);
+
+    if (narrow) {
+        let reserve = 0;
+        if (carry.length) {
+            const { height } = measureFittedFootnoteBand(defMap, carry, maxBand, probeW);
+            // Slightly under-reserve — post-seal backfill fills any leftover gap;
+            // over-reserve + margin-top:auto left dead bands above the rule.
+            reserve = height > 0 ? Math.max(40, Math.round(height * 0.9)) : 0;
+        }
+        // Refs already on this page — modest stub only (backfill / peel refine).
+        const pageRefs = collectFootnoteRefIdsFromNode(bodyEl).filter(
+            (id) => id && !carry.includes(id)
+        );
+        if (pageRefs.length) {
+            reserve = Math.max(reserve, Math.min(64, Math.round(maxBand * 0.5)));
+        }
+        return reserve;
+    }
+
     const queue = footnoteQueueForPage(bodyEl, defMap, extraEl, carryIds, assignedAnchors);
     if (!queue.length) return 0;
-    const maxBand = footnoteBandHeight(spreadHeight);
-    const { height } = measureFittedFootnoteBand(
-        defMap,
-        queue,
-        maxBand,
-        footnoteProbeWidth(pageEl || bodyEl?.parentElement)
-    );
+    const { height } = measureFittedFootnoteBand(defMap, queue, maxBand, probeW);
     return height;
 }
 
@@ -1732,10 +1805,20 @@ function pageVerticalInsets(pageEl) {
 }
 
 function pageBodyHeightBudget(pageEl, bodyEl, spreadHeight, defMap, extraEl, carryIds, assignedAnchors) {
+    const narrow = isReaderNarrow();
+    /*
+     * Mobile: prefer the live page box. Packing against a shorter probe than the
+     * CSS min-height left large empty footers inside full-height sheets.
+     */
+    let pageH = spreadHeight;
+    if (narrow && pageEl) {
+        const live = Math.floor(pageEl.getBoundingClientRect().height || pageEl.clientHeight || 0);
+        if (live > 100) pageH = Math.max(pageH, live);
+    }
     const footReserve = footnoteReserveForBody(
         bodyEl,
         defMap,
-        spreadHeight,
+        pageH,
         extraEl,
         carryIds,
         pageEl,
@@ -1744,8 +1827,80 @@ function pageBodyHeightBudget(pageEl, bodyEl, spreadHeight, defMap, extraEl, car
     const masthead = pageEl ? pageEl.querySelector('.article-inline-masthead') : null;
     const mastheadReserve = masthead ? elementOuterHeightWithMargins(masthead) : 0;
     const pageInsets = pageVerticalInsets(pageEl);
-    const maxBody = Math.floor(spreadHeight - pageInsets - footReserve - mastheadReserve);
+    const maxBody = Math.floor(pageH - pageInsets - footReserve - mastheadReserve);
     return Math.max(150, maxBody);
+}
+
+/**
+ * Safety net: any footnote referenced in the packed article that never landed in a
+ * footnote band gets appended (does not wipe existing bands).
+ */
+function ensureAllFootnotesRendered(articleBodyEl, defMap) {
+    if (!articleBodyEl || !(defMap instanceof Map) || defMap.size === 0) return;
+
+    const needed = [];
+    articleBodyEl.querySelectorAll('.footnote-ref[data-footnote-id]').forEach((ref) => {
+        const id = ref.getAttribute('data-footnote-id');
+        if (id && defMap.has(id) && !needed.includes(id)) needed.push(id);
+    });
+    if (!needed.length) return;
+
+    const present = new Set();
+    articleBodyEl.querySelectorAll('.article-page-footnotes p[data-variant="footnote"]').forEach((p) => {
+        let id = p.getAttribute('data-footnote-id');
+        if (!id) {
+            const hid = p.getAttribute('id');
+            if (hid && hid.startsWith('fn-')) id = hid.slice(3);
+        }
+        if (id) present.add(id);
+    });
+
+    const missing = needed.filter((id) => !present.has(id));
+    if (!missing.length) return;
+
+    const fallbackPage =
+        typeof lastArticleContentPage === 'function'
+            ? lastArticleContentPage(articleBodyEl)
+            : articleBodyEl.querySelector('.article-page-left:not(.article-page-comments)');
+
+    missing.forEach((id) => {
+        const html = defMap.get(id);
+        if (!html) return;
+
+        let esc = id;
+        try {
+            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') esc = CSS.escape(id);
+        } catch (_) {
+            esc = String(id).replace(/"/g, '');
+        }
+        const ref = articleBodyEl.querySelector(`.footnote-ref[data-footnote-id="${esc}"]`);
+        const page = (ref && ref.closest('.article-page')) || fallbackPage;
+        if (!page) return;
+
+        const body = ensureArticlePageBody(page);
+        let foot = page.querySelector(':scope > .article-page-footnotes');
+        if (!foot) {
+            foot = document.createElement('div');
+            foot.className = 'article-page-footnotes';
+            body.after(foot);
+        }
+
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        const src = temp.firstElementChild;
+        if (!src) return;
+        const clone = src.cloneNode(true);
+        const n =
+            footnoteSuperscriptNumberForId(body, id) ??
+            footnoteSuperscriptNumberForId(articleBodyEl, id) ??
+            foot.childElementCount + 1;
+        clone.setAttribute('data-footnote-n', String(n));
+        if (!clone.getAttribute('id')) clone.id = `fn-${id}`;
+        if (typeof ContentRefs !== 'undefined' && ContentRefs.linkifyElement) {
+            ContentRefs.linkifyElement(clone);
+        }
+        foot.appendChild(clone);
+    });
 }
 
 function footnoteSuperscriptNumberForId(bodyRoot, id) {
@@ -1765,8 +1920,33 @@ function footnoteSuperscriptNumberForId(bodyRoot, id) {
 }
 
 /**
- * Pack footnote defs into a band sized to what fits (capped at max).
- * Carry-in notes first, then refs on this page. Overflow spills to the next band.
+ * True when the footnote band is clipped by the page foot or crowds the body
+ * (Word/Docs never paint notes into the bottom margin).
+ */
+function footnoteBandOverflowsPage(pageEl, footEl, bodyEl) {
+    if (!pageEl || !footEl) return false;
+    const pageBox = pageEl.getBoundingClientRect();
+    const footBox = footEl.getBoundingClientRect();
+    // During early layout a 0-size box is unreliable — caller still has bandMax.
+    if (pageBox.height < 80 || footBox.height < 1) return false;
+    const styles = window.getComputedStyle ? window.getComputedStyle(pageEl) : null;
+    const pb = styles ? parseFloat(styles.paddingBottom) || 0 : 0;
+    // Keep clear of padding + page-number zone.
+    const safeBottom = pageBox.bottom - Math.max(pb, isReaderNarrow() ? 28 : 16);
+    if (footBox.bottom > safeBottom + 1) return true;
+    if (bodyEl) {
+        const bodyBox = bodyEl.getBoundingClientRect();
+        const gap = isReaderNarrow() ? MOBILE_BODY_FOOT_GAP : 6;
+        if (bodyBox.bottom > footBox.top - gap) return true;
+    }
+    return false;
+}
+
+/**
+ * Pack footnote defs into the page foot.
+ * Extra notes that don't fit spill via carry to the *next content* page — never
+ * onto blank footnote-only sheets. The first note on a page is always kept;
+ * callers peel body if that note crowds the sheet.
  */
 function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadHeight) {
     pageEl.querySelector('.article-page-footnotes')?.remove();
@@ -1797,11 +1977,17 @@ function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadH
             return;
         }
         const html = defMap.get(id);
-        if (!html) return;
+        if (!html) {
+            carryOut.push(id);
+            return;
+        }
         const temp = document.createElement('div');
         temp.innerHTML = html;
         const src = temp.firstElementChild;
-        if (!src) return;
+        if (!src) {
+            carryOut.push(id);
+            return;
+        }
         const clone = src.cloneNode(true);
         const articleRoot = document.getElementById('article-body');
         const n =
@@ -1820,13 +2006,16 @@ function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadH
         foot.appendChild(clone);
         void foot.offsetHeight;
         const used = elementOuterHeightWithMargins(foot);
-        if (used > bandMax && foot.childElementCount > 1) {
+        const overBand = used > bandMax;
+        const overPage = footnoteBandOverflowsPage(pageEl, foot, body);
+
+        // Only spill *additional* notes. Never eject the first note onto an empty page.
+        if ((overBand || overPage) && foot.childElementCount > 1) {
             foot.removeChild(clone);
             carryOut.push(id);
             accepting = false;
             return;
         }
-        // Single note taller than the max: keep it so we never infinite-loop empty pages.
         assignedAnchors.add(id);
     });
 
@@ -1836,12 +2025,248 @@ function finalizePageFootnotes(pageEl, defMap, assignedAnchors, carryIn, spreadH
     return carryOut;
 }
 
+/** Mobile: px of empty air between body and footnote rule. */
+function mobileBodyFootnoteGapPx(pageEl) {
+    const body = pageEl?.querySelector?.('.article-page-body');
+    const foot = pageEl?.querySelector?.('.article-page-footnotes');
+    if (!body || !foot || !foot.childElementCount) return 0;
+    return Math.max(
+        0,
+        Math.floor(foot.getBoundingClientRect().top - body.getBoundingClientRect().bottom)
+    );
+}
+
+/** Ids currently sitting in a page's footnote band (incl. carry-in-only notes). */
+function footnoteIdsPlacedOnPage(pageEl) {
+    const ids = [];
+    pageEl?.querySelectorAll?.('.article-page-footnotes p[data-variant="footnote"]').forEach((p) => {
+        let id = p.getAttribute('data-footnote-id');
+        if (!id) {
+            const hid = p.getAttribute('id');
+            if (hid && hid.startsWith('fn-')) id = hid.slice(3);
+        }
+        if (id && !ids.includes(id)) ids.push(id);
+    });
+    return ids;
+}
+
+/**
+ * Mobile: pull lines from `fillNodes` into the gap above the footnote band.
+ * Returns leftover nodes that did not fit. Preserves carry-in notes already on the page.
+ */
+function backfillMobileFootnoteGap(pageEl, fillNodes, defMap, assignedAnchors, spreadHeight) {
+    const leftover = [];
+    if (!isReaderNarrow() || !pageEl || !Array.isArray(fillNodes) || !fillNodes.length) {
+        return fillNodes || [];
+    }
+
+    const minGap = MOBILE_BODY_FOOT_GAP + 22;
+    const keepNotes = () => {
+        const placed = footnoteIdsPlacedOnPage(pageEl);
+        placed.forEach((id) => assignedAnchors.delete(id));
+        finalizePageFootnotes(pageEl, defMap, assignedAnchors, placed, spreadHeight);
+    };
+
+    for (let guard = 0; guard < 16 && fillNodes.length; guard += 1) {
+        const body = pageEl.querySelector('.article-page-body');
+        const foot = pageEl.querySelector('.article-page-footnotes');
+        if (!body || !foot || !foot.childElementCount) break;
+        if (mobileBodyFootnoteGapPx(pageEl) < minGap) break;
+
+        const node = fillNodes.shift();
+        if (!node) break;
+
+        const budget = Math.max(
+            40,
+            Math.floor(
+                foot.getBoundingClientRect().top -
+                    body.getBoundingClientRect().top -
+                    MOBILE_BODY_FOOT_GAP
+            )
+        );
+        const placedIds = footnoteIdsPlacedOnPage(pageEl);
+        foot.remove();
+
+        let didPlace = false;
+        if (node.tagName === 'P') {
+            const split = splitParagraphToFit(body, node, budget);
+            if (split) {
+                body.appendChild(split.leftPart);
+                fillNodes.unshift(split.rightPart);
+                didPlace = true;
+            }
+        }
+        if (!didPlace) {
+            body.appendChild(node);
+            void body.offsetHeight;
+            if (body.scrollHeight > budget + 6) {
+                body.removeChild(node);
+                leftover.push(node);
+                leftover.push(...fillNodes);
+                placedIds.forEach((id) => assignedAnchors.delete(id));
+                finalizePageFootnotes(pageEl, defMap, assignedAnchors, placedIds, spreadHeight);
+                return leftover;
+            }
+        }
+
+        placedIds.forEach((id) => assignedAnchors.delete(id));
+        finalizePageFootnotes(pageEl, defMap, assignedAnchors, placedIds, spreadHeight);
+        if (footnoteBandOverflowsPage(pageEl, pageEl.querySelector('.article-page-footnotes'), body)) {
+            const last = body.lastElementChild;
+            if (last) {
+                body.removeChild(last);
+                leftover.unshift(last);
+            }
+            leftover.push(...fillNodes);
+            keepNotes();
+            return leftover;
+        }
+    }
+    leftover.push(...fillNodes);
+    return leftover;
+}
+
+/**
+ * After placing footnotes: if the band crowds/clips, peel trailing body onto the
+ * next page until notes fit beside remaining body. Then backfill any large gap
+ * above the rule from what was peeled. No footnote-only pages.
+ */
+function sealPageFootnotesWithBodyPeel(pageEl, defMap, assignedAnchors, carryIn, spreadHeight) {
+    const peeled = [];
+    const spillOrphans = [];
+    const carrySeed = Array.isArray(carryIn) ? carryIn.slice() : [];
+
+    const mergeCarry = (carryOut) => {
+        const next = Array.isArray(carryOut) ? carryOut.slice() : [];
+        spillOrphans.forEach((id) => {
+            if (id && !next.includes(id)) next.push(id);
+        });
+        return next;
+    };
+
+    let carry = mergeCarry(
+        finalizePageFootnotes(pageEl, defMap, assignedAnchors, carrySeed, spreadHeight)
+    );
+
+    if (!isReaderNarrow()) {
+        return { peeled, carry };
+    }
+
+    for (let guard = 0; guard < 20; guard += 1) {
+        const body = pageEl.querySelector('.article-page-body');
+        const foot = pageEl.querySelector('.article-page-footnotes');
+        if (!body || !body.lastElementChild || !foot || !foot.childElementCount) break;
+        if (!footnoteBandOverflowsPage(pageEl, foot, body)) break;
+        // Keep at least one body block with the notes — never strip to footnote-only.
+        if (body.childElementCount <= 1) break;
+
+        const last = body.lastElementChild;
+        let moved = last;
+        const budget = Math.max(
+            80,
+            Math.floor(
+                foot.getBoundingClientRect().top -
+                    body.getBoundingClientRect().top -
+                    MOBILE_BODY_FOOT_GAP
+            )
+        );
+        foot.remove();
+        body.removeChild(last);
+        if (last.tagName === 'P') {
+            const split = splitParagraphToFit(body, last, budget);
+            if (split) {
+                body.appendChild(split.leftPart);
+                moved = split.rightPart;
+            }
+        }
+        peeled.unshift(moved);
+
+        const bodyRefs = new Set(collectFootnoteRefIdsFromNode(body));
+        collectFootnoteRefIdsFromNode(moved).forEach((id) => {
+            if (!id || bodyRefs.has(id)) return;
+            assignedAnchors.delete(id);
+            if (!spillOrphans.includes(id)) spillOrphans.push(id);
+        });
+
+        carry = mergeCarry(
+            finalizePageFootnotes(pageEl, defMap, assignedAnchors, carrySeed, spreadHeight)
+        );
+    }
+
+    // Pull over-peeled lines back so body meets the footnote rule.
+    if (peeled.length && mobileBodyFootnoteGapPx(pageEl) >= MOBILE_BODY_FOOT_GAP + 22) {
+        const left = backfillMobileFootnoteGap(
+            pageEl,
+            peeled.splice(0, peeled.length),
+            defMap,
+            assignedAnchors,
+            spreadHeight
+        );
+        peeled.push(...left);
+        const body = pageEl.querySelector('.article-page-body');
+        const bodyRefs = new Set(collectFootnoteRefIdsFromNode(body));
+        for (let i = spillOrphans.length - 1; i >= 0; i -= 1) {
+            if (bodyRefs.has(spillOrphans[i])) spillOrphans.splice(i, 1);
+        }
+        carry = mergeCarry(carry.filter((id) => !bodyRefs.has(id)));
+    }
+
+    return { peeled, carry: mergeCarry(carry) };
+}
+
+/** Words for packer split — ignore footnote mark text so "breaking¹" stays one host. */
+function paragraphSplitWords(paragraphEl) {
+    const clone = paragraphEl.cloneNode(true);
+    clone.querySelectorAll('.footnote-ref').forEach((el) => el.remove());
+    return (clone.textContent || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+}
+
+function textNodeInsideFootnoteRef(textNode) {
+    let el = textNode && textNode.parentElement;
+    while (el) {
+        if (el.classList && el.classList.contains('footnote-ref')) return true;
+        el = el.parentElement;
+    }
+    return false;
+}
+
+function isFootnoteRefElement(el) {
+    return !!(el && el.nodeType === Node.ELEMENT_NODE && el.classList?.contains('footnote-ref'));
+}
+
+/**
+ * If a page break left a footnote mark alone at the start of the right half,
+ * move it back onto the left half so it stays glued to its host word.
+ */
+function glueLeadingFootnoteRefsToLeft(leftRoot, rightRoot) {
+    if (!leftRoot || !rightRoot) return;
+    while (rightRoot.firstChild) {
+        const node = rightRoot.firstChild;
+        if (node.nodeType === Node.TEXT_NODE && !String(node.textContent || '').trim()) {
+            const next = node.nextSibling;
+            if (isFootnoteRefElement(next)) {
+                leftRoot.appendChild(node);
+                continue;
+            }
+            break;
+        }
+        if (isFootnoteRefElement(node)) {
+            leftRoot.appendChild(node);
+            continue;
+        }
+        break;
+    }
+}
+
 function splitParagraphToFit(pageBodyEl, paragraphEl, maxBodyScrollHeight) {
     if (!paragraphEl || paragraphEl.tagName !== 'P') return null;
-    const text = (paragraphEl.textContent || '').trim();
-    if (!text) return null;
-    const words = text.split(/\s+/);
-    if (words.length < 12) return null;
+    const words = paragraphSplitWords(paragraphEl);
+    // Mobile: allow finer peels so we don't eject a whole short remnant and gap the page.
+    const minWords = isReaderNarrow() ? 6 : 12;
+    if (words.length < minWords) return null;
 
     let low = 1;
     let high = words.length - 1;
@@ -1863,11 +2288,16 @@ function splitParagraphToFit(pageBodyEl, paragraphEl, maxBodyScrollHeight) {
         }
     }
 
-    if (best <= 3 || best >= words.length - 3) return null;
+    const edge = isReaderNarrow() ? 1 : 3;
+    if (best <= edge || best >= words.length - edge) return null;
 
     const leftPart = paragraphEl.cloneNode(true);
     const rightPart = paragraphEl.cloneNode(true);
     splitNodeAtWordBoundary(leftPart, rightPart, best);
+    glueLeadingFootnoteRefsToLeft(leftPart, rightPart);
+    pruneEmptyInlineNodes(leftPart);
+    pruneEmptyInlineNodes(rightPart);
+    if (!(rightPart.textContent || '').trim()) return null;
 
     return { leftPart, rightPart };
 }
@@ -1883,11 +2313,28 @@ function splitNodeAtWordBoundary(leftRoot, rightRoot, splitWordIndex) {
     while ((node = rightWalker.nextNode())) rightNodes.push(node);
 
     let splitDone = false;
+    // Side of the last real (non-footnote) word — marks glue to this side.
+    let lastHostOnRight = false;
     for (let i = 0; i < leftNodes.length; i++) {
         const ln = leftNodes[i];
         const rn = rightNodes[i];
         if (splitDone) {
+            // Footnote mark text after the split still follows its host word's side.
+            if (textNodeInsideFootnoteRef(ln) && !lastHostOnRight) {
+                rn.textContent = '';
+                continue;
+            }
             ln.textContent = '';
+            continue;
+        }
+        const inFootnote = textNodeInsideFootnoteRef(ln);
+        if (inFootnote) {
+            // Never treat the superscript as its own split word — stay with host.
+            if (lastHostOnRight) {
+                ln.textContent = '';
+            } else {
+                rn.textContent = '';
+            }
             continue;
         }
         const nodeWords = ln.textContent.split(/(\s+)/);
@@ -1909,13 +2356,18 @@ function splitNodeAtWordBoundary(leftRoot, rightRoot, splitWordIndex) {
             ln.textContent = leftText;
             rn.textContent = rightText;
             splitDone = true;
+            lastHostOnRight = true;
             wordCount += nodeWordIdx;
         } else {
             rn.textContent = '';
+            lastHostOnRight = false;
             wordCount += nodeWordIdx;
         }
     }
 
+    pruneEmptyInlineNodes(leftRoot);
+    pruneEmptyInlineNodes(rightRoot);
+    glueLeadingFootnoteRefsToLeft(leftRoot, rightRoot);
     pruneEmptyInlineNodes(leftRoot);
     pruneEmptyInlineNodes(rightRoot);
 }
@@ -1965,7 +2417,11 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     articleBody.innerHTML = '';
 
+    // Force a fresh height measure for this pack (cache still helps mid-pass).
+    cachedSpreadTargetHeight = 0;
+    cachedSpreadTargetHeightAt = 0;
     const spreadHeight = getSpreadTargetHeight();
+    const narrowPack = isReaderNarrow();
 
     let currentSpread = createSpread();
     articleBody.appendChild(currentSpread.spread);
@@ -1989,6 +2445,8 @@ function renderArticleSpread(blocks, footnoteDefMap) {
     const assignedFootnoteAnchors = new Set();
     let footnoteCarry = [];
     let attachedDocTitle = false;
+    /** Body peeled off a page so footnotes can sit with remaining content. */
+    let pendingPeeled = [];
 
     const openFreshPage = () => {
         currentSpread = createSpread();
@@ -1997,15 +2455,45 @@ function renderArticleSpread(blocks, footnoteDefMap) {
         currentPageBody = ensureArticlePageBody(currentSpread.leftPage);
     };
 
+    const flushPeeledOntoCurrentPage = () => {
+        if (!pendingPeeled.length) return;
+        pendingPeeled.forEach((node) => currentPageBody.appendChild(node));
+        pendingPeeled = [];
+    };
+
+    /**
+     * Place footnotes on this page; on mobile peel trailing body if notes crowd
+     * the sheet. Peeled body (+ any overflow notes) continue on the next
+     * *content* page — never open blank footnote-only sheets.
+     */
+    const sealCurrentPage = () => {
+        if (narrowPack) {
+            const result = sealPageFootnotesWithBodyPeel(
+                currentPage,
+                defMap,
+                assignedFootnoteAnchors,
+                footnoteCarry,
+                spreadHeight
+            );
+            footnoteCarry = result.carry;
+            if (result.peeled.length) {
+                pendingPeeled = result.peeled.concat(pendingPeeled);
+            }
+        } else {
+            footnoteCarry = finalizePageFootnotes(
+                currentPage,
+                defMap,
+                assignedFootnoteAnchors,
+                footnoteCarry,
+                spreadHeight
+            );
+        }
+    };
+
     const moveToNextPage = () => {
-        footnoteCarry = finalizePageFootnotes(
-            currentPage,
-            defMap,
-            assignedFootnoteAnchors,
-            footnoteCarry,
-            spreadHeight
-        );
+        sealCurrentPage();
         openFreshPage();
+        flushPeeledOntoCurrentPage();
     };
 
     const isAuthorPageBreakHtml = (html) => {
@@ -2054,20 +2542,37 @@ function renderArticleSpread(blocks, footnoteDefMap) {
         );
         if (currentPageBody.scrollHeight > heightBudget && currentPageBody.childElementCount > 1) {
             currentPageBody.removeChild(node);
+            // Mobile: don't pass `node` into reserve — its footnote refs may land on
+            // the right half after split; reserving for them ejects lines and gaps the page.
             const splitBudget = pageBodyHeightBudget(
                 currentPage,
                 currentPageBody,
                 spreadHeight,
                 defMap,
-                node,
+                narrowPack ? null : node,
                 footnoteCarry,
                 assignedFootnoteAnchors
             );
             const split = splitParagraphToFit(currentPageBody, node, splitBudget);
             if (split) {
                 currentPageBody.appendChild(split.leftPart);
-                moveToNextPage();
-                currentPageBody.appendChild(split.rightPart);
+                if (narrowPack) {
+                    // Seal notes, then absorb lines from rightPart into any gap above
+                    // the footnote rule before starting the next sheet.
+                    sealCurrentPage();
+                    const fillLeft = backfillMobileFootnoteGap(
+                        currentPage,
+                        [split.rightPart, ...pendingPeeled.splice(0, pendingPeeled.length)],
+                        defMap,
+                        assignedFootnoteAnchors,
+                        spreadHeight
+                    );
+                    openFreshPage();
+                    fillLeft.forEach((n) => currentPageBody.appendChild(n));
+                } else {
+                    moveToNextPage();
+                    currentPageBody.appendChild(split.rightPart);
+                }
             } else {
                 moveToNextPage();
                 currentPageBody.appendChild(node);
@@ -2075,19 +2580,19 @@ function renderArticleSpread(blocks, footnoteDefMap) {
         }
     });
 
-    footnoteCarry = finalizePageFootnotes(
-        currentPage,
-        defMap,
-        assignedFootnoteAnchors,
-        footnoteCarry,
-        spreadHeight
-    );
-
-    // Drain spilled notes onto following pages (footnote-only pages if needed).
-    let guard = 0;
-    while (footnoteCarry.length && guard < 40) {
-        guard += 1;
+    sealCurrentPage();
+    // Finish any body peeled for footnote room — still content pages, not empty ones.
+    let peelGuard = 0;
+    while (pendingPeeled.length && peelGuard < 20) {
+        peelGuard += 1;
         openFreshPage();
+        flushPeeledOntoCurrentPage();
+        sealCurrentPage();
+        if (!pendingPeeled.length) break;
+    }
+    if (pendingPeeled.length) {
+        openFreshPage();
+        flushPeeledOntoCurrentPage();
         footnoteCarry = finalizePageFootnotes(
             currentPage,
             defMap,
@@ -2096,6 +2601,9 @@ function renderArticleSpread(blocks, footnoteDefMap) {
             spreadHeight
         );
     }
+
+    // Leftover carry / any missing notes → append on content pages (never blank sheets).
+    ensureAllFootnotesRendered(articleBody, defMap);
 
     mountCommentScreenForLayout(lastArticleContentPage(articleBody) || currentPage);
 

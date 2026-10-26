@@ -316,21 +316,27 @@ function clearAuthorBioHighlight() {
     document.querySelectorAll('.blog-card.bio-dim').forEach((el) => {
         el.classList.remove('bio-dim');
     });
-    document.querySelectorAll('.blog-card.link-glow, .blog-card.hover').forEach((el) => {
-        el.classList.remove('link-glow', 'hover');
+    document.querySelectorAll('.blog-card.link-glow, .blog-card.hover, .blog-card.tap-active').forEach((el) => {
+        el.classList.remove('link-glow', 'hover', 'tap-active');
     });
 }
 
 /** Keep the same link-glow wash while the bio strip is open (no white-rim swap). */
 function applyAuthorBioHighlight(authorName) {
-    clearAuthorBioHighlight();
     const name = String(authorName || '').trim();
-    if (!name) return;
+    if (!name) {
+        clearAuthorBioHighlight();
+        return;
+    }
 
+    const tapMode = homeDirectArticleTapNav();
+
+    // Apply in place (no clear-first frame) so the tapped author never blanks.
     document
         .querySelectorAll('.title-section .cardcontainer[data-author] .blog-card:not(.author-card)')
         .forEach((card) => {
             const cardAuthor = card.closest('.cardcontainer')?.getAttribute('data-author') || '';
+            card.classList.remove('link-glow', 'bio-dim', 'hover', 'tap-active', 'author-bio-active');
             if (cardAuthor === name) card.classList.add('link-glow');
             else card.classList.add('bio-dim');
         });
@@ -338,8 +344,17 @@ function applyAuthorBioHighlight(authorName) {
     document.querySelectorAll('.blog-card.author-card').forEach((authorCard) => {
         const authorCardName = authorCard.getAttribute('data-author') || '';
         if (authorCardName.toLowerCase() === 'about') return;
-        if (authorCardName === name) authorCard.classList.add('link-glow');
-        else authorCard.classList.add('hover');
+        authorCard.classList.remove('link-glow', 'bio-dim', 'hover', 'tap-active', 'author-bio-active');
+        if (authorCardName === name) {
+            // Tap mode: tap-active only — link-glow’s transparent fill + hidden
+            // ::before made the handle vanish for a frame on iOS.
+            if (tapMode) authorCard.classList.add('tap-active');
+            else authorCard.classList.add('link-glow');
+        } else if (tapMode) {
+            authorCard.classList.add('bio-dim');
+        } else {
+            authorCard.classList.add('hover');
+        }
     });
 }
 
@@ -379,33 +394,45 @@ function closeHomeAuthorBio() {
     detachBioMoveCloser();
 
     // Keep translate rule live; drive --wallRevealY to 0 via bio-closing.
-    // Keep link-glow/wash until the shut finishes so a still-hovered title
-    // does not flash the idle black-outline hover mid-handoff.
     document.body.classList.add('bio-closing');
     document.body.classList.remove('bio-open');
     // Flush so the browser commits open→closing as a real transition, not a snap.
     void document.querySelector('.column-section')?.offsetHeight;
+
+    const mobileBio = homeDirectArticleTapNav();
+    // Mobile tap mode: clear active/dim immediately and drop sticky :hover so the
+    // emboss ::before isn’t left in a stripped/invisible state until the next tap.
+    if (mobileBio) {
+        clearAuthorBioHighlight();
+        const stuck = document.querySelector('.blog-card.author-card:hover, .blog-card.author-card:focus');
+        if (stuck && typeof stuck.blur === 'function') stuck.blur();
+        if (document.activeElement && document.activeElement !== document.body) {
+            try {
+                document.activeElement.blur();
+            } catch (_) {}
+        }
+    }
 
     const closeSeq = ++authorBioCloseSeq;
     if (authorBioCloseTimer) {
         clearTimeout(authorBioCloseTimer);
         authorBioCloseTimer = null;
     }
-    // Fixed duration only — transitionend on transform/translate was racing ahead.
+    // Same wall timing as desktop; only tap handling differs on mobile.
     const waitMs = getAboutDurationMs() + 60;
     authorBioClosePromise = new Promise((resolve) => {
         authorBioCloseResolve = resolve;
         authorBioCloseTimer = setTimeout(() => {
             if (closeSeq !== authorBioCloseSeq) return;
             authorBioCloseTimer = null;
-            // Freeze idle title outline through the gap before article-open (or wall settle).
-            document.body.classList.add('wall-hover-freeze');
+            if (!mobileBio) document.body.classList.add('wall-hover-freeze');
             clearAuthorBioHighlight();
             document.body.classList.remove('bio-closing');
-            // Fallback if nothing opens a preview (dismiss / switch).
-            setTimeout(() => {
-                document.body.classList.remove('wall-hover-freeze');
-            }, 450);
+            if (!mobileBio) {
+                setTimeout(() => {
+                    document.body.classList.remove('wall-hover-freeze');
+                }, 450);
+            }
             authorBioCloseResolve = null;
             authorBioClosePromise = null;
             resolve();
@@ -486,12 +513,55 @@ function triggerMobileHaptic(kind = 'light') {
     else navigator.vibrate(18);
 }
 
+function clearMobileSectionTapLines() {
+    document.querySelectorAll('.home-main-pane.home-column-lines').forEach((p) => {
+        p.classList.remove('home-column-lines');
+    });
+}
+
+/** Mobile: section edge lines only while a section title is tapped (not scroll-active). */
+function initMobileSectionTitleTapLines() {
+    if (typeof window.matchMedia === 'undefined' || !window.matchMedia(HOME_NARROW_QUERY).matches) {
+        return;
+    }
+    document.querySelectorAll('.section-title-container').forEach((el) => {
+        if (el.dataset.tapLinesBound === '1') return;
+        el.dataset.tapLinesBound = '1';
+        const card = el.querySelector('.section-heading-card');
+        if (card) card.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+            if (!window.matchMedia(HOME_NARROW_QUERY).matches) return;
+            if (homeFinePointerHoverUi()) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const pane = el.closest('.home-main-pane');
+            if (!pane) return;
+            const wasOn = pane.classList.contains('home-column-lines');
+            clearMobileSectionTapLines();
+            if (!wasOn) pane.classList.add('home-column-lines');
+        });
+    });
+    if (!document.documentElement.dataset.sectionTapLinesDismissBound) {
+        document.documentElement.dataset.sectionTapLinesDismissBound = '1';
+        document.addEventListener(
+            'click',
+            (e) => {
+                if (!window.matchMedia(HOME_NARROW_QUERY).matches) return;
+                if (e.target.closest?.('.section-title-container')) return;
+                clearMobileSectionTapLines();
+            },
+            true
+        );
+    }
+}
+
 function initHomeActiveColumnFromScroll(track) {
     const panes = () => Array.from(track.querySelectorAll('.home-main-pane'));
 
     const sync = () => {
         if (typeof window.matchMedia === 'undefined' || !window.matchMedia(HOME_NARROW_QUERY).matches) {
             panes().forEach((p) => p.classList.remove('home-column-active'));
+            clearMobileSectionTapLines();
             lastActiveHomePaneCol = null;
             return;
         }
@@ -513,10 +583,13 @@ function initHomeActiveColumnFromScroll(track) {
             }
         }
         if (bestPane) {
+            // Keep home-column-active for haptics / scroll bookkeeping only —
+            // vertical rails are tap-driven via .home-column-lines.
             panes().forEach((p) => p.classList.toggle('home-column-active', p === bestPane));
             const col = bestPane.dataset.col || null;
             if (lastActiveHomePaneCol && col && col !== lastActiveHomePaneCol) {
                 triggerMobileHaptic('pane-snap');
+                clearMobileSectionTapLines();
             }
             lastActiveHomePaneCol = col;
         }
@@ -567,7 +640,34 @@ function ensureMobileReaderShell() {
     return shell;
 }
 
-function openMobileInAppReader(blogId, seamIndex = 2) {
+function markMobileReaderFrameReady(frame) {
+    if (!frame) return;
+    frame.dataset.embedReady = '1';
+}
+
+function loadMobileReaderFrame(frame, embedUrl) {
+    if (!frame || !embedUrl) return;
+    if (frame.getAttribute('src') === embedUrl) return;
+    frame.dataset.embedReady = '0';
+    frame.src = embedUrl;
+    frame.addEventListener(
+        'load',
+        () => {
+            if (frame.getAttribute('src') === embedUrl) markMobileReaderFrameReady(frame);
+        },
+        { once: true }
+    );
+}
+
+function prefetchMobileInAppReader(blogId) {
+    if (!blogId) return;
+    ensureMobileReaderShell();
+    const frame = mobileReaderFrameEl;
+    if (!frame) return;
+    loadMobileReaderFrame(frame, `/${blogId}?embed=1`);
+}
+
+function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null) {
     if (!blogId) return;
     if (mobileReaderClosingTimer) {
         clearTimeout(mobileReaderClosingTimer);
@@ -579,24 +679,42 @@ function openMobileInAppReader(blogId, seamIndex = 2) {
     if (!frame) return;
 
     setActivePreviewSeam(seamIndex);
+    if (sourceCard) setPreviewSourceHighlight(sourceCard);
 
     const embedUrl = `/${blogId}?embed=1`;
-    if (frame.getAttribute('src') !== embedUrl) {
-        frame.src = embedUrl;
+    loadMobileReaderFrame(frame, embedUrl);
+    const ready = frame.getAttribute('src') === embedUrl && frame.dataset.embedReady === '1';
+
+    const reveal = () => {
+        shell.hidden = false;
+        shell.setAttribute('aria-hidden', 'false');
+        shell.classList.remove('mobile-reader-closing');
+
+        document.body.classList.remove('article-closing');
+        document.body.classList.add('article-open', 'mobile-reader-open');
+        triggerMobileHaptic('preview-reveal');
+
+        if (!mobileReaderHistoryPushed) {
+            history.pushState({ mobileReader: true, blogId }, '', window.location.pathname);
+            mobileReaderHistoryPushed = true;
+        }
+    };
+
+    // Prefer a painted iframe before the slab animation; fall back quickly if slow.
+    if (!ready) {
+        let opened = false;
+        const go = () => {
+            if (opened) return;
+            opened = true;
+            markMobileReaderFrameReady(frame);
+            reveal();
+        };
+        frame.addEventListener('load', go, { once: true });
+        setTimeout(go, 320);
+        return;
     }
 
-    shell.hidden = false;
-    shell.setAttribute('aria-hidden', 'false');
-    shell.classList.remove('mobile-reader-closing');
-
-    document.body.classList.remove('article-closing');
-    document.body.classList.add('article-open', 'mobile-reader-open');
-    triggerMobileHaptic('preview-reveal');
-
-    if (!mobileReaderHistoryPushed) {
-        history.pushState({ mobileReader: true, blogId }, '', window.location.pathname);
-        mobileReaderHistoryPushed = true;
-    }
+    reveal();
 }
 
 function closeMobileInAppReader(options = {}) {
@@ -633,7 +751,9 @@ function closeMobileInAppReader(options = {}) {
             mobileReaderShellEl.setAttribute('aria-hidden', 'true');
             mobileReaderShellEl.classList.remove('mobile-reader-closing');
         }
-        if (mobileReaderFrameEl) {
+        clearPreviewSourceHighlight();
+        // Keep src so a reopen of the same piece can paint immediately; blank only on leave.
+        if (mobileReaderFrameEl && options.clearFrame) {
             mobileReaderFrameEl.removeAttribute('src');
         }
 
@@ -1745,6 +1865,7 @@ function mountHomeWall(blogs) {
     for (let i = 1; i <= 4; i++) {
         createSectionTitleCard(sections[i], SECTION_LABELS[i]);
     }
+    initMobileSectionTitleTapLines();
     
     const pathBlogId = decodePathSegment(location.pathname.split('/').filter(Boolean).pop() || '');
     blogs.forEach(blog => {
@@ -1899,7 +2020,13 @@ function mountHomeWall(blogs) {
             fillAuthorBioPanel(authorName);
             clearColumnTransformTransitions();
             document.body.classList.add('bio-open');
-            applyAuthorBioHighlight(authorName);
+            // Mobile: apply highlight after the tap/:active frame so the chrome
+            // doesn’t flash a wash before the solid tap-active state settles.
+            if (homeDirectArticleTapNav()) {
+                requestAnimationFrame(() => applyAuthorBioHighlight(authorName));
+            } else {
+                applyAuthorBioHighlight(authorName);
+            }
             detachBioMoveCloser();
             requestAnimationFrame(() => {
                 const strip = document.querySelector('.bio-panel-cards');
@@ -1909,45 +2036,67 @@ function mountHomeWall(blogs) {
 
         authorCardsForBio.forEach((card) => {
             const name = card.getAttribute('data-author');
+            // iOS can still flash a tap wash on the title hit-target in some cases.
+            card.addEventListener(
+                'touchstart',
+                () => {
+                    card.style.webkitTapHighlightColor = 'transparent';
+                },
+                { passive: true }
+            );
             card.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (isBioHoverQuiet()) return;
+                const openAuthor = String(bioEl.dataset.author || '');
                 const alreadyOpen =
-                    document.body.classList.contains('bio-open') &&
-                    bioEl.dataset.author === name;
+                    (document.body.classList.contains('bio-open') ||
+                        document.body.classList.contains('bio-closing')) &&
+                    openAuthor.toLowerCase() === String(name || '').toLowerCase();
                 if (alreadyOpen) {
                     clearBioHoverTimer();
                     closeHomeAuthorBio();
                     return;
                 }
                 clearBioHoverTimer();
+                // Mobile: open immediately — delay made taps feel dead when the strip
+                // was also hidden under the stage stone.
+                const delay = homeDirectArticleTapNav() ? 0 : AUTHOR_BIO_CLICK_DELAY_MS;
+                if (delay <= 0) {
+                    openBioFromClick(name);
+                    return;
+                }
                 bioHoverTimer = setTimeout(() => {
                     bioHoverTimer = null;
                     openBioFromClick(name);
-                }, AUTHOR_BIO_CLICK_DELAY_MS);
+                }, delay);
             });
         });
 
         // Dismiss only on click/tap outside the strip (not on mouseleave).
         // Title cards own their own sequence (bio shut → then preview open).
-        document.addEventListener(
-            'click',
-            (e) => {
-                if (!document.body.classList.contains('bio-open')) return;
-                if (isBioHoverQuiet()) return;
-                if (e.target.closest('.bio-panel') || e.target.closest('.author-card')) return;
-                if (
-                    e.target.closest(
-                        '.title-section .cardcontainer[data-author] .blog-card:not(.author-card)'
-                    )
-                ) {
-                    return;
-                }
-                closeHomeAuthorBio();
-            },
-            true
-        );
+        const dismissBioIfOutside = (e) => {
+            if (!document.body.classList.contains('bio-open')) return;
+            if (isBioHoverQuiet()) return;
+            // Taps on empty bio chrome (not a card) count as outside — the tall
+            // strip was eating dismiss taps in the gap above the wall.
+            if (e.target.closest('.bio-identity-card')) return;
+            if (e.target.closest('.author-card')) return;
+            if (
+                e.target.closest(
+                    '.title-section .cardcontainer[data-author] .blog-card:not(.author-card)'
+                )
+            ) {
+                return;
+            }
+            if (e.target.closest('#auth-controls')) return;
+            if (e.target.closest('.home-texture-switcher')) return;
+            closeHomeAuthorBio();
+        };
+        document.addEventListener('click', dismissBioIfOutside, true);
+        if (homeDirectArticleTapNav()) {
+            document.addEventListener('pointerup', dismissBioIfOutside, true);
+        }
     }
 
     const searchCard = document.getElementById('search-card');
@@ -3702,12 +3851,19 @@ function createBlogCard(blog, section, sectionIndex) {
     // Store blog ID for navigation
     card.dataset.blogId = blog.id;
     card.dataset.sectionIndex = String(sectionIndex);
+    card.addEventListener(
+        'pointerdown',
+        () => {
+            if (homeDirectArticleTapNav() && blog.id) prefetchMobileInAppReader(blog.id);
+        },
+        { passive: true }
+    );
     card.onclick = (e) => {
         e.stopPropagation();
         // Mobile narrow: first tap opens in-app reader.
         if (homeDirectArticleTapNav()) {
             ensureAuthorBioClosed().then(() => {
-        expandArticlePanelAndNavigate(blog.id, card);
+                expandArticlePanelAndNavigate(blog.id, card);
             });
             return;
         }
@@ -4153,32 +4309,20 @@ function layoutAuthControlTitle(titleEl, { align = 'left' } = {}) {
 const AUTH_FOLDER_CLOSED = '📁';
 const AUTH_FOLDER_OPEN = '📂';
 
-/** Bottom inset so author tags can sit clear of the folder / open stack. */
+/**
+ * Spacer under author tags for flat LOGIN/APPLY only.
+ * Author folder is a popup — it overlays content and does not reserve space.
+ */
 function measureAuthChromeClearancePx() {
     const controls = document.getElementById('auth-controls');
     if (!controls || controls.offsetParent === null) return 0;
     const menu = document.getElementById('auth-menu');
-    const toggle = document.getElementById('auth-menu-toggle');
-    const stack = document.getElementById('auth-menu-stack');
+    if (menu && !menu.hidden) return 0;
     const bottomPad = 14;
-    let h = bottomPad;
-    if (toggle && menu && !menu.hidden) {
-        h += toggle.getBoundingClientRect().height || 36;
-        if (menu.classList.contains('is-open') && stack) {
-            let stackH = 0;
-            stack.querySelectorAll(':scope > .cardcontainer').forEach((card) => {
-                stackH += (card.getBoundingClientRect().height || 28) + 6;
-            });
-            h += stackH + 4;
-        }
-    } else {
-        // Flat LOGIN / APPLY row
-        h += controls.getBoundingClientRect().height || 36;
-    }
-    return Math.ceil(h);
+    return Math.ceil(bottomPad + (controls.getBoundingClientRect().height || 36));
 }
 
-function syncAuthorAuthClearance({ scrollTagsClear = false } = {}) {
+function syncAuthorAuthClearance() {
     const section = document.querySelector('.author-section');
     if (!section) return;
     const clearance = measureAuthChromeClearancePx();
@@ -4191,38 +4335,9 @@ function syncAuthorAuthClearance({ scrollTagsClear = false } = {}) {
         spacer.dataset.baseHeight = String(baseH);
         spacer.style.height = `${baseH + clearance}px`;
     }
-
-    if (!scrollTagsClear) return;
-    const menu = document.getElementById('auth-menu');
-    const controls = document.getElementById('auth-controls');
-    const stack = document.getElementById('auth-menu-stack');
-    if (!menu?.classList.contains('is-open') || !controls) return;
-
-    // After open animation starts, measure the menu band and scroll tags out from under it.
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            const controlsRect = controls.getBoundingClientRect();
-            let bandTop = controlsRect.top;
-            if (stack) {
-                const sr = stack.getBoundingClientRect();
-                if (sr.height > 0) bandTop = Math.min(bandTop, sr.top);
-            }
-            bandTop -= 8;
-            const bandBottom = controlsRect.bottom;
-            let overlap = 0;
-            section.querySelectorAll(':scope > .cardcontainer').forEach((card) => {
-                if (card.closest('#auth-controls')) return;
-                const r = card.getBoundingClientRect();
-                if (r.bottom > bandTop && r.top < bandBottom) {
-                    overlap = Math.max(overlap, r.bottom - bandTop);
-                }
-            });
-            if (overlap > 0) {
-                section.scrollBy({ top: overlap + 6, behavior: 'smooth' });
-            }
-        });
-    });
 }
+
+let authMenuCloseTimer = 0;
 
 function setAuthMenuOpen(open) {
     const menu = document.getElementById('auth-menu');
@@ -4231,11 +4346,53 @@ function setAuthMenuOpen(open) {
     const stack = document.getElementById('auth-menu-stack');
     if (!menu || !toggle || !icon) return;
     const next = Boolean(open);
-    menu.classList.toggle('is-open', next);
-    toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
-    icon.textContent = next ? AUTH_FOLDER_OPEN : AUTH_FOLDER_CLOSED;
-    if (stack) stack.setAttribute('aria-hidden', next ? 'false' : 'true');
-    syncAuthorAuthClearance({ scrollTagsClear: next });
+    if (authMenuCloseTimer) {
+        window.clearTimeout(authMenuCloseTimer);
+        authMenuCloseTimer = 0;
+    }
+
+    if (next) {
+        menu.classList.add('is-open');
+        toggle.setAttribute('aria-expanded', 'true');
+        icon.textContent = AUTH_FOLDER_OPEN;
+        if (stack) stack.setAttribute('aria-hidden', 'false');
+        // Panel first (closed eyes), then wake open.
+        menu.classList.remove('is-eyes-open');
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (menu.classList.contains('is-open')) menu.classList.add('is-eyes-open');
+            });
+        });
+        return;
+    }
+
+    // Close: eyelids shut while the square still clips them, then collapse.
+    menu.classList.remove('is-eyes-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    icon.textContent = AUTH_FOLDER_CLOSED;
+    if (stack) stack.setAttribute('aria-hidden', 'true');
+    authMenuCloseTimer = window.setTimeout(() => {
+        authMenuCloseTimer = 0;
+        // Drop open state with no fade-out spill — panel overflow clips leftovers.
+        menu.classList.remove('is-open');
+    }, 380);
+}
+
+/** Random hue on LOGOUT / DASHBOARD / EDITOR — same idea as editor/reader nav. */
+function bindAuthMenuRandomHover() {
+    const stack = document.getElementById('auth-menu-stack');
+    if (!stack || stack.dataset.randomHoverBound === '1') return;
+    stack.dataset.randomHoverBound = '1';
+    stack.querySelectorAll('.blog-card .blog-title').forEach((title) => {
+        const card = title.closest('.blog-card') || title;
+        card.addEventListener('pointerenter', () => {
+            const hue = Math.floor(Math.random() * 360);
+            title.style.setProperty('--auth-ink', `hsl(${hue} 72% 42%)`);
+        });
+        card.addEventListener('pointerleave', () => {
+            title.style.removeProperty('--auth-ink');
+        });
+    });
 }
 
 function closeAuthMenu() {
@@ -4243,13 +4400,13 @@ function closeAuthMenu() {
 }
 
 function layoutAuthControls() {
-    // Same right rail as author tags / SEARCH / ABOUT — left-align left a gap beside LOGIN.
+    // LOGIN / APPLY stay on the right rail; folder-popup items are left-padded.
     layoutAuthControlTitle(document.getElementById('auth-login-text'), { align: 'right' });
-    layoutAuthControlTitle(document.getElementById('auth-menu-logout-text'), { align: 'right' });
+    layoutAuthControlTitle(document.getElementById('auth-menu-logout-text'), { align: 'left' });
     ['auth-editor-card', 'auth-dashboard-card'].forEach((id) => {
         const card = document.getElementById(id);
         if (!card || card.style.display === 'none' || card.hidden) return;
-        layoutAuthControlTitle(card.querySelector('.blog-title'), { align: 'right' });
+        layoutAuthControlTitle(card.querySelector('.blog-title'), { align: 'left' });
     });
     const applyCard = document.getElementById('auth-apply-card');
     if (applyCard && applyCard.style.display !== 'none' && !applyCard.hidden) {
@@ -4258,7 +4415,7 @@ function layoutAuthControls() {
 }
 
 function createAuthControls(section) {
-    // Pinned to bottom-right. Authors get a folder menu; guests / applicants stay flat.
+    // Pinned to bottom-right. Authors get a folder popup; guests / applicants stay flat.
     const wrapper = document.createElement('div');
     wrapper.id = 'auth-controls';
     wrapper.style.cssText = `
@@ -4275,6 +4432,11 @@ function createAuthControls(section) {
     menu.id = 'auth-menu';
     menu.className = 'auth-menu';
     menu.hidden = true;
+
+    // White grain panel: items on the left, folder emoji anchored on the right.
+    const panel = document.createElement('div');
+    panel.id = 'auth-menu-panel';
+    panel.className = 'auth-menu-panel';
 
     const stack = document.createElement('div');
     stack.id = 'auth-menu-stack';
@@ -4324,7 +4486,7 @@ function createAuthControls(section) {
         window.location.href = '/editor';
     };
 
-    // Stack above folder, top→bottom: LOGOUT, DASHBOARD, EDITOR (EDITOR nearest the toggle).
+    // Top→bottom: LOGOUT, DASHBOARD, EDITOR (EDITOR nearest the folder).
     stack.appendChild(logoutInMenu);
     stack.appendChild(dashboard);
     stack.appendChild(editor);
@@ -4343,8 +4505,23 @@ function createAuthControls(section) {
         setAuthMenuOpen(!menu.classList.contains('is-open'));
     });
 
-    menu.appendChild(stack);
-    menu.appendChild(toggle);
+    const crest = document.createElement('div');
+    crest.className = 'auth-menu-crest';
+    crest.setAttribute('aria-hidden', 'true');
+    crest.innerHTML = `
+        <img class="auth-menu-eyes auth-menu-eyes-closed" src="/img/auth-menu-eyes-closed.png?v=ink-mid-1" alt="" draggable="false" />
+        <img class="auth-menu-eyes auth-menu-eyes-open" src="/img/auth-menu-eyes-open.png?v=ink-mid-1" alt="" draggable="false" />
+    `;
+
+    const tagline = document.createElement('p');
+    tagline.className = 'auth-menu-tagline';
+    tagline.textContent = 'keep posting...';
+
+    panel.appendChild(crest);
+    panel.appendChild(stack);
+    panel.appendChild(tagline);
+    panel.appendChild(toggle);
+    menu.appendChild(panel);
 
     const apply = document.createElement('div');
     apply.className = 'cardcontainer';
@@ -4389,6 +4566,7 @@ function createAuthControls(section) {
     }
 
     layoutAuthControls();
+    bindAuthMenuRandomHover();
 }
 
 function updateAuthControls(user, isRealPerson) {
@@ -4661,7 +4839,11 @@ function positionCardsInSection(section, options = {}) {
 
         // Author rail: keep one line, shrink type to fit the column; ellipsis only if still too wide.
         if (isAuthorSection && !isSectionHeading) {
-            const railPad = 8;
+            const narrow =
+                typeof window.matchMedia === 'function' &&
+                window.matchMedia('(max-width: 900px)').matches;
+            // Mobile needs extra slack for Impact emboss + safe-area so tags aren't clipped.
+            const railPad = narrow ? 16 : 8;
             const maxTagW = Math.max(48, Math.floor(colInner - railPad * 2));
             title.style.textAlign = 'right';
             title.style.whiteSpace = 'nowrap';
@@ -5317,7 +5499,7 @@ async function expandArticlePanelAndNavigate(blogId, card) {
         const sectionIndex = Number(card.dataset.sectionIndex || 1);
         const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
         await anchorMobilePaneToViewport(card);
-        openMobileInAppReader(blogId, seamIndex);
+        openMobileInAppReader(blogId, seamIndex, card);
         return;
     }
 
@@ -5573,23 +5755,34 @@ function reflowHomeCarveLayers() {
 }
 
 /**
- * Desktop splash type: size from curtain height (6 lines), cap by width (10.6%).
- * Skips mobile — that pass comes later with locked breaks + safe-area.
+ * Splash type: desktop sizes from line-count × height; mobile stays width-led
+ * with open leading (see #first-container-hold mobile vars).
  */
 function syncSplashTypeSize() {
     const hold = document.getElementById('first-container-hold');
     if (!hold) return;
-    if (window.matchMedia('(max-width: 900px)').matches) {
-        hold.style.removeProperty('--splash-type-size');
+    const narrow = window.matchMedia('(max-width: 900px)').matches;
+    const widthFracRaw = getComputedStyle(hold).getPropertyValue('--splash-type-width-cap').trim();
+    let widthFrac = narrow ? 0.148 : 0.106;
+    const vwMatch = /^([\d.]+)vw$/i.exec(widthFracRaw);
+    if (vwMatch) widthFrac = parseFloat(vwMatch[1]) / 100;
+    const fromWidth = hold.clientWidth * widthFrac;
+    if (!(fromWidth > 0)) return;
+
+    if (narrow) {
+        // Match CSS: min(widthCap, 12.5vh) — leading opens the block; don’t shrink glyphs.
+        const fromVh = hold.clientHeight * 0.125;
+        if (!(fromVh > 0)) return;
+        hold.style.setProperty('--splash-type-size', `${Math.min(fromWidth, fromVh)}px`);
         return;
     }
+
     const leading =
         parseFloat(getComputedStyle(hold).getPropertyValue('--splash-type-leading')) || 0.95;
     const lines =
         parseFloat(getComputedStyle(hold).getPropertyValue('--splash-line-count')) || 6;
     const fromHeight = hold.clientHeight / (lines * leading);
-    const fromWidth = hold.clientWidth * 0.106;
-    if (!(fromHeight > 0) || !(fromWidth > 0)) return;
+    if (!(fromHeight > 0)) return;
     hold.style.setProperty('--splash-type-size', `${Math.min(fromHeight, fromWidth)}px`);
 }
 

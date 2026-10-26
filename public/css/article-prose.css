@@ -129,6 +129,28 @@
     text-shadow: none;
 }
 
+/*
+ * Byline is a flex row — follow the doc-title heading's text-align (same idea as
+ * editor.css + .editor-title-byline). Without this, preview/reader keep left.
+ */
+.article-title-block > [data-doc-title="true"][style*="text-align: center"] + .article-byline,
+.article-title-block > [data-doc-title="true"][style*="text-align:center"] + .article-byline,
+.article-title-block > .title[style*="text-align: center"] + .article-byline,
+.article-title-block > .title[style*="text-align:center"] + .article-byline {
+    justify-content: center;
+}
+
+.article-title-block > [data-doc-title="true"][style*="text-align: right"] + .article-byline,
+.article-title-block > [data-doc-title="true"][style*="text-align:right"] + .article-byline,
+.article-title-block > [data-doc-title="true"][style*="text-align: end"] + .article-byline,
+.article-title-block > [data-doc-title="true"][style*="text-align:end"] + .article-byline,
+.article-title-block > .title[style*="text-align: right"] + .article-byline,
+.article-title-block > .title[style*="text-align:right"] + .article-byline,
+.article-title-block > .title[style*="text-align: end"] + .article-byline,
+.article-title-block > .title[style*="text-align:end"] + .article-byline {
+    justify-content: flex-end;
+}
+
 .article-inline-masthead .title {
     margin: 0 0 clamp(0.125rem, 0.35vw, 0.3125rem);
 }

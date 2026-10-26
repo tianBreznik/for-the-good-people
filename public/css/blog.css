@@ -1032,21 +1032,16 @@ body.reader-embed .blog {
     padding-bottom: clamp(16px, 2.5svh, 28px);
 }
 
-/* Embed: comments sit outside paginated pages (avoid overflow:hidden caret bugs on iOS). */
-body.reader-embed .comment-block,
-body.reader-embed #comment-screen {
+/* Embed fallback only when comments are outside pages (no #article-body). */
+body.reader-embed #article-body + #comment-screen,
+body.reader-embed .blog > #comment-screen,
+body.reader-embed .blog > .comment-block {
     margin-top: clamp(12px, 1.8svh, 20px);
     margin-inline: 0;
     width: 100%;
 }
 
-body.reader-embed #commentForm {
-    max-width: none;
-    width: 100%;
-    padding-inline: 0;
-    box-sizing: border-box;
-}
-
+body.reader-embed #article-body .article-page > #comment-compose #commentInput,
 body.reader-embed #commentInput {
     font-size: 16px;
     padding: 0.35rem 0.4rem;
@@ -1085,18 +1080,44 @@ body.reader-embed #commentInput {
         padding-bottom: 0;
     }
 
-    #article-body .article-page:not(.article-page-first) {
-        min-height: 0;
+    /*
+     * Lock sheet height (not just min) so packer budget matches the painted box.
+     * min-height alone + a shorter pack probe left empty footers mid-article.
+     */
+    #article-body .article-page:not(.article-page-first):not(.article-page-comments) {
+        height: var(--reader-page-height);
+        min-height: var(--reader-page-height);
+        max-height: var(--reader-page-height);
     }
 
     #article-body .article-page {
         padding-top: clamp(16px, 2.2svh, 22px);
         padding-inline: var(--reader-page-pad-inline);
-        padding-bottom: clamp(24px, 3.4svh, 36px);
+        /* Extra foot room so footnote bands + page numbers aren’t clipped. */
+        padding-bottom: clamp(32px, 4.6svh, 44px);
     }
 
+    #article-body .article-page > .article-page-footnotes {
+        padding-bottom: clamp(0.3rem, 0.9svh, 0.5rem);
+    }
+
+    /*
+     * Comments sheet: same box as content pages, bands paint edge-to-edge on the
+     * paper (inset lives on .comment-shell). Lock height so it can’t grow taller.
+     */
     #article-body .article-page.article-page-comments {
         padding-inline: 0;
+        height: var(--reader-page-height);
+        min-height: var(--reader-page-height);
+        max-height: var(--reader-page-height);
+        box-sizing: border-box;
+    }
+
+    #article-body .article-page.article-page-comments > #comment-screen {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
     }
 
     #article-body .article-page.article-page-first {
@@ -1115,8 +1136,24 @@ body.reader-embed #commentInput {
         box-sizing: border-box;
     }
 
+    /* No overhang — keeps the input inside the page card on narrow screens. */
     #article-body .article-page > #comment-compose {
-        --comment-compose-overhang: clamp(2px, 0.8vw, 5px);
+        --comment-compose-overhang: 0px;
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    /* Embed iframe reader: keep comment sheet the same paper width as content pages. */
+    body.reader-embed #article-body .article-spread {
+        max-width: min(var(--readerHandoffPageWidth, var(--reader-page-width)), 100%);
+        margin-inline: auto;
+        width: 100%;
+    }
+
+    body.reader-embed .blog {
+        padding-inline: 12px;
+        box-sizing: border-box;
     }
 
     #commentInput,
