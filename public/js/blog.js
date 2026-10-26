@@ -1017,18 +1017,140 @@ commentRef.get().then((comms) => {
 })
 
 
-document.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') {
+let pendingCommentDeleteId = null;
+
+function currentCommentAuthorHandle() {
+    return getAuthorIdFromUser(auth.currentUser);
+}
+
+function canDeleteComment(data) {
+    const user = auth.currentUser;
+    if (!user || !data) return false;
+    const storedUid = String(data.uid || '').trim();
+    if (storedUid) return storedUid === user.uid;
+    const handle = currentCommentAuthorHandle();
+    if (!handle || handle === 'Anonymous') return false;
+    return String(data.user || '').toLowerCase() === handle.toLowerCase();
+}
+
+function parseCommentSubmitText(raw, replyTargetId) {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) return null;
+
+    let responseUser = '';
+    let content = trimmed;
+    let replyId = '';
+
+    if (trimmed.charAt(0) === '@') {
+        const spaceIdx = trimmed.search(/\s/);
+        if (spaceIdx === -1) {
+            // Reply chip only ("@Anonymous") — don't post until there's a body.
+            return null;
+        }
+        responseUser = trimmed.slice(0, spaceIdx);
+        content = trimmed.slice(spaceIdx).trim();
+        replyId = String(replyTargetId || '').trim();
+        if (!content) return null;
+    }
+
+    return { responseUser, content, replyId };
+}
+
+function openCommentDeleteDialog(commentId) {
+    const dialog = document.getElementById('comment-delete-dialog');
+    if (!dialog || !commentId) return;
+    pendingCommentDeleteId = commentId;
+    dialog.hidden = false;
+    dialog.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+        dialog.querySelector('[data-comment-delete-confirm]')?.focus();
+    });
+}
+
+function closeCommentDeleteDialog() {
+    const dialog = document.getElementById('comment-delete-dialog');
+    pendingCommentDeleteId = null;
+    if (!dialog) return;
+    dialog.hidden = true;
+    dialog.setAttribute('aria-hidden', 'true');
+}
+
+async function confirmCommentDelete() {
+    const id = pendingCommentDeleteId;
+    if (!id) {
+        closeCommentDeleteDialog();
+        return;
+    }
+    const data = commentsState.get(id);
+    if (!canDeleteComment(data)) {
+        closeCommentDeleteDialog();
+        return;
+    }
+    try {
+        await comments.doc(id).delete();
+    } catch (err) {
+        console.error('Failed to delete comment', err);
+    }
+    closeCommentDeleteDialog();
+}
+
+function bindCommentDeleteDialog() {
+    const dialog = document.getElementById('comment-delete-dialog');
+    if (!dialog || dialog.dataset.bound === '1') return;
+    dialog.dataset.bound = '1';
+    dialog.addEventListener('click', (e) => {
+        const t = e.target;
+        if (!(t instanceof Element)) return;
+        if (t.closest('[data-comment-delete-cancel]')) {
+            e.preventDefault();
+            closeCommentDeleteDialog();
+            return;
+        }
+        if (t.closest('[data-comment-delete-confirm]')) {
+            e.preventDefault();
+            confirmCommentDelete();
+        }
+    });
+}
+
+function bindCommentFormSubmit() {
+    const form = document.getElementById('commentForm');
+    if (!form || form.dataset.submitBound === '1') return;
+    form.dataset.submitBound = '1';
+    form.addEventListener('submit', (e) => {
         e.preventDefault();
         submitComment(numberofcomments);
-    }
-    if (e.key === 'Escape' && pendingAnnotationDraft) {
-        const input = document.getElementById('commentInput');
-        exitAnnotationComposeMode();
-        if (input && document.activeElement === input) input.value = '';
+    });
+}
+
+document.addEventListener('keydown', function (e) {
+    const deleteDialog = document.getElementById('comment-delete-dialog');
+    const deleteOpen = Boolean(deleteDialog && !deleteDialog.hidden);
+
+    if (e.key === 'Enter') {
+        if (deleteOpen) return;
         e.preventDefault();
+        submitComment(numberofcomments);
+        return;
+    }
+
+    if (e.key === 'Escape') {
+        if (deleteOpen) {
+            closeCommentDeleteDialog();
+            e.preventDefault();
+            return;
+        }
+        if (pendingAnnotationDraft) {
+            const input = document.getElementById('commentInput');
+            exitAnnotationComposeMode();
+            if (input && document.activeElement === input) input.value = '';
+            e.preventDefault();
+        }
     }
 });
+
+bindCommentFormSubmit();
+bindCommentDeleteDialog();
 
 async function submitComment(commentindex) {
     const input = document.getElementById('commentInput');
@@ -1053,44 +1175,33 @@ async function submitComment(commentindex) {
         return;
     }
 
-    let responseUser = '';
-    let responseId = '';
-    let date = new Date();
+    const parsed = parseCommentSubmitText(commentText, input.getAttribute('name'));
+    if (!parsed) return;
 
-    if (commentText) {
-        const commentList = document.getElementById("commentList");
-        const newComment = document.createElement("li");
-        newComment.textContent = commentText;
-        //commentList.appendChild(newComment);
-        if(commentText[0] == '@'){
-            responseUser = commentText.substring(0, commentText.indexOf(' '));
-            commentText = commentText.substring(commentText.indexOf(' '));
-            responseId = input.getAttribute("name");
-            console.log(responseId)
-            console.log(responseUser);
-            console.log(commentText)
-        }
+    const date = new Date();
+    const author = currentCommentAuthorHandle();
+    const uid = auth.currentUser?.uid || null;
 
-        comments
-            .doc(blogId + '_' + commentindex)
-            .set({
-                content: commentText,
-                postedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
-                responseTo: responseUser,
-                user: getAuthorIdFromUser(auth.currentUser),
-                replyId: responseId,
-            })
-            .then(() => {
-                console.log("Document created");
+    comments
+        .doc(blogId + '_' + commentindex)
+        .set({
+            content: parsed.content,
+            postedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
+            responseTo: parsed.responseUser,
+            user: author,
+            uid,
+            replyId: parsed.replyId,
+        })
+        .then(() => {
+            console.log('Document created');
         });
 
-        numberofcomments++;
-        docRef.update({
-            numberofcomments: numberofcomments,
-        })
-        console.log(numberofcomments);
-        input.value = ""; // Clear input field
-    }
+    numberofcomments++;
+    docRef.update({
+        numberofcomments: numberofcomments,
+    });
+    input.value = '';
+    input.setAttribute('name', '');
 }
 
 const setupCommentSection = () => {
@@ -1110,17 +1221,18 @@ const setupCommentSection = () => {
 
 const makeAnchor = (replyuser, commentid) => {
     exitAnnotationComposeMode();
-    const input = document.getElementById("commentInput");
-    console.log("reply user: " + replyuser);
-    console.log("on comment: " + commentid);
-    //sem daj se comment id in extract it out of the
-    console.log(commentid);
-    input.setAttribute("name", commentid);
+    const input = document.getElementById('commentInput');
+    if (!input) return;
+    input.setAttribute('name', commentid);
     input.name = commentid;
-    input.value = "@" + replyuser;
-
-
-}
+    // Trailing space so Enter alone can't post a mention-only reply.
+    input.value = `@${replyuser} `;
+    input.focus();
+    const caret = input.value.length;
+    try {
+        input.setSelectionRange(caret, caret);
+    } catch (_) {}
+};
 const createComment = (comment, commentid) => {
     let data = comment.data();
     const input = document.getElementById("commentInput");
@@ -1218,10 +1330,23 @@ function renderThreadedComments() {
                     <p class="comment-content">${contentHtml}</p>
                 </div>
                 <div class="comment-actions">
-                    <button class="reply" onclick="event.stopPropagation(); makeAnchor('${user}','${id}')">reply</button>
+                    <button type="button" class="reply" onclick="event.stopPropagation(); makeAnchor('${user}','${id}')">reply</button>
                 </div>
             </div>
         `;
+
+        const actions = li.querySelector('.comment-actions');
+        if (actions && canDeleteComment(data)) {
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'reply comment-delete';
+            delBtn.textContent = 'delete';
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openCommentDeleteDialog(id);
+            });
+            actions.appendChild(delBtn);
+        }
 
         const children = childrenByParent.get(id) || [];
         if (children.length) {
@@ -2738,6 +2863,8 @@ function setupReaderAuthorNav() {
         else dash.setAttribute('hidden', '');
     };
     window.auth.onAuthStateChanged((user) => {
+        // Own-comment delete buttons depend on auth; refresh the thread when it changes.
+        if (commentsListenerAttached) renderThreadedComments();
         if (!user) {
             setVisible(false);
             return;

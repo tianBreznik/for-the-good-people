@@ -269,11 +269,21 @@ function setContentTypeSelect(value, blogIdForFallback) {
     contentTypeSelect.value = normalized || '';
 }
 
+function clearPoetryDialogFields() {
+    const bodyEl = document.getElementById('poetry-dialog-body');
+    const authorEl = document.getElementById('poetry-dialog-author');
+    const italicEl = document.getElementById('poetry-dialog-italic');
+    if (bodyEl) bodyEl.value = '';
+    if (authorEl) authorEl.value = '';
+    if (italicEl) italicEl.checked = false;
+}
+
 function closePoetryDialog() {
     const dialog = document.getElementById('poetry-dialog');
     if (!dialog) return;
     dialog.hidden = true;
     dialog.setAttribute('aria-hidden', 'true');
+    // Keep field values — outside click / Escape / cancel must not wipe the draft.
 }
 
 function openPoetryDialog() {
@@ -282,9 +292,6 @@ function openPoetryDialog() {
     const authorEl = document.getElementById('poetry-dialog-author');
     const italicEl = document.getElementById('poetry-dialog-italic');
     if (!dialog || !bodyEl || !authorEl || !italicEl) return;
-    bodyEl.value = '';
-    authorEl.value = '';
-    italicEl.checked = false;
     dialog.hidden = false;
     dialog.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => bodyEl.focus());
@@ -298,7 +305,7 @@ function setupPoetryDialog() {
     if (!dialog || !bodyEl || !authorEl || !italicEl) return;
 
     dialog.querySelector('[data-poetry-cancel]')?.addEventListener('click', closePoetryDialog);
-    dialog.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closePoetryDialog);
+    // No backdrop dismiss — cancel is the only intentional close (keeps draft until insert).
     dialog.querySelector('[data-poetry-insert]')?.addEventListener('click', () => {
         if (!editor) return;
         const raw = bodyEl.value.replace(/\r\n/g, '\n');
@@ -325,6 +332,7 @@ function setupPoetryDialog() {
             });
         }
         editor.chain().focus().insertContent(nodes).run();
+        clearPoetryDialogFields();
         closePoetryDialog();
         triggerAutoSave();
     });
@@ -383,11 +391,10 @@ function setupBlockquoteDialog() {
 function setupInsertDialogEscape() {
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
+        // Poetry / footnotes: Escape does not dismiss — use Cancel (avoids accidental loss).
         const closers = [
-            ['poetry-dialog', closePoetryDialog],
             ['blockquote-dialog', closeBlockquoteDialog],
             ['epigraph-dialog', closeEpigraphDialog],
-            ['footnote-dialog', closeFootnoteDialog],
             ['link-dialog', closeLinkDialog],
             ['leave-confirm-dialog', closeLeaveConfirmDialog],
             ['publish-confirm-dialog', closePublishConfirmDialog],
@@ -1404,12 +1411,18 @@ const FootnoteRenumber = Extension.create({
     }
 });
 
+function clearFootnoteDialogFields() {
+    const body = document.getElementById('footnote-dialog-body');
+    if (body) body.value = '';
+}
+
 function closeFootnoteDialog() {
     const el = document.getElementById('footnote-dialog');
     if (!el) return;
     el.hidden = true;
     el.setAttribute('aria-hidden', 'true');
     footnoteDialogInsertAnchor = null;
+    // Keep textarea text — outside click / Escape / cancel must not wipe the draft.
 }
 
 function openFootnoteDialog() {
@@ -1422,7 +1435,6 @@ function openFootnoteDialog() {
     } else {
         footnoteDialogInsertAnchor = null;
     }
-    body.value = '';
     dialog.hidden = false;
     dialog.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => body.focus());
@@ -1433,7 +1445,7 @@ function setupFootnoteDialog() {
     const body = document.getElementById('footnote-dialog-body');
     if (!dialog || !body) return;
     dialog.querySelector('[data-footnote-cancel]')?.addEventListener('click', closeFootnoteDialog);
-    dialog.querySelector('.editor-dialog-backdrop')?.addEventListener('click', closeFootnoteDialog);
+    // No backdrop dismiss — cancel is the only intentional close (keeps draft until insert).
     dialog.querySelector('[data-footnote-insert]')?.addEventListener('click', () => {
         if (!editor) return;
         const raw = body.value.replace(/\r\n/g, '\n');
@@ -1443,6 +1455,7 @@ function setupFootnoteDialog() {
         }
         const anchor = footnoteDialogInsertAnchor;
         if (runInsertFootnote(raw, anchor)) {
+            clearFootnoteDialogFields();
             closeFootnoteDialog();
             triggerAutoSave();
             editor.chain().focus().run();
@@ -1767,14 +1780,24 @@ function initializeEditor() {
         content: '<h1 data-doc-title="true"></h1><p></p>',
         editorProps: {
             attributes: {
-                class: 'ProseMirror'
+                class: 'ProseMirror',
+                spellcheck: 'true',
+                // Let the browser dictionary match the user’s language when possible.
+                lang: document.documentElement.lang || 'en',
             },
             // Stay put while typing on the same sheet; jump when the caret
             // crosses onto another page.
             handleScrollToSelection: (view) => handleEditorPageScrollToSelection(view),
             transformPastedHTML: (html) => sanitizePastedHtml(html),
+            handleDOMEvents: {
+                // Don’t swallow right-click — Firefox/Zen need it for spell suggestions.
+                contextmenu: () => false,
+            },
         },
         onCreate: () => {
+            if (editor?.view?.dom) {
+                editor.view.dom.setAttribute('spellcheck', 'true');
+            }
             if (!isEditing) {
                 isHydratingEditor = true;
                 ensureDocTitleHeading(editor, titleInput?.value || '');
@@ -1812,7 +1835,43 @@ function initializeEditor() {
     }
 
     if (isEditing) {
+        setEditorPostLoading(true);
         loadBlogData();
+    }
+}
+
+let editorPostLoadingTimer = 0;
+
+function setEditorPostLoading(on) {
+    const root = document.querySelector('.editor-pages-canvas') || document.querySelector('.editor-container');
+    if (!root) return;
+    document.body.classList.toggle('editor-loading-post', Boolean(on));
+    let el = document.getElementById('editor-post-loading');
+    if (editorPostLoadingTimer) {
+        window.clearInterval(editorPostLoadingTimer);
+        editorPostLoadingTimer = 0;
+    }
+    if (on) {
+        if (!el) {
+            el = document.createElement('p');
+            el.id = 'editor-post-loading';
+            el.className = 'editor-post-loading';
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-live', 'polite');
+            root.appendChild(el);
+        }
+        el.hidden = false;
+        let tick = 0;
+        const paint = () => {
+            const dots = '.'.repeat(tick % 4);
+            el.textContent = `loading post${dots}`;
+            tick += 1;
+        };
+        paint();
+        editorPostLoadingTimer = window.setInterval(paint, 400);
+    } else if (el) {
+        el.hidden = true;
+        el.textContent = 'loading post...';
     }
 }
 
@@ -2159,6 +2218,80 @@ function setupToolbar() {
         });
     }
 
+    setupToolbarScrollHint();
+}
+
+const EDITOR_TOOLBAR_PEEK_KEY = 'editor_toolbar_scroll_peek_v1';
+
+/** Always the inner track — shell keeps the edge fades pinned. */
+function getToolbarScrollEl() {
+    return document.querySelector('.editor-toolbar-track');
+}
+
+function syncToolbarOverflowHints() {
+    const toolbar = document.querySelector('.editor-toolbar');
+    const scroller = getToolbarScrollEl();
+    if (!toolbar || !scroller) return false;
+    const max = scroller.scrollWidth - scroller.clientWidth;
+    const overflow = max > 4;
+    const left = overflow && scroller.scrollLeft > 2;
+    const right = overflow && scroller.scrollLeft < max - 2;
+    toolbar.classList.toggle('is-overflow-left', left);
+    toolbar.classList.toggle('is-overflow-right', right);
+    return overflow;
+}
+
+function runToolbarFirstVisitPeek(scroller) {
+    if (!scroller) return;
+    let seen = false;
+    try {
+        seen = localStorage.getItem(EDITOR_TOOLBAR_PEEK_KEY) === '1';
+    } catch (_) {
+        seen = true;
+    }
+    if (seen) return;
+    const max = scroller.scrollWidth - scroller.clientWidth;
+    if (max < 24) return;
+    try {
+        localStorage.setItem(EDITOR_TOOLBAR_PEEK_KEY, '1');
+    } catch (_) { /* ignore */ }
+    const peek = Math.min(72, Math.round(max * 0.45));
+    const reduceMotion =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) {
+        syncToolbarOverflowHints();
+        return;
+    }
+    requestAnimationFrame(() => {
+        scroller.scrollTo({ left: peek, behavior: 'smooth' });
+        window.setTimeout(() => {
+            scroller.scrollTo({ left: 0, behavior: 'smooth' });
+            window.setTimeout(() => syncToolbarOverflowHints(), 420);
+        }, 580);
+    });
+}
+
+function setupToolbarScrollHint() {
+    const toolbar = document.querySelector('.editor-toolbar');
+    const scroller = getToolbarScrollEl();
+    if (!toolbar || !scroller || toolbar.dataset.scrollHintBound === '1') return;
+    toolbar.dataset.scrollHintBound = '1';
+
+    const onScrollOrResize = () => {
+        syncToolbarOverflowHints();
+    };
+
+    scroller.addEventListener('scroll', onScrollOrResize, { passive: true });
+    window.addEventListener('resize', onScrollOrResize, { passive: true });
+
+    // After layout (fonts/toolbar buttons), sync fades + optional first-visit peek.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            const overflow = syncToolbarOverflowHints();
+            if (overflow) runToolbarFirstVisitPeek(scroller);
+        });
+    });
 }
 
 /** Toggle a paragraph `data-variant` on/off (second click clears). */
@@ -2387,6 +2520,7 @@ function normalizeDraftBlogId(raw) {
 }
 
 async function loadBlogData() {
+    setEditorPostLoading(true);
     try {
         const docRef = window.db.collection("blogs").doc(decodePathSegment(blogID[0]));
         const doc = await docRef.get();
@@ -2426,6 +2560,8 @@ async function loadBlogData() {
     } catch (error) {
         console.error('Error loading blog:', error);
         location.replace("/");
+    } finally {
+        setEditorPostLoading(false);
     }
 }
 

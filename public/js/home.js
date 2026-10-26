@@ -3265,6 +3265,45 @@ function socialPlatformIconSvg(platform) {
     }
 }
 
+/** Favicon for arbitrary pasted hosts (known platforms keep curated marks). */
+function faviconUrlForHref(href) {
+    try {
+        const host = new URL(href).hostname.replace(/^www\./i, '');
+        if (!host) return '';
+        return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+    } catch (_) {
+        return '';
+    }
+}
+
+function createSocialIconEl(parsed) {
+    const icon = document.createElement('span');
+    icon.className = 'bio-social-icon';
+    const useFavicon = parsed.platform === 'link';
+    const fav = useFavicon ? faviconUrlForHref(parsed.href) : '';
+    if (fav) {
+        const img = document.createElement('img');
+        img.className = 'bio-social-icon-img';
+        img.src = fav;
+        img.alt = '';
+        img.width = 18;
+        img.height = 18;
+        img.decoding = 'async';
+        img.referrerPolicy = 'no-referrer';
+        img.addEventListener(
+            'error',
+            () => {
+                icon.innerHTML = socialPlatformIconSvg('link');
+            },
+            { once: true }
+        );
+        icon.appendChild(img);
+        return icon;
+    }
+    icon.innerHTML = socialPlatformIconSvg(parsed.platform);
+    return icon;
+}
+
 function createSocialLinkEl(rawUrl) {
     const parsed = parseSocialLink(rawUrl);
     if (!parsed) return null;
@@ -3276,10 +3315,7 @@ function createSocialLinkEl(rawUrl) {
     a.rel = 'noopener noreferrer';
     a.title = parsed.href;
 
-    const icon = document.createElement('span');
-    icon.className = 'bio-social-icon';
-    icon.innerHTML = socialPlatformIconSvg(parsed.platform);
-    a.appendChild(icon);
+    a.appendChild(createSocialIconEl(parsed));
 
     const label = document.createElement('span');
     label.className = 'bio-social-label';
@@ -3863,7 +3899,7 @@ function createBlogCard(blog, section, sectionIndex) {
         // Mobile narrow: first tap opens in-app reader.
         if (homeDirectArticleTapNav()) {
             ensureAuthorBioClosed().then(() => {
-                expandArticlePanelAndNavigate(blog.id, card);
+        expandArticlePanelAndNavigate(blog.id, card);
             });
             return;
         }

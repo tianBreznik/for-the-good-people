@@ -227,6 +227,37 @@ function truncateCloneToWordCount(root, wordCount) {
 }
 
 /**
+ * How many of the first `wordCount` words sit on the last visual line of that
+ * chunk (`measureChunk` already scoped to the current wordOffset). Used to peel
+ * orphan last lines off a page break.
+ */
+function wordsOnLastLine(wordCount, measureChunk) {
+    const count = Math.max(0, wordCount | 0);
+    if (count <= 1) return count;
+    const fullH = measureChunk(count, false);
+    if (fullH < 8) return count;
+    // Largest prefix still shorter than the full chunk = everything before the last line.
+    let low = 0;
+    let high = count - 1;
+    let beforeLast = 0;
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const h = mid <= 0 ? 0 : measureChunk(mid, false);
+        if (h < fullH - 0.5) {
+            beforeLast = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return Math.max(1, count - beforeLast);
+}
+
+/** Prefer not to leave 1–2 words alone on the last body line above a break. */
+const ORPHAN_LAST_LINE_MAX = 2;
+const MID_SPLIT_MIN_WORDS = 3;
+
+/**
  * Max words from `fromWord` that fit in maxHeightPx (prefix of the remaining text).
  * Returns 0 if even one word is too tall.
  */
@@ -669,7 +700,10 @@ function buildDecorations(view) {
 
             // Reader parity: refuse crumb splits on the first break of a paragraph.
             let useCount = fitCount;
-            if (wordOffset === 0 && (useCount <= 3 || leftAfter - useCount <= 3)) {
+            if (
+                wordOffset === 0 &&
+                (useCount <= MID_SPLIT_MIN_WORDS || leftAfter - useCount <= MID_SPLIT_MIN_WORDS)
+            ) {
                 advanceToNextPage(pos, 1, `editor-pagebreak-${pos}-${pageIndex + 1}`);
                 cursorY += height;
                 applyFittedNotes(unionIds(footnoteSpill, footnoteIds));
@@ -678,8 +712,23 @@ function buildDecorations(view) {
                 break;
             }
             // Continuations: never leave fewer than 3 words behind a break.
-            if (leftAfter - useCount < 3) useCount = leftAfter - 3;
-            if (useCount < 3) useCount = fitCount;
+            if (leftAfter - useCount < MID_SPLIT_MIN_WORDS) {
+                useCount = leftAfter - MID_SPLIT_MIN_WORDS;
+            }
+            if (useCount < MID_SPLIT_MIN_WORDS) useCount = fitCount;
+
+            // Orphan last line: greedy fit often keeps 1–2 words alone on the
+            // final body line (esp. above a footnote band). Pull that line.
+            if (useCount < leftAfter) {
+                const onLast = wordsOnLastLine(useCount, measureChunk);
+                if (onLast > 0 && onLast <= ORPHAN_LAST_LINE_MAX) {
+                    const peeled = useCount - onLast;
+                    const rem = leftAfter - peeled;
+                    if (peeled >= MID_SPLIT_MIN_WORDS && rem >= MID_SPLIT_MIN_WORDS) {
+                        useCount = peeled;
+                    }
+                }
+            }
 
             cursorY += Math.max(measureChunk(useCount, false), 12);
             wordOffset += useCount;

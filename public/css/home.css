@@ -3076,6 +3076,20 @@ html[data-home-texture='stucco8'] .blog-card.search-miss:hover .blog-title {
     padding: 12px 8px 2px;
 }
 
+/*
+ * Sticky top:0 sticks to the viewport/scrollport above the translated wall and
+ * paints across the bio underlay (stage is z-index:2). While the strip is open,
+ * park labels in normal flow so they ride with the wall slide instead.
+ */
+body.bio-open .title-section > .section-title-container,
+body.bio-closing .title-section > .section-title-container,
+body.search-open .title-section > .section-title-container,
+body.search-closing .title-section > .section-title-container {
+    position: relative;
+    top: auto;
+    z-index: 1;
+}
+
 .title-section > .section-title-container .blog-card {
     padding: 0;
 }
@@ -3206,6 +3220,18 @@ html[data-home-texture='stucco8'] .blog-card.search-miss:hover .blog-title {
 }
 .home-main-pane:has(.section-title-container:hover)::before { left: 0; }
 .home-main-pane:has(.section-title-container:hover)::after { right: 0; }
+
+/* Pane lines live on the untranslated pane — keep them under the revealed strip. */
+body.bio-open .home-main-pane:has(.section-title-container:hover)::before,
+body.bio-open .home-main-pane:has(.section-title-container:hover)::after,
+body.bio-closing .home-main-pane:has(.section-title-container:hover)::before,
+body.bio-closing .home-main-pane:has(.section-title-container:hover)::after,
+body.search-open .home-main-pane:has(.section-title-container:hover)::before,
+body.search-open .home-main-pane:has(.section-title-container:hover)::after,
+body.search-closing .home-main-pane:has(.section-title-container:hover)::before,
+body.search-closing .home-main-pane:has(.section-title-container:hover)::after {
+    top: var(--wallRevealY);
+}
 
 /* Blog Popup Styles */
 .blog-popup {

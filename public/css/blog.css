@@ -870,9 +870,71 @@ body.reader-embed .reader-nav-dashboard {
 
 .comment-actions {
     display: flex;
-    align-items: center;
-    justify-content: flex-end;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 4px;
     padding-right: 10px;
+}
+
+.comment-card .comment-delete {
+    color: #5a5a5a;
+}
+
+.comment-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+.comment-dialog[hidden] {
+    display: none !important;
+}
+
+.comment-dialog-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.28);
+}
+
+.comment-dialog-panel {
+    position: relative;
+    z-index: 1;
+    min-width: min(280px, 100%);
+    max-width: 360px;
+    padding: 14px 16px 12px;
+    border: 1px solid #8a8a8a;
+    border-radius: 0;
+    background: linear-gradient(#f2f2f2, #e2e2e2);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.7),
+        0 8px 28px rgba(0, 0, 0, 0.22);
+    font-family: 'MS Sans Serif', 'Arial', sans-serif;
+}
+
+.comment-dialog-title {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 400;
+    color: #222;
+}
+
+.comment-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.comment-dialog-btn {
+    min-width: 64px;
+}
+
+.comment-dialog-btn--danger {
+    color: #7a1010;
 }
 
 .comment-card::before {

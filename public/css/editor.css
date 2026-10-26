@@ -103,13 +103,14 @@ body.editor-page {
     border: 0;
 }
 
-/* Editor Toolbar — floating island */
+/* Editor Toolbar — floating island (shell clips; track scrolls). */
 .editor-toolbar {
+    position: relative;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 8px 10px;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 0;
     border: 1px solid #bcbcbc;
     border-radius: 2px;
     margin: 0;
@@ -117,26 +118,77 @@ body.editor-page {
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.8),
         0 2px 8px rgba(0, 0, 0, 0.1);
-    overflow-x: auto;
-    overflow-y: hidden;
-    white-space: nowrap;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    overflow: hidden;
     width: auto;
     max-width: min(1100px, calc(100vw - 24px));
 }
 
-.editor-toolbar::-webkit-scrollbar { display: none; }
-.editor-toolbar { scrollbar-width: none; -ms-overflow-style: none; }
+/*
+ * Soft edge fades live on the non-scrolling shell so they stay pinned to the
+ * visible left/right edges (not the scroll content).
+ */
+.editor-toolbar::before,
+.editor-toolbar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 28px;
+    z-index: 6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+
+.editor-toolbar::before {
+    left: 0;
+    background: linear-gradient(
+        to right,
+        rgba(220, 220, 220, 0.98) 0%,
+        rgba(220, 220, 220, 0.55) 45%,
+        rgba(220, 220, 220, 0) 100%
+    );
+}
+
+.editor-toolbar::after {
+    right: 0;
+    background: linear-gradient(
+        to left,
+        rgba(220, 220, 220, 0.98) 0%,
+        rgba(220, 220, 220, 0.55) 45%,
+        rgba(220, 220, 220, 0) 100%
+    );
+}
+
+.editor-toolbar.is-overflow-left::before {
+    opacity: 1;
+}
+
+.editor-toolbar.is-overflow-right::after {
+    opacity: 1;
+}
 
 .editor-toolbar-track {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 100%;
     gap: 10px;
+    width: 100%;
     min-width: 0;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.editor-toolbar-track::-webkit-scrollbar {
+    display: none;
 }
 
 .toolbar-buttons,
@@ -422,6 +474,67 @@ body.editor-page {
     caret-color: #171717;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    /* Native Firefox/Zen spell suggestions need a normal selectable editable. */
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+body.editor-loading-post .tiptap-editor .ProseMirror {
+    /* Hide body text only — page sheet + shadow stay fully visible. */
+    color: transparent;
+    caret-color: transparent;
+    -webkit-text-fill-color: transparent;
+    pointer-events: none;
+}
+
+body.editor-loading-post .tiptap-editor .ProseMirror * {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    background: none !important;
+    -webkit-text-stroke: 0 !important;
+    text-shadow: none !important;
+    border-color: transparent !important;
+    opacity: 0 !important;
+}
+
+body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-break,
+body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
+    opacity: 0 !important;
+}
+
+/* Red ink “loading post…” on the page surface (article-ink recipe). */
+.editor-post-loading {
+    position: absolute;
+    left: 50%;
+    top: clamp(4.5rem, 12vh, 7rem);
+    transform: translateX(-50%);
+    z-index: 4;
+    margin: 0;
+    max-width: min(90vw, var(--editor-page-width, 620px));
+    padding: 0 var(--editor-page-pad-inline, 1.75rem);
+    box-sizing: border-box;
+    pointer-events: none;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: clamp(0.9375rem, 1.1vw, 1.0625rem);
+    line-height: 1.42;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-image:
+        linear-gradient(#b1123a, #b1123a),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 48px 48px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.22px rgba(140, 20, 40, 0.35);
+    text-shadow: 0 0 0.45px rgba(140, 20, 40, 0.28);
+    -webkit-font-smoothing: none;
+}
+
+.editor-post-loading[hidden] {
+    display: none !important;
 }
 
 /* Page-1 top margin (widget). Same for each page after a break spacer. */

@@ -91,6 +91,7 @@
         
         <div class="editor-content editor-pages-canvas">
             <div id="tiptap-editor" class="tiptap-editor"></div>
+            <p id="editor-post-loading" class="editor-post-loading" hidden role="status" aria-live="polite">loading post...</p>
         </div>
 
         <div class="editor-footer">
@@ -139,7 +140,7 @@
         <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="footnote-dialog-title">
             <h2 id="footnote-dialog-title" class="editor-dialog-title">Footnote</h2>
             <p class="editor-dialog-hint">add footnote text</p>
-            <textarea id="footnote-dialog-body" class="editor-dialog-textarea" rows="5" maxlength="6000" placeholder="Footnote content (plain text)" aria-label="Footnote text"></textarea>
+            <textarea id="footnote-dialog-body" class="editor-dialog-textarea" rows="5" maxlength="6000" placeholder="Footnote content (plain text)" aria-label="Footnote text" spellcheck="true"></textarea>
             <div class="editor-dialog-actions">
                 <button type="button" class="popover-btn" data-footnote-cancel>cancel</button>
                 <button type="button" class="popover-btn" data-footnote-insert>insert</button>
