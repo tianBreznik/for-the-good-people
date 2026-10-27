@@ -304,11 +304,57 @@ function articleContentRoot() {
     return document.getElementById('article-body');
 }
 
+function getSheetScale() {
+    const PG = window.PageGeometry;
+    if (PG && typeof PG.getSheetFitScale === 'function') {
+        const live = PG.getSheetFitScale();
+        if (Number.isFinite(live) && live > 0) return live;
+    }
+    const raw = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--sheet-scale')
+    );
+    return Number.isFinite(raw) && raw > 0 ? raw : 1;
+}
+
+/**
+ * CSS zoom on #article-body: absolute children use pre-zoom CSS px.
+ * getClientRects are visual in Chromium; some WebKit builds report layout px —
+ * detect via offsetWidth vs getBoundingClientRect.
+ */
+function placeAnnotationBoxFromClientRect(box, rect) {
+    const overlay = ensureAnnotationOverlayRoot();
+    const rootRect = overlay.getBoundingClientRect();
+    const host = document.getElementById('article-body');
+    const cssScale = getSheetScale();
+    let divide = cssScale > 0.01 ? cssScale : 1;
+    if (host && cssScale < 0.999) {
+        const layoutW = host.offsetWidth || 620;
+        const visualW = host.getBoundingClientRect().width;
+        if (layoutW > 0 && visualW > 0) {
+            const measured = visualW / layoutW;
+            // Unscaled client rects → measured ≈ 1; already-visual → measured ≈ cssScale.
+            divide = measured > 0.92 ? 1 : Math.max(0.35, measured);
+        }
+    }
+    box.style.left = `${(rect.left - rootRect.left) / divide}px`;
+    box.style.top = `${(rect.top - rootRect.top) / divide}px`;
+    box.style.width = `${rect.width / divide}px`;
+    box.style.height = `${rect.height / divide}px`;
+}
+
 function ensureAnnotationOverlayRoot() {
-    if (annotationOverlayRoot) return annotationOverlayRoot;
-    const root = document.createElement('div');
-    root.id = 'annotation-overlay-root';
-    document.body.appendChild(root);
+    if (annotationOverlayRoot && annotationOverlayRoot.isConnected) {
+        return annotationOverlayRoot;
+    }
+    const host = document.getElementById('article-body') || document.body;
+    let root = document.getElementById('annotation-overlay-root');
+    if (!root) {
+        root = document.createElement('div');
+        root.id = 'annotation-overlay-root';
+    }
+    if (root.parentElement !== host) {
+        host.appendChild(root);
+    }
     annotationOverlayRoot = root;
     return root;
 }
@@ -443,10 +489,7 @@ function renderPendingAnnotationHighlightPreview(draft, tone) {
         const box = document.createElement('div');
         box.className = 'annotation-highlight annotation-highlight-pending';
         box.setAttribute('aria-hidden', 'true');
-        box.style.left = `${window.scrollX + rect.left}px`;
-        box.style.top = `${window.scrollY + rect.top}px`;
-        box.style.width = `${rect.width}px`;
-        box.style.height = `${rect.height}px`;
+        placeAnnotationBoxFromClientRect(box, rect);
         box.style.setProperty('--ann-fill', tone.fill);
         box.style.setProperty('--ann-fill-active', tone.fillActive);
         box.style.setProperty('--ann-border', tone.border);
@@ -652,10 +695,7 @@ function applyAnnotationHighlights() {
             box.className = 'annotation-highlight';
             box.dataset.annotationId = item.id;
             box.dataset.annotationIndex = String(idx + 1);
-            box.style.left = `${window.scrollX + rect.left}px`;
-            box.style.top = `${window.scrollY + rect.top}px`;
-            box.style.width = `${rect.width}px`;
-            box.style.height = `${rect.height}px`;
+            placeAnnotationBoxFromClientRect(box, rect);
             box.style.setProperty('--ann-fill', tone.fill);
             box.style.setProperty('--ann-fill-active', tone.fillActive);
             box.style.setProperty('--ann-border', tone.border);
@@ -974,14 +1014,7 @@ function ensureCommentsVisible() {
 function renderReaderHandoffIfPresent() {
     const payload = readReaderHandoffPayload();
     if (!payload) return;
-    const handoffHeight = Number(payload.previewPageHeight);
-    if (Number.isFinite(handoffHeight) && handoffHeight > 100) {
-        document.documentElement.style.setProperty('--readerHandoffPageHeight', `${Math.round(handoffHeight)}px`);
-    }
-    const handoffWidth = Number(payload.previewPageWidth);
-    if (Number.isFinite(handoffWidth) && handoffWidth > 100) {
-        document.documentElement.style.setProperty('--readerHandoffPageWidth', `${Math.round(handoffWidth)}px`);
-    }
+    /* Sheet size is canonical (page-geometry) — ignore measured preview rects. */
     const titleTag = document.querySelector('title');
     const title = payload.title || '';
     const publishedAt = payload.publishedAt || '';
@@ -1570,47 +1603,29 @@ function createTitleBlockNode(blockHtml, meta) {
     return wrap;
 }
 
-/** Cached for one pack pass — avoid re-probing CSS vars on every block. */
-let cachedSpreadTargetHeight = 0;
-let cachedSpreadTargetHeightAt = 0;
-
+/** Fixed canonical sheet height — same on every viewport (see page-geometry.js). */
 function getSpreadTargetHeight() {
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    // Reuse within a short window (one renderArticleSpread + sibling calls).
-    if (cachedSpreadTargetHeight > 100 && now - cachedSpreadTargetHeightAt < 2500) {
-        return cachedSpreadTargetHeight;
+    const PG = window.PageGeometry;
+    if (PG && typeof PG.getSpreadTargetHeight === 'function') {
+        return PG.getSpreadTargetHeight();
     }
-    const narrow = isReaderNarrow();
-    /*
-     * Mobile: measure the same --reader-page-height the CSS uses. Packing against
-     * visualViewport while pages used a taller svh min-height left empty footers.
-     */
-    let measured = 0;
-    if (narrow && typeof document !== 'undefined') {
-        const probe = document.createElement('div');
-        probe.setAttribute('aria-hidden', 'true');
-        probe.style.cssText =
-            'position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;width:0;' +
-            'height:var(--reader-page-height);';
-        document.documentElement.appendChild(probe);
-        measured = Math.floor(probe.getBoundingClientRect().height);
-        probe.remove();
-        if (measured > 100) {
-            cachedSpreadTargetHeight = measured;
-            cachedSpreadTargetHeightAt = now;
-            return measured;
-        }
+    return PG && Number.isFinite(PG.CANONICAL_PAGE_HEIGHT) ? PG.CANONICAL_PAGE_HEIGHT : 874;
+}
+
+function applyReaderSheetScale() {
+    const PG = window.PageGeometry;
+    if (PG && typeof PG.applyCanonicalSheetCssVars === 'function') {
+        PG.applyCanonicalSheetCssVars(document.documentElement);
+        return;
     }
-    const viewportH = window.visualViewport
-        ? Math.floor(window.visualViewport.height)
-        : window.innerHeight;
-    const inset = narrow
-        ? Math.max(16, Math.min(36, Math.round(viewportH * 0.028)))
-        : Math.max(30, Math.min(52, Math.round(viewportH * 0.048)));
-    measured = Math.max(viewportH - inset, 440);
-    cachedSpreadTargetHeight = measured;
-    cachedSpreadTargetHeightAt = now;
-    return measured;
+    const boot = window.PageGeometryBoot;
+    if (boot && typeof boot.applyCanonicalSheetCssVars === 'function') {
+        boot.applyCanonicalSheetCssVars();
+        return;
+    }
+    /* Never force scale to 1 — that reintroduced mobile overflow after boot. */
+    document.documentElement.style.setProperty('--reader-page-width', '620px');
+    document.documentElement.style.setProperty('--reader-page-height', '874px');
 }
 
 function createSpread() {
@@ -1699,7 +1714,7 @@ function formatLine(line) {
         }
         let alt = line.slice(2, seperator);
         let src = line.slice(seperator + 2, line.length - 1);
-        return `<img src="${src}" alt="${alt}" class="article-image">`;
+        return `<img src="${src}" alt="${alt}" class="article-image" loading="eager" decoding="async">`;
     }
     // Handle regular text
     return `<p>${line}</p>`;
@@ -1770,23 +1785,25 @@ function collectFootnoteRefIdsUnion(bodyEl, extraEl) {
     return out;
 }
 
+/**
+ * Legacy mobile pack gate. Always false — canonical sheet + scale means packing
+ * must not branch on viewport. Keeps old peel/backfill helpers inert.
+ */
 function isReaderNarrow() {
-    return (
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(max-width: 900px)').matches
-    );
+    return false;
 }
 
 /**
- * Max footnote band (px). Band sizes to notes that fit; anything past this spills
- * to the next page so a spam of notes cannot eat the whole sheet.
+ * Max footnote band (px). Same formula on every viewport — sheet is canonical;
+ * display scale must not change packing.
  */
 function footnoteBandHeight(spreadHeight) {
-    const h = Number(spreadHeight) || 0;
-    const narrow = isReaderNarrow();
-    if (h <= 0) return narrow ? 88 : 112;
-    // Mobile: room for a short note + clearance (too-tight bands clipped off the sheet).
-    if (narrow) return Math.min(132, Math.max(72, Math.round(h * 0.135)));
+    const PG = window.PageGeometry;
+    if (PG && typeof PG.footnoteBandHeight === 'function') {
+        return PG.footnoteBandHeight(spreadHeight);
+    }
+    const h = Number(spreadHeight) || 874;
+    if (h <= 0) return 112;
     return Math.min(168, Math.max(96, Math.round(h * 0.155)));
 }
 
@@ -1869,40 +1886,13 @@ function footnoteProbeWidth(pageEl) {
     return 520;
 }
 
-/** Breathing room between body and footnote rule on mobile (px). */
-const MOBILE_BODY_FOOT_GAP = 12;
-
 /**
- * Reserve footnote band height while packing body.
- * Mobile: carry-in (full) + a modest stub only for refs *already on this page*
- * (not extraEl — those may land on the next sheet after a split).
- * Notes that still don't fit spill to the next footnote section (Word/Docs-like).
- * Desktop keeps full measured reserve.
+ * Reserve footnote band height while packing body — full measured reserve
+ * everywhere (legacy mobile stub/backfill path removed with fixed sheets).
  */
 function footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds, pageEl, assignedAnchors) {
-    const narrow = isReaderNarrow();
-    const carry = Array.isArray(carryIds) ? carryIds : [];
     const maxBand = footnoteBandHeight(spreadHeight);
     const probeW = footnoteProbeWidth(pageEl || bodyEl?.parentElement);
-
-    if (narrow) {
-        let reserve = 0;
-        if (carry.length) {
-            const { height } = measureFittedFootnoteBand(defMap, carry, maxBand, probeW);
-            // Slightly under-reserve — post-seal backfill fills any leftover gap;
-            // over-reserve + margin-top:auto left dead bands above the rule.
-            reserve = height > 0 ? Math.max(40, Math.round(height * 0.9)) : 0;
-        }
-        // Refs already on this page — modest stub only (backfill / peel refine).
-        const pageRefs = collectFootnoteRefIdsFromNode(bodyEl).filter(
-            (id) => id && !carry.includes(id)
-        );
-        if (pageRefs.length) {
-            reserve = Math.max(reserve, Math.min(64, Math.round(maxBand * 0.5)));
-        }
-        return reserve;
-    }
-
     const queue = footnoteQueueForPage(bodyEl, defMap, extraEl, carryIds, assignedAnchors);
     if (!queue.length) return 0;
     const { height } = measureFittedFootnoteBand(defMap, queue, maxBand, probeW);
@@ -1911,8 +1901,8 @@ function footnoteReserveForBody(bodyEl, defMap, spreadHeight, extraEl, carryIds,
 
 function elementOuterHeightWithMargins(el) {
     if (!el) return 0;
-    const rect = el.getBoundingClientRect();
-    const h = rect && Number.isFinite(rect.height) ? rect.height : el.offsetHeight || 0;
+    /* Prefer offsetHeight — getBoundingClientRect shrinks under CSS zoom. */
+    const h = el.offsetHeight || 0;
     const styles = window.getComputedStyle ? window.getComputedStyle(el) : null;
     const mt = styles ? parseFloat(styles.marginTop) || 0 : 0;
     const mb = styles ? parseFloat(styles.marginBottom) || 0 : 0;
@@ -1930,16 +1920,7 @@ function pageVerticalInsets(pageEl) {
 }
 
 function pageBodyHeightBudget(pageEl, bodyEl, spreadHeight, defMap, extraEl, carryIds, assignedAnchors) {
-    const narrow = isReaderNarrow();
-    /*
-     * Mobile: prefer the live page box. Packing against a shorter probe than the
-     * CSS min-height left large empty footers inside full-height sheets.
-     */
-    let pageH = spreadHeight;
-    if (narrow && pageEl) {
-        const live = Math.floor(pageEl.getBoundingClientRect().height || pageEl.clientHeight || 0);
-        if (live > 100) pageH = Math.max(pageH, live);
-    }
+    const pageH = Number(spreadHeight) || getSpreadTargetHeight();
     const footReserve = footnoteReserveForBody(
         bodyEl,
         defMap,
@@ -2050,19 +2031,18 @@ function footnoteSuperscriptNumberForId(bodyRoot, id) {
  */
 function footnoteBandOverflowsPage(pageEl, footEl, bodyEl) {
     if (!pageEl || !footEl) return false;
-    const pageBox = pageEl.getBoundingClientRect();
-    const footBox = footEl.getBoundingClientRect();
-    // During early layout a 0-size box is unreliable — caller still has bandMax.
-    if (pageBox.height < 80 || footBox.height < 1) return false;
+    /* Layout coords only — getBoundingClientRect mixes badly with CSS zoom. */
+    const pageH = pageEl.clientHeight || pageEl.offsetHeight || 0;
+    const footH = footEl.offsetHeight || 0;
+    if (pageH < 80 || footH < 1) return false;
     const styles = window.getComputedStyle ? window.getComputedStyle(pageEl) : null;
     const pb = styles ? parseFloat(styles.paddingBottom) || 0 : 0;
-    // Keep clear of padding + page-number zone.
-    const safeBottom = pageBox.bottom - Math.max(pb, isReaderNarrow() ? 28 : 16);
-    if (footBox.bottom > safeBottom + 1) return true;
+    const safeBottom = pageH - Math.max(pb, 16);
+    const footBottom = footEl.offsetTop + footH;
+    if (footBottom > safeBottom + 1) return true;
     if (bodyEl) {
-        const bodyBox = bodyEl.getBoundingClientRect();
-        const gap = isReaderNarrow() ? MOBILE_BODY_FOOT_GAP : 6;
-        if (bodyBox.bottom > footBox.top - gap) return true;
+        const bodyBottom = bodyEl.offsetTop + bodyEl.offsetHeight;
+        if (bodyBottom > footEl.offsetTop - 6) return true;
     }
     return false;
 }
@@ -2389,8 +2369,7 @@ function glueLeadingFootnoteRefsToLeft(leftRoot, rightRoot) {
 function splitParagraphToFit(pageBodyEl, paragraphEl, maxBodyScrollHeight) {
     if (!paragraphEl || paragraphEl.tagName !== 'P') return null;
     const words = paragraphSplitWords(paragraphEl);
-    // Mobile: allow finer peels so we don't eject a whole short remnant and gap the page.
-    const minWords = isReaderNarrow() ? 6 : 12;
+    const minWords = 12;
     if (words.length < minWords) return null;
 
     let low = 1;
@@ -2413,7 +2392,7 @@ function splitParagraphToFit(pageBodyEl, paragraphEl, maxBodyScrollHeight) {
         }
     }
 
-    const edge = isReaderNarrow() ? 1 : 3;
+    const edge = 3;
     if (best <= edge || best >= words.length - edge) return null;
 
     const leftPart = paragraphEl.cloneNode(true);
@@ -2531,22 +2510,29 @@ function renderArticleSpread(blocks, footnoteDefMap) {
 
     const defMap = footnoteDefMap instanceof Map ? footnoteDefMap : new Map();
 
-    // Keep comment chrome alive across reflows (innerHTML would destroy it).
+    // Keep comment chrome + annotation overlay alive across reflows.
     const blogRoot = document.querySelector('.blog');
     if (blogRoot) {
         const composeDock = document.getElementById('comment-compose');
         if (composeDock) blogRoot.appendChild(composeDock);
         if (commentScreenEl) blogRoot.appendChild(commentScreenEl);
     }
+    const overlay = document.getElementById('annotation-overlay-root');
+    if (overlay) document.body.appendChild(overlay);
     lastArticlePageElForComments = null;
 
     articleBody.innerHTML = '';
+    if (overlay) {
+        articleBody.appendChild(overlay);
+        annotationOverlayRoot = overlay;
+    }
 
-    // Force a fresh height measure for this pack (cache still helps mid-pass).
-    cachedSpreadTargetHeight = 0;
-    cachedSpreadTargetHeightAt = 0;
     const spreadHeight = getSpreadTargetHeight();
-    const narrowPack = isReaderNarrow();
+    /*
+     * Fixed canonical sheet: pack like desktop everywhere. The old mobile peel /
+     * backfill path existed for viewport-tall pages and fought scale-to-fit form.
+     */
+    const narrowPack = false;
 
     let currentSpread = createSpread();
     articleBody.appendChild(currentSpread.spread);
@@ -2747,29 +2733,31 @@ const renderArticleBody = (articleData, options = {}) => {
 
     if (!spreadResizeBound) {
         spreadResizeBound = true;
-        let lastSpreadWidth = window.innerWidth;
-        window.addEventListener('resize', () => {
-            const w = window.innerWidth;
-            if (Math.abs(w - lastSpreadWidth) < 2) return;
-            lastSpreadWidth = w;
+        /* Pack is viewport-independent; resize only updates display scale. */
+        const onSheetScale = () => {
             clearTimeout(spreadReflowTimer);
             spreadReflowTimer = setTimeout(() => {
-                if (articleBlocksCache.blocks.length) {
-                    renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
-                    applyAnnotationHighlights();
-                }
-            }, 140);
-        });
+                applyReaderSheetScale();
+                scheduleAnnotationLayoutSync();
+            }, 80);
+        };
+        window.addEventListener('resize', onSheetScale);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', onSheetScale);
+        }
     }
 
     if (!annotationLayoutListenersBound) {
         annotationLayoutListenersBound = true;
-        const onLayoutScroll = () => scheduleAnnotationLayoutSync();
-        window.addEventListener('scroll', onLayoutScroll, { passive: true });
-        const vv = window.visualViewport;
-        if (vv) {
-            vv.addEventListener('scroll', onLayoutScroll, { passive: true });
-            vv.addEventListener('resize', onLayoutScroll, { passive: true });
+        /*
+         * Overlay lives inside #article-body — highlights scroll with the sheet.
+         * Re-measuring on every scroll made mobile paint stutter / “pop in”.
+         * Only reflow on viewport size changes.
+         */
+        const onLayoutResize = () => scheduleAnnotationLayoutSync();
+        window.addEventListener('resize', onLayoutResize);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', onLayoutResize);
         }
     }
 
@@ -2780,6 +2768,7 @@ const renderArticleBody = (articleData, options = {}) => {
     ensureCommentsVisible();
 }
 
+applyReaderSheetScale();
 renderReaderHandoffIfPresent();
 
 const addArticle = (ele, data) => {

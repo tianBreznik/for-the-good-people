@@ -1,6 +1,36 @@
 const blogSection = document.querySelector('.blogs-section');
 const topdiv = document.querySelector('#first-container');
 
+/** Fixed sheet + display scale (see page-geometry.js). */
+function applyHomeSheetScale() {
+    const PG = window.PageGeometry;
+    if (PG && typeof PG.applyCanonicalSheetCssVars === 'function') {
+        PG.applyCanonicalSheetCssVars(document.documentElement);
+        return;
+    }
+    const boot = window.PageGeometryBoot;
+    if (boot && typeof boot.applyCanonicalSheetCssVars === 'function') {
+        boot.applyCanonicalSheetCssVars();
+        return;
+    }
+    document.documentElement.style.setProperty('--reader-page-width', '620px');
+    document.documentElement.style.setProperty('--reader-page-height', '874px');
+}
+
+function canonicalHandoffPageSize() {
+    const PG = window.PageGeometry;
+    return {
+        previewPageHeight: (PG && PG.CANONICAL_PAGE_HEIGHT) || 874,
+        previewPageWidth: (PG && PG.CANONICAL_PAGE_WIDTH) || 620,
+    };
+}
+
+applyHomeSheetScale();
+window.addEventListener('resize', applyHomeSheetScale);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', applyHomeSheetScale);
+}
+
 /** Once the splash is dismissed, skip it when returning to home (shared across tabs). */
 const HOME_ENTRY_DISMISSED_KEY = 'homeEntryDismissed';
 
@@ -529,9 +559,11 @@ function initMobileSectionTitleTapLines() {
         el.dataset.tapLinesBound = '1';
         const card = el.querySelector('.section-heading-card');
         if (card) card.style.cursor = 'pointer';
+        installTapNotSwipe(el);
         el.addEventListener('click', (e) => {
             if (!window.matchMedia(HOME_NARROW_QUERY).matches) return;
             if (homeFinePointerHoverUi()) return;
+            if (tapWasSwipe(el)) return;
             e.preventDefault();
             e.stopPropagation();
             const pane = el.closest('.home-main-pane');
@@ -609,6 +641,72 @@ function homeFinePointerHoverUi() {
 /** Narrow layout without fine pointer: first tap on card opens in-app reader (iframe). */
 function homeDirectArticleTapNav() {
     return typeof window.matchMedia !== 'undefined' && window.matchMedia(HOME_NARROW_QUERY).matches && !homeFinePointerHoverUi();
+}
+
+/** Ignore click after a finger drag (column swipe across a title/author hit target). */
+const TAP_SWIPE_CANCEL_PX = 12;
+
+function installTapNotSwipe(el) {
+    if (!el || el.dataset.tapNotSwipeBound === '1') return;
+    el.dataset.tapNotSwipeBound = '1';
+    let startX = 0;
+    let startY = 0;
+    let armed = false;
+    el.addEventListener(
+        'pointerdown',
+        (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            armed = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            el.dataset.swipeCancelTap = '0';
+        },
+        { passive: true }
+    );
+    const markIfMoved = (e) => {
+        if (!armed) return;
+        if (
+            Math.abs(e.clientX - startX) > TAP_SWIPE_CANCEL_PX ||
+            Math.abs(e.clientY - startY) > TAP_SWIPE_CANCEL_PX
+        ) {
+            el.dataset.swipeCancelTap = '1';
+            armed = false;
+        }
+    };
+    el.addEventListener('pointermove', markIfMoved, { passive: true });
+    el.addEventListener(
+        'pointerup',
+        () => {
+            armed = false;
+        },
+        { passive: true }
+    );
+    el.addEventListener(
+        'pointercancel',
+        () => {
+            el.dataset.swipeCancelTap = '1';
+            armed = false;
+        },
+        { passive: true }
+    );
+    // Capture: kill click before card/author/section handlers run.
+    el.addEventListener(
+        'click',
+        (e) => {
+            if (el.dataset.swipeCancelTap !== '1') return;
+            el.dataset.swipeCancelTap = '0';
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        },
+        true
+    );
+}
+
+function tapWasSwipe(el) {
+    if (!el || el.dataset.swipeCancelTap !== '1') return false;
+    el.dataset.swipeCancelTap = '0';
+    return true;
 }
 
 function ensureMobileReaderShell() {
@@ -2036,6 +2134,7 @@ function mountHomeWall(blogs) {
 
         authorCardsForBio.forEach((card) => {
             const name = card.getAttribute('data-author');
+            installTapNotSwipe(card);
             // iOS can still flash a tap wash on the title hit-target in some cases.
             card.addEventListener(
                 'touchstart',
@@ -2047,6 +2146,7 @@ function mountHomeWall(blogs) {
             card.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (tapWasSwipe(card)) return;
                 if (isBioHoverQuiet()) return;
                 const openAuthor = String(bioEl.dataset.author || '');
                 const alreadyOpen =
@@ -3887,6 +3987,7 @@ function createBlogCard(blog, section, sectionIndex) {
     // Store blog ID for navigation
     card.dataset.blogId = blog.id;
     card.dataset.sectionIndex = String(sectionIndex);
+    installTapNotSwipe(card);
     card.addEventListener(
         'pointerdown',
         () => {
@@ -3896,6 +3997,7 @@ function createBlogCard(blog, section, sectionIndex) {
     );
     card.onclick = (e) => {
         e.stopPropagation();
+        if (tapWasSwipe(card)) return;
         // Mobile narrow: first tap opens in-app reader.
         if (homeDirectArticleTapNav()) {
             ensureAuthorBioClosed().then(() => {
@@ -4949,7 +5051,17 @@ function positionCardsInSection(section, options = {}) {
             card.style.zIndex = '6';
             card.style.left = '0';
             card.style.right = 'auto';
+            /*
+             * Keep the sticky chrome full-bleed for the stone cover, but size the
+             * inner heading card to the glyph box so column swipes don’t hit empty
+             * title-bar width (see mobile pointer-events on .blog-title).
+             */
             card.style.width = '100%';
+            const headingCard = card.querySelector('.section-heading-card');
+            if (headingCard) {
+                headingCard.style.width = 'fit-content';
+                headingCard.style.maxWidth = '100%';
+            }
             card.style.removeProperty('height');
             title.style.textAlign = 'left';
             card.offsetHeight;
@@ -5123,22 +5235,19 @@ function ensureArticlePreviewUi() {
         if (!id) return;
         if (homeDirectArticleTapNav()) {
             // Mobile: preview is already full-screen; navigate directly for a seamless transition.
-            const previewPage = articlePanel.querySelector('.home-preview-page');
-            const previewPageRect = previewPage ? previewPage.getBoundingClientRect() : null;
             try {
                 const payload = {
                     blogId: id,
                     title: articlePanel.dataset.handoffTitle || '',
                     author: articlePanel.dataset.handoffAuthor || 'Anonymous',
                     publishedAt: articlePanel.dataset.handoffPublishedAt || '',
-                article: articlePanel.dataset.handoffArticle || '',
-                previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
-                previewPageWidth: previewPageRect ? Math.round(previewPageRect.width) : null,
-                ts: Date.now()
-            };
-            sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
-        } catch (_) {}
-        location.href = `/${id}`;
+                    article: articlePanel.dataset.handoffArticle || '',
+                    ...canonicalHandoffPageSize(),
+                    ts: Date.now()
+                };
+                sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
+            } catch (_) {}
+            location.href = `/${id}`;
             return;
         }
         playExpandFullscreenThenNavigate(id);
@@ -5427,7 +5536,7 @@ function playExpandFullscreenThenNavigate(blogId) {
         return;
     }
 
-    const writeHandoffAndGo = (previewPageRect) => {
+    const writeHandoffAndGo = () => {
         try {
             const payload = {
                 blogId,
@@ -5435,8 +5544,7 @@ function playExpandFullscreenThenNavigate(blogId) {
                 author: articlePanel.dataset.handoffAuthor || 'Anonymous',
                 publishedAt: articlePanel.dataset.handoffPublishedAt || '',
                 article: articlePanel.dataset.handoffArticle || '',
-                previewPageHeight: previewPageRect ? Math.round(previewPageRect.height) : null,
-                previewPageWidth: previewPageRect ? Math.round(previewPageRect.width) : null,
+                ...canonicalHandoffPageSize(),
                 ts: Date.now()
             };
             sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
@@ -5450,9 +5558,7 @@ function playExpandFullscreenThenNavigate(blogId) {
         articlePanel.classList.contains('article-expand-run') &&
         !articleExpandInFlight
     ) {
-        const previewPageDone = articlePanel.querySelector('.home-preview-page');
-        const rectDone = previewPageDone ? previewPageDone.getBoundingClientRect() : null;
-        writeHandoffAndGo(rectDone);
+        writeHandoffAndGo();
         return;
     }
 
@@ -5463,9 +5569,10 @@ function playExpandFullscreenThenNavigate(blogId) {
         articleExpandNavigateTimer = null;
     }
     const previewPage = articlePanel.querySelector('.home-preview-page');
-    const previewPageRect = previewPage ? previewPage.getBoundingClientRect() : null;
     if (previewPage) {
-        const lockWidthPx = Math.round(previewPageRect.width);
+        /* offsetWidth is pre-zoom layout width; getBoundingClientRect would double-scale. */
+        const lockWidthPx = Math.round(previewPage.offsetWidth)
+            || canonicalHandoffPageSize().previewPageWidth;
         articlePanel.style.setProperty('--articlePreviewLockWidth', `${lockWidthPx}px`);
     }
     const panelRect = articlePanel.getBoundingClientRect();
@@ -5501,7 +5608,7 @@ function playExpandFullscreenThenNavigate(blogId) {
             clearTimeout(articleExpandNavigateTimer);
             articleExpandNavigateTimer = null;
         }
-        writeHandoffAndGo(previewPageRect);
+        writeHandoffAndGo();
     };
     requestAnimationFrame(() => {
         // Start grow on the earliest painted frame after article-open to avoid a visible dead interval.

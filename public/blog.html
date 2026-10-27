@@ -25,6 +25,8 @@
     <link rel="stylesheet" href="css/blog.css">
     <link rel="stylesheet" href="css/article-prose.css">
     <link rel="stylesheet" href="css/content-refs.css">
+    <!-- Fit scale before first paint so preview→reader doesn’t flash at scale 1. -->
+    <script src="js/page-geometry-boot.js"></script>
 
 </head>
 <body class="reader-loading">
@@ -67,7 +69,8 @@
 
     <script src="js/firebase.js"></script>
     <script src="js/content-refs.js"></script>
-    <script src="js/blog.js"></script>
+    <script type="module" src="js/page-geometry.js"></script>
+    <script defer src="js/blog.js"></script>
 
 </body>
 </html>

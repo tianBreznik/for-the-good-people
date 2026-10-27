@@ -9,7 +9,11 @@
 import { Extension } from 'https://esm.sh/@tiptap/core@2.11.5';
 import { Plugin, PluginKey } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
 import { Decoration, DecorationSet } from 'https://esm.sh/@tiptap/pm@2.11.5/view';
-import { applyPageMetricsCssVars, getReaderPageMetrics } from './page-geometry.js';
+import {
+    applyCanonicalSheetCssVars,
+    applyPageMetricsCssVars,
+    getReaderPageMetrics,
+} from './page-geometry.js';
 
 export const editorPaginationKey = new PluginKey('editorPagination');
 
@@ -524,6 +528,7 @@ function buildDecorations(view) {
     const metrics = getReaderPageMetrics();
     const host = view.dom.parentElement;
     const canvas = view.dom.closest('.editor-content') || host;
+    applyCanonicalSheetCssVars(document.documentElement);
     applyPageMetricsCssVars(canvas, metrics);
     applyPageMetricsCssVars(host, metrics);
     applyPageMetricsCssVars(view.dom, metrics);
@@ -859,9 +864,9 @@ export function createEditorPaginationExtension() {
                         },
                     },
                     view(view) {
+                        /* Pack metrics are fixed; resize only updates display --sheet-scale. */
                         const onResize = () => {
-                            signatureRef.current = '';
-                            schedule(view);
+                            applyCanonicalSheetCssVars(document.documentElement);
                         };
                         const onImg = (e) => {
                             if (e.target && e.target.tagName === 'IMG') {
@@ -870,6 +875,7 @@ export function createEditorPaginationExtension() {
                             }
                         };
 
+                        applyCanonicalSheetCssVars(document.documentElement);
                         schedule(view);
                         window.addEventListener('resize', onResize);
                         if (window.visualViewport) {

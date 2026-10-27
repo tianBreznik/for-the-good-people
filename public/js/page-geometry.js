@@ -1,8 +1,17 @@
 /**
- * Shared article page geometry — reader and paginated editor must use the same math.
- * Mirrors public/js/blog.js getSpreadTargetHeight / footnoteBandHeight / page budgets
- * and public/css/blog.css --reader-page-* tokens.
+ * Shared article page geometry — reader, paginated editor, and home preview.
+ * Sheets are a fixed canonical size; viewports scale the display, never the pack.
  */
+
+/** Design sheet — matches prior desktop cap: width 620, height 620 × 1.41. */
+export const CANONICAL_PAGE_WIDTH = 620;
+export const CANONICAL_PAGE_HEIGHT = Math.round(CANONICAL_PAGE_WIDTH * 1.41); // 874
+
+/** Fixed padding (px) — was viewport-clamped; freeze mid/desktop values. */
+export const CANONICAL_PAD_INLINE = 40; // 2.5rem
+export const CANONICAL_PAD_BLOCK_TOP = 30;
+export const CANONICAL_PAD_BLOCK_BOTTOM = 34; // ~2.125rem
+export const CANONICAL_PAGE_GAP = 36;
 
 export function getViewportHeight() {
     if (window.visualViewport && Number.isFinite(window.visualViewport.height)) {
@@ -11,18 +20,20 @@ export function getViewportHeight() {
     return window.innerHeight || 800;
 }
 
+export function getViewportWidth() {
+    if (window.visualViewport && Number.isFinite(window.visualViewport.width)) {
+        return Math.floor(window.visualViewport.width);
+    }
+    return window.innerWidth || 1200;
+}
+
 export function isNarrowViewport() {
     return Boolean(window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
 }
 
-/** Outer page height (px) — same as blog.js getSpreadTargetHeight. */
+/** Outer page height (px) — always the canonical sheet. */
 export function getSpreadTargetHeight() {
-    const viewportH = getViewportHeight();
-    const narrow = isNarrowViewport();
-    const inset = narrow
-        ? Math.max(16, Math.min(36, Math.round(viewportH * 0.028)))
-        : Math.max(30, Math.min(52, Math.round(viewportH * 0.048)));
-    return Math.max(viewportH - inset, 440);
+    return CANONICAL_PAGE_HEIGHT;
 }
 
 /**
@@ -30,37 +41,64 @@ export function getSpreadTargetHeight() {
  * to the next page (same as blog.js footnoteBandHeight).
  */
 export function footnoteBandHeight(spreadHeight) {
-    const h = Number(spreadHeight) || 0;
+    const h = Number(spreadHeight) || CANONICAL_PAGE_HEIGHT;
     if (h <= 0) return 112;
     return Math.min(168, Math.max(96, Math.round(h * 0.155)));
 }
 
-function clamp(n, min, max) {
-    return Math.min(max, Math.max(min, n));
+/**
+ * How much to scale the fixed sheet so it fits the viewport (≤ 1).
+ * @param {{ marginX?: number, marginY?: number }} [opts]
+ */
+function isReaderEmbed() {
+    try {
+        return new URLSearchParams(window.location.search).get('embed') === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+export function getSheetFitScale(opts = {}) {
+    if (typeof window !== 'undefined' && window.PageGeometryBoot?.getSheetFitScale && opts.marginX == null && opts.marginY == null) {
+        return window.PageGeometryBoot.getSheetFitScale(opts);
+    }
+    const narrow = isNarrowViewport();
+    const embed = isReaderEmbed();
+    const marginX = Number.isFinite(opts.marginX)
+        ? opts.marginX
+        : embed
+          ? 4
+          : narrow
+            ? 8
+            : 48;
+    const marginY = Number.isFinite(opts.marginY)
+        ? opts.marginY
+        : embed
+          ? 8
+          : narrow
+            ? 12
+            : 52;
+    const availW = Math.max(120, getViewportWidth() - marginX);
+    const availH = Math.max(120, getViewportHeight() - marginY);
+    const sx = availW / CANONICAL_PAGE_WIDTH;
+    const sy = availH / CANONICAL_PAGE_HEIGHT;
+    const scale = Math.min(1, sx, sy);
+    return Math.max(0.35, Math.round(scale * 1000) / 1000);
 }
 
 /**
- * Resolve CSS-like clamps used in blog.css for page chrome.
+ * Canonical pack metrics — identical on every screen.
  */
 export function getReaderPageMetrics() {
-    const pageHeight = getSpreadTargetHeight();
-    const viewportH = getViewportHeight();
-    const vh = viewportH / 100;
-    const vw = (window.innerWidth || 1200) / 100;
-
-    const pageWidth = Math.min(620, pageHeight / 1.41);
-    const padInline = clamp(3.3 * vw, 1.75 * 16, 2.5 * 16);
-    const padBlockBottom = clamp(3 * vh, 1.5 * 16, 2.125 * 16);
-    const padBlockTop = clamp(2.9 * vh, 24, 34);
-    const pageGap = clamp(3.2 * vh, 24, 42);
+    const pageHeight = CANONICAL_PAGE_HEIGHT;
+    const pageWidth = CANONICAL_PAGE_WIDTH;
+    const padInline = CANONICAL_PAD_INLINE;
+    const padBlockTop = CANONICAL_PAD_BLOCK_TOP;
+    const padBlockBottom = CANONICAL_PAD_BLOCK_BOTTOM;
+    const pageGap = CANONICAL_PAGE_GAP;
     const footnoteBandMax = footnoteBandHeight(pageHeight);
-
-    // Border 1px top+bottom on .article-page
     const pageInsets = padBlockTop + padBlockBottom + 2;
-
-    /** Full column above bottom pad — footnote reserve applied per page when needed. */
     const bodyBudgetFull = Math.max(150, Math.floor(pageHeight - pageInsets));
-    /** Legacy: body with max footnote band always subtracted (reader worst case). */
     const bodyBudget = Math.max(150, Math.floor(pageHeight - pageInsets - footnoteBandMax));
 
     return {
@@ -76,10 +114,11 @@ export function getReaderPageMetrics() {
         footnoteBand: footnoteBandMax,
         bodyBudgetFull,
         bodyBudget,
+        sheetScale: getSheetFitScale(),
     };
 }
 
-/** Apply CSS variables onto an element (editor canvas / ProseMirror host). */
+/** Apply pack metrics onto an element (editor canvas / ProseMirror host). */
 export function applyPageMetricsCssVars(el, metrics = getReaderPageMetrics()) {
     if (!el) return metrics;
     el.style.setProperty('--editor-page-height', `${metrics.pageHeight}px`);
@@ -92,11 +131,30 @@ export function applyPageMetricsCssVars(el, metrics = getReaderPageMetrics()) {
     return metrics;
 }
 
+/**
+ * Publish canonical sheet size + fit scale on :root (reader / preview / editor).
+ * Packing always uses 1:1 metrics; `--sheet-scale` is display-only.
+ */
+export function applyCanonicalSheetCssVars(root = document.documentElement, opts = {}) {
+    const scale = getSheetFitScale(opts);
+    root.style.setProperty('--reader-page-width', `${CANONICAL_PAGE_WIDTH}px`);
+    root.style.setProperty('--reader-page-height', `${CANONICAL_PAGE_HEIGHT}px`);
+    root.style.setProperty('--reader-page-pad-inline', `${CANONICAL_PAD_INLINE}px`);
+    root.style.setProperty('--reader-page-pad-block', `${CANONICAL_PAD_BLOCK_BOTTOM}px`);
+    root.style.setProperty('--reader-page-pad-top', `${CANONICAL_PAD_BLOCK_TOP}px`);
+    root.style.setProperty('--sheet-scale', String(scale));
+    return scale;
+}
+
 if (typeof window !== 'undefined') {
     window.PageGeometry = {
+        CANONICAL_PAGE_WIDTH,
+        CANONICAL_PAGE_HEIGHT,
         getSpreadTargetHeight,
         footnoteBandHeight,
         getReaderPageMetrics,
         applyPageMetricsCssVars,
+        getSheetFitScale,
+        applyCanonicalSheetCssVars,
     };
 }

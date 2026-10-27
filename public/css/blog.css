@@ -30,11 +30,11 @@ body.reader-loading #comment-screen {
     max-width: min(1340px, calc(100vw - 40px));
     margin: 0 auto;
     /*
-     * Preview centers the page in the viewport (#article-first-page flex).
-     * Match that top inset so the first page doesn't jump up on handoff.
+     * Center the scaled sheet in the viewport (same idea as home preview flex).
+     * Layout size after zoom is page × --sheet-scale.
      */
     padding:
-        max(0px, calc((100dvh - var(--readerHandoffPageHeight, var(--reader-page-height))) / 2))
+        max(0px, calc((100dvh - (var(--reader-page-height) * var(--sheet-scale, 1))) / 2))
         20px
         56px;
     box-sizing: border-box;
@@ -73,35 +73,42 @@ body.reader-loading #comment-screen {
     font-style: normal;
 }
 
-/* Article spread: single-column reader layout */
+/* Article spread: fixed canonical sheet (620×874); --sheet-scale fits the viewport. */
 :root {
-    --spread-gap: clamp(46px, 6vw, 78px);
-    --reader-page-height: calc(100dvh - clamp(30px, 4.8vh, 52px));
-    --reader-page-width: min(620px, calc(var(--reader-page-height) / 1.41));
-    --reader-page-pad-inline: clamp(1.75rem, 3.3vw, 2.5rem);
-    --reader-page-pad-block: clamp(1.5rem, 3vh, 2.125rem);
+    --spread-gap: 36px;
+    --reader-page-width: 620px;
+    --reader-page-height: 874px;
+    --reader-page-pad-inline: 40px;
+    --reader-page-pad-block: 34px;
+    --reader-page-pad-top: 30px;
+    --sheet-scale: 1;
 }
 
 #article-body.article-columns {
     display: flex;
     flex-direction: column;
-    gap: clamp(24px, 3.2vh, 42px);
+    gap: 36px;
     /* No horizontal gutter — page width must match home preview measure. */
     padding: 0;
     box-sizing: border-box;
     background: transparent;
-    margin: 0;
+    margin: 0 auto;
+    width: var(--reader-page-width);
+    max-width: var(--reader-page-width);
+    position: relative;
+    /* Display-only fit; packing always uses 1:1 metrics. */
+    zoom: var(--sheet-scale);
 }
 
 #article-body .article-spread {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-    max-width: min(var(--readerHandoffPageWidth, var(--reader-page-width)), 100%);
+    width: var(--reader-page-width);
+    max-width: var(--reader-page-width);
     min-height: var(--reader-page-height);
     margin-inline: auto;
     gap: 0;
-    padding-bottom: clamp(18px, 2.2vh, 28px);
+    padding-bottom: 24px;
     border-bottom: none;
     align-items: start;
     box-sizing: border-box;
@@ -113,7 +120,10 @@ body.reader-loading #comment-screen {
 
 #article-body .article-page {
     min-width: 0;
+    width: var(--reader-page-width);
+    height: var(--reader-page-height);
     min-height: var(--reader-page-height);
+    max-height: var(--reader-page-height);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
@@ -125,7 +135,7 @@ body.reader-loading #comment-screen {
     box-shadow:
         0 6px 18px rgba(0, 0, 0, 0.07),
         0 1px 4px rgba(0, 0, 0, 0.045);
-    padding: clamp(24px, 2.9vh, 34px) var(--reader-page-pad-inline) var(--reader-page-pad-block);
+    padding: var(--reader-page-pad-top, 30px) var(--reader-page-pad-inline) var(--reader-page-pad-block);
 }
 
 #article-body .article-page-right {
@@ -172,11 +182,11 @@ body.reader-loading #comment-screen {
 }
 
 /*
- * Dedicated comments sheet — no inline page pad so annotation bands paint
- * edge-to-edge on the sheet. Text inset lives on .comment-shell / #commentInput.
+ * Dedicated comments sheet — flush to the top (no body-page masthead inset).
+ * Bands paint edge-to-edge; copy inset lives on .comment-shell / #commentInput.
  */
 #article-body .article-page.article-page-comments {
-    padding-top: clamp(24px, 2.9vh, 34px);
+    padding-top: 0;
     padding-inline: 0;
 }
 
@@ -283,12 +293,13 @@ body.reader-loading #comment-screen {
 }
 
 #article-body .article-page.article-page-first {
-    width: 100%;
-    max-width: min(var(--readerHandoffPageWidth, var(--reader-page-width)), 100%);
-    height: var(--readerHandoffPageHeight, var(--reader-page-height));
-    padding-top: clamp(6rem, 12.8vh, 9.125rem);
-    min-height: var(--readerHandoffPageHeight, var(--reader-page-height));
-    max-height: var(--readerHandoffPageHeight, var(--reader-page-height));
+    width: var(--reader-page-width);
+    max-width: var(--reader-page-width);
+    height: var(--reader-page-height);
+    /* Fixed masthead inset (~12.8% of 874px sheet) — not viewport-relative. */
+    padding-top: 7rem;
+    min-height: var(--reader-page-height);
+    max-height: var(--reader-page-height);
     margin-inline: auto;
     box-sizing: border-box;
 }
@@ -415,6 +426,7 @@ body.reader-embed .reader-nav-dashboard {
 /* After first comment: own sheet — thread starts at the top */
 #article-body .article-page.article-page-comments > #comment-screen {
     margin: 0;
+    padding-top: 0;
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
@@ -422,6 +434,19 @@ body.reader-embed .reader-nav-dashboard {
     min-height: 0;
     overflow: auto;
     box-sizing: border-box;
+}
+
+#article-body .article-page.article-page-comments .comment-section,
+#article-body .article-page.article-page-comments .annotation-comments,
+#article-body .article-page.article-page-comments #commentList {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+/* First thread item kisses the sheet top edge */
+#article-body .article-page.article-page-comments .annotation-comments > :first-child > .comment-shell,
+#article-body .article-page.article-page-comments #commentList > :first-child .comment-shell {
+    padding-top: 6px;
 }
 
 #article-body .article-page.article-page-comments .comment-section {
@@ -621,6 +646,10 @@ body.reader-embed .reader-nav-dashboard {
     cursor: default;
 }
 
+/*
+ * Lives inside #article-body (zoomed). Highlight left/top/width/height are in
+ * pre-zoom CSS px so they scale with the sheet; see placeAnnotationBoxFromClientRect.
+ */
 #annotation-overlay-root {
     position: absolute;
     inset: 0;
@@ -1086,12 +1115,47 @@ input[type=text]:focus {
 /* Loaded inside home mobile iframe (?embed=1). */
 html.reader-embed,
 body.reader-embed {
-    background: #fff;
+    background: #f2f2f2;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
 }
 
 body.reader-embed .blog {
-    padding-top: clamp(8px, 1.2svh, 14px);
-    padding-bottom: clamp(16px, 2.5svh, 28px);
+    /* Scroll page-to-page; do not vertically center a single sheet in the iframe. */
+    padding-top: 8px;
+    padding-bottom: 24px;
+    padding-inline: 0;
+}
+
+/*
+ * Mobile / embed scroll smoothness:
+ * - Pre-promote each sheet so Safari doesn’t paint them as they enter view
+ * - Drop live SVG feTurbulence grain (very expensive under zoom + scroll)
+ */
+@media (max-width: 900px) {
+    #article-body.article-columns {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #article-body .article-page {
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+    }
+
+    #article-body .article-page::after {
+        /* Static fine grain — no SVG filter decode per sheet. */
+        opacity: 0.12;
+        background-image: repeating-radial-gradient(
+            rgba(0, 0, 0, 0.16) 0 0.55px,
+            transparent 0.55px 2.2px
+        );
+        background-size: 3px 3px;
+        mix-blend-mode: multiply;
+    }
 }
 
 /* Embed fallback only when comments are outside pages (no #article-body). */
@@ -1112,61 +1176,42 @@ body.reader-embed #commentInput {
 
 @media (max-width: 900px) {
     /*
-     * Use svh (small viewport) instead of dvh/vh for reader sizing + vertical padding.
-     * dvh and vh follow the dynamic toolbar on iOS Safari and change while scrolling,
-     * which makes the first page height and vh-based padding “breathe” and reflow body text.
+     * Canonical sheet stays 620×874; --sheet-scale (from page-geometry) shrinks
+     * the display. Do not override page size with viewport units — that was the
+     * cross-device form mismatch.
      */
-    :root {
-        --reader-page-width: calc(100vw - 24px);
-        --reader-page-height: calc(100svh - clamp(18px, 3.2svh, 38px));
-        --reader-page-pad-inline: clamp(14px, 4.2vw, 20px);
-        --reader-page-pad-block: clamp(18px, 2.5svh, 26px);
-    }
-
     .blog {
         max-width: 100vw;
+        padding-inline: 0;
+        padding-top: max(0px, calc((100svh - (var(--reader-page-height) * var(--sheet-scale, 1))) / 2));
+    }
+
+    /* Embed already sets its own pad — override the viewport-centering above. */
+    body.reader-embed .blog {
+        padding-top: 8px;
         padding-inline: 0;
     }
 
     #article-body.article-columns {
         padding-inline: 0;
-        gap: clamp(10px, 1.6svh, 18px);
+        gap: 18px;
     }
 
     #article-body .article-spread {
         min-height: 0;
-        padding-bottom: clamp(6px, 1svh, 12px);
+        padding-bottom: 12px;
     }
 
     #article-body .article-spread:last-child {
         padding-bottom: 0;
     }
 
-    /*
-     * Lock sheet height (not just min) so packer budget matches the painted box.
-     * min-height alone + a shorter pack probe left empty footers mid-article.
-     */
     #article-body .article-page:not(.article-page-first):not(.article-page-comments) {
         height: var(--reader-page-height);
         min-height: var(--reader-page-height);
         max-height: var(--reader-page-height);
     }
 
-    #article-body .article-page {
-        padding-top: clamp(16px, 2.2svh, 22px);
-        padding-inline: var(--reader-page-pad-inline);
-        /* Extra foot room so footnote bands + page numbers aren’t clipped. */
-        padding-bottom: clamp(32px, 4.6svh, 44px);
-    }
-
-    #article-body .article-page > .article-page-footnotes {
-        padding-bottom: clamp(0.3rem, 0.9svh, 0.5rem);
-    }
-
-    /*
-     * Comments sheet: same box as content pages, bands paint edge-to-edge on the
-     * paper (inset lives on .comment-shell). Lock height so it can’t grow taller.
-     */
     #article-body .article-page.article-page-comments {
         padding-inline: 0;
         height: var(--reader-page-height);
@@ -1180,14 +1225,6 @@ body.reader-embed #commentInput {
         min-height: 0;
         overflow: auto;
         -webkit-overflow-scrolling: touch;
-    }
-
-    #article-body .article-page.article-page-first {
-        padding-top: clamp(56px, 8.5svh, 104px);
-    }
-
-    #article-body .article-page .article-page-number {
-        bottom: clamp(12px, 1.6svh, 18px);
     }
 
     #commentForm {
@@ -1206,15 +1243,16 @@ body.reader-embed #commentInput {
         margin-right: 0;
     }
 
-    /* Embed iframe reader: keep comment sheet the same paper width as content pages. */
+    /* Embed iframe reader: same paper width as content pages. */
     body.reader-embed #article-body .article-spread {
-        max-width: min(var(--readerHandoffPageWidth, var(--reader-page-width)), 100%);
+        max-width: var(--reader-page-width);
         margin-inline: auto;
-        width: 100%;
+        width: var(--reader-page-width);
     }
 
+    /* No extra inline pad — scale already hugs the iframe width. */
     body.reader-embed .blog {
-        padding-inline: 12px;
+        padding-inline: 0;
         box-sizing: border-box;
     }
 
