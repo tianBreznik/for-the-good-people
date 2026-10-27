@@ -87,6 +87,8 @@ const annotationColorSeed = Math.floor(Date.now() / 1000);
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
 const READER_HANDOFF_MAX_AGE_MS = 90 * 1000;
 const READER_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+const READER_EMBED_READY_TYPE = 'gpp-reader-embed-ready';
+const READER_EMBED_HANDOFF_TYPE = 'gpp-reader-handoff';
 
 if (READER_EMBED) {
     document.documentElement.classList.add('reader-embed');
@@ -95,6 +97,51 @@ if (READER_EMBED) {
     if (viewportMeta && !/interactive-widget/i.test(viewportMeta.content)) {
         viewportMeta.content = `${viewportMeta.content}, interactive-widget=resizes-content`;
     }
+}
+
+function notifyEmbedParentReady() {
+    if (!READER_EMBED) return;
+    try {
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage(
+                { type: READER_EMBED_READY_TYPE, blogId: String(blogId || '') },
+                window.location.origin
+            );
+        }
+    } catch (_) {}
+}
+
+function scheduleEmbedParentReadyAfterPaint() {
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => notifyEmbedParentReady());
+    });
+}
+
+function applyReaderHandoffPayload(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+    if (String(payload.blogId || '') !== String(blogId || '')) return false;
+    const titleTag = document.querySelector('title');
+    const title = payload.title || '';
+    const publishedAt = payload.publishedAt || '';
+    const author = payload.author || 'Anonymous';
+    if (titleTag) titleTag.textContent = title || 'Good People';
+    currentBlogMeta = { title, publishedAt, author };
+    if (typeof payload.article === 'string' && payload.article.trim()) {
+        renderArticleBody(payload.article, { provisional: true });
+        return true;
+    }
+    return false;
+}
+
+if (READER_EMBED) {
+    window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== READER_EMBED_HANDOFF_TYPE) return;
+        if (applyReaderHandoffPayload(data.payload)) {
+            scheduleEmbedParentReadyAfterPaint();
+        }
+    });
 }
 
 /** Last article content page — compose field is always pinned to this sheet’s foot. */
@@ -2761,11 +2808,15 @@ const renderArticleBody = (articleData, options = {}) => {
         }
     }
 
-    if (options.provisional) return;
+    if (options.provisional) {
+        scheduleEmbedParentReadyAfterPaint();
+        return;
+    }
 
     readerReady = true;
     setupCommentSection();
     ensureCommentsVisible();
+    if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
 }
 
 applyReaderSheetScale();

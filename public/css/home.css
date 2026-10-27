@@ -4339,6 +4339,12 @@ body.search-closing .home-main-stage {
         display: none !important;
     }
 
+    /* Paint iframe under the wall (z-index 1) before slabs part — not display:none. */
+    .mobile-reader-shell.mobile-reader-warming {
+        display: flex !important;
+        pointer-events: none;
+    }
+
     body.mobile-reader-open .mobile-reader-shell,
     body.article-closing .mobile-reader-shell.mobile-reader-closing {
         pointer-events: auto;

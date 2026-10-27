@@ -505,11 +505,17 @@ let articlePreviewCloseResolve = null;
 let articleExpandNavigateTimer = null;
 let articleExpandInFlight = false;
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
+const READER_EMBED_READY_TYPE = 'gpp-reader-embed-ready';
+const READER_EMBED_HANDOFF_TYPE = 'gpp-reader-handoff';
+const MOBILE_READER_REVEAL_FALLBACK_MS = 900;
 let mobileReaderShellEl = null;
 let mobileReaderFrameEl = null;
 let mobileReaderHistoryPushed = false;
 let mobileReaderClosingTimer = null;
 let mobileReaderCloseSeq = 0;
+let mobileReaderEmbedReadyBound = false;
+/** { blogId, reveal } while warming under the wall */
+let mobileReaderPendingOpen = null;
 
 /** Full-viewport panes on small screens; desktop keeps five columns inside the same wrapper. */
 const HOME_NARROW_QUERY = '(max-width: 900px)';
@@ -717,7 +723,7 @@ function ensureMobileReaderShell() {
     shell.setAttribute('aria-hidden', 'true');
     shell.innerHTML = `
         <button type="button" class="mobile-reader-close" aria-label="Close article">×</button>
-        <iframe class="mobile-reader-frame" title="Article reader" loading="lazy"></iframe>
+        <iframe class="mobile-reader-frame" title="Article reader" loading="eager"></iframe>
     `;
     document.body.appendChild(shell);
     mobileReaderShellEl = shell;
@@ -735,7 +741,66 @@ function ensureMobileReaderShell() {
         }
     });
 
+    bindMobileReaderEmbedReadyListener();
     return shell;
+}
+
+function bindMobileReaderEmbedReadyListener() {
+    if (mobileReaderEmbedReadyBound) return;
+    mobileReaderEmbedReadyBound = true;
+    window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== READER_EMBED_READY_TYPE) return;
+        const pending = mobileReaderPendingOpen;
+        if (!pending) return;
+        if (String(data.blogId || '') !== String(pending.blogId || '')) return;
+        pending.reveal();
+    });
+}
+
+function warmMobileReaderShellUnderWall() {
+    const shell = ensureMobileReaderShell();
+    shell.classList.add('mobile-reader-warming');
+    shell.hidden = false;
+    shell.setAttribute('aria-hidden', 'true');
+    return shell;
+}
+
+function stopMobileReaderShellWarm() {
+    if (!mobileReaderShellEl) return;
+    mobileReaderShellEl.classList.remove('mobile-reader-warming');
+}
+
+async function writeMobileReaderHandoffFromCard(blogId, card) {
+    if (!card) return null;
+    await ensureBlogCardArticle(card);
+    const payload = {
+        blogId: String(blogId || ''),
+        title: card.dataset.title || '',
+        author: card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous',
+        publishedAt: card.dataset.publishedAt || '',
+        article: card.dataset.article || '',
+        ...canonicalHandoffPageSize(),
+        ts: Date.now(),
+    };
+    try {
+        sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
+    } catch (_) {}
+    return payload;
+}
+
+function pushMobileReaderHandoffToEmbed(frame, payload) {
+    if (!frame?.contentWindow || !payload) return false;
+    try {
+        frame.contentWindow.postMessage(
+            { type: READER_EMBED_HANDOFF_TYPE, payload },
+            window.location.origin
+        );
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 function markMobileReaderFrameReady(frame) {
@@ -744,9 +809,11 @@ function markMobileReaderFrameReady(frame) {
 }
 
 function loadMobileReaderFrame(frame, embedUrl) {
-    if (!frame || !embedUrl) return;
-    if (frame.getAttribute('src') === embedUrl) return;
+    if (!frame || !embedUrl) return false;
+    const current = frame.getAttribute('src') || '';
+    if (current === embedUrl) return true;
     frame.dataset.embedReady = '0';
+    frame.loading = 'eager';
     frame.src = embedUrl;
     frame.addEventListener(
         'load',
@@ -755,24 +822,17 @@ function loadMobileReaderFrame(frame, embedUrl) {
         },
         { once: true }
     );
+    return false;
 }
 
-function prefetchMobileInAppReader(blogId) {
-    if (!blogId) return;
-    ensureMobileReaderShell();
-    const frame = mobileReaderFrameEl;
-    if (!frame) return;
-    loadMobileReaderFrame(frame, `/${blogId}?embed=1`);
-}
-
-function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null) {
+function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null, handoffPayload = null) {
     if (!blogId) return;
     if (mobileReaderClosingTimer) {
         clearTimeout(mobileReaderClosingTimer);
         mobileReaderClosingTimer = null;
     }
 
-    const shell = ensureMobileReaderShell();
+    const shell = warmMobileReaderShellUnderWall();
     const frame = mobileReaderFrameEl;
     if (!frame) return;
 
@@ -780,39 +840,48 @@ function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null) {
     if (sourceCard) setPreviewSourceHighlight(sourceCard);
 
     const embedUrl = `/${blogId}?embed=1`;
-    loadMobileReaderFrame(frame, embedUrl);
-    const ready = frame.getAttribute('src') === embedUrl && frame.dataset.embedReady === '1';
+    const sameUrlAlready = frame.getAttribute('src') === embedUrl;
 
+    let opened = false;
+    let fallbackTimer = null;
     const reveal = () => {
+        if (opened) return;
+        opened = true;
+        mobileReaderPendingOpen = null;
+        markMobileReaderFrameReady(frame);
+        stopMobileReaderShellWarm();
         shell.hidden = false;
         shell.setAttribute('aria-hidden', 'false');
         shell.classList.remove('mobile-reader-closing');
 
         document.body.classList.remove('article-closing');
-        document.body.classList.add('article-open', 'mobile-reader-open');
-        triggerMobileHaptic('preview-reveal');
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                document.body.classList.add('article-open', 'mobile-reader-open');
+                triggerMobileHaptic('preview-reveal');
+            });
+        });
 
         if (!mobileReaderHistoryPushed) {
             history.pushState({ mobileReader: true, blogId }, '', window.location.pathname);
             mobileReaderHistoryPushed = true;
         }
+        if (fallbackTimer) {
+            clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+        }
     };
 
-    // Prefer a painted iframe before the slab animation; fall back quickly if slow.
-    if (!ready) {
-        let opened = false;
-        const go = () => {
-            if (opened) return;
-            opened = true;
-            markMobileReaderFrameReady(frame);
-            reveal();
-        };
-        frame.addEventListener('load', go, { once: true });
-        setTimeout(go, 320);
-        return;
+    mobileReaderPendingOpen = { blogId: String(blogId), reveal };
+
+    loadMobileReaderFrame(frame, embedUrl);
+    if (handoffPayload && sameUrlAlready) {
+        pushMobileReaderHandoffToEmbed(frame, handoffPayload);
     }
 
-    reveal();
+    // Slabs part after embed paints first spread (postMessage), with a generous fallback.
+    frame.addEventListener('load', reveal, { once: true });
+    fallbackTimer = setTimeout(reveal, MOBILE_READER_REVEAL_FALLBACK_MS);
 }
 
 function closeMobileInAppReader(options = {}) {
@@ -844,7 +913,9 @@ function closeMobileInAppReader(options = {}) {
         mobileReaderClosingTimer = null;
 
         document.body.classList.remove('article-closing', 'mobile-reader-open');
+        mobileReaderPendingOpen = null;
         if (mobileReaderShellEl) {
+            stopMobileReaderShellWarm();
             mobileReaderShellEl.hidden = true;
             mobileReaderShellEl.setAttribute('aria-hidden', 'true');
             mobileReaderShellEl.classList.remove('mobile-reader-closing');
@@ -3988,21 +4059,12 @@ function createBlogCard(blog, section, sectionIndex) {
     card.dataset.blogId = blog.id;
     card.dataset.sectionIndex = String(sectionIndex);
     installTapNotSwipe(card);
-    card.addEventListener(
-        'pointerdown',
-        () => {
-            if (homeDirectArticleTapNav() && blog.id) prefetchMobileInAppReader(blog.id);
-        },
-        { passive: true }
-    );
     card.onclick = (e) => {
         e.stopPropagation();
         if (tapWasSwipe(card)) return;
-        // Mobile narrow: first tap opens in-app reader.
+        // Mobile narrow: one tap → handoff + warm embed + slab reveal.
         if (homeDirectArticleTapNav()) {
-            ensureAuthorBioClosed().then(() => {
-        expandArticlePanelAndNavigate(blog.id, card);
-            });
+            expandArticlePanelAndNavigate(blog.id, card);
             return;
         }
         // Desktop: click opens preview; click same title again closes it. Preview click opens article.
@@ -4943,8 +5005,10 @@ function positionCardsInSection(section, options = {}) {
         const colInner = section.clientWidth || 0;
         const maxWrapWidth = isMultiColumn ? Math.max(64, colInner - 24) : siteWidth * 0.3;
         const stripW = Math.floor(maxWrapWidth);
+        let titleUsesFullStrip = false;
 
         if (isTitleSection && rect.width > maxWrapWidth) {
+            titleUsesFullStrip = true;
             title.style.whiteSpace = 'normal';
             title.style.wordBreak = 'break-word';
             title.style.overflowWrap = 'anywhere';
@@ -4964,10 +5028,13 @@ function positionCardsInSection(section, options = {}) {
             title.offsetHeight;
             rect = title.getBoundingClientRect();
         } else if (isTitleSection && isMultiColumn) {
+            /* Short titles: shrink hit box to glyphs (width auto), not full column strip. */
             title.style.boxSizing = 'border-box';
             title.style.display = 'block';
             title.style.maxWidth = `${stripW}px`;
-            title.style.width = `${stripW}px`;
+            title.style.width = 'auto';
+            title.style.removeProperty('left');
+            title.style.removeProperty('top');
             title.offsetHeight;
             rect = title.getBoundingClientRect();
         }
@@ -5041,7 +5108,10 @@ function positionCardsInSection(section, options = {}) {
             return;
         }
 
-        const width = isTitleSection && isMultiColumn ? stripW + 4 : rect.width + 4;
+        const width =
+            isTitleSection && isMultiColumn
+                ? (titleUsesFullStrip ? stripW : Math.ceil(rect.width)) + 4
+                : rect.width + 4;
         const height = rect.height + 2;
 
         if (isTitleSection && isSectionHeading) {
@@ -5631,20 +5701,28 @@ function playExpandFullscreenThenNavigate(blogId) {
 }
 
 async function expandArticlePanelAndNavigate(blogId, card) {
+    const narrowTapFlow = homeDirectArticleTapNav();
+    if (narrowTapFlow) {
+        if (
+            document.body.classList.contains('bio-open') ||
+            document.body.classList.contains('bio-closing')
+        ) {
+            await ensureAuthorBioClosed();
+        }
+        const handoffPayload = await writeMobileReaderHandoffFromCard(blogId, card);
+        const sectionIndex = Number(card.dataset.sectionIndex || 1);
+        const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
+        openMobileInAppReader(blogId, seamIndex, card, handoffPayload);
+        void anchorMobilePaneToViewport(card);
+        return;
+    }
+
     await ensureAuthorBioClosed();
     const title = card.dataset.title || '';
     await ensureBlogCardArticle(card);
     const rawArticle = card.dataset.article || '';
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
-    const narrowTapFlow = homeDirectArticleTapNav();
-    if (narrowTapFlow) {
-        const sectionIndex = Number(card.dataset.sectionIndex || 1);
-        const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
-        await anchorMobilePaneToViewport(card);
-        openMobileInAppReader(blogId, seamIndex, card);
-        return;
-    }
 
     const articlePanel = document.querySelector('.article-panel');
     if (!articlePanel) {
