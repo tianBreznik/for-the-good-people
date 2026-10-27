@@ -156,6 +156,21 @@ html.home-texture-reflow .column-section {
     :root {
         --homeSplashCurtainDuration: 2600ms;
         --homeEaseEntry: cubic-bezier(0.33, 1, 0.68, 1);
+        /*
+         * Desktop: five 20vw columns on a 50vw texture tile grid.
+         * Mobile: each pane is 100vw = one column zoomed 5× (same slice, no extra repeat).
+         */
+        --home-stone-tile-w: 50vw;
+        --home-mobile-col-scale: 5;
+        --home-mobile-bg-size-x: calc(var(--home-stone-tile-w) * var(--home-mobile-col-scale));
+        /* Same Y as .column-section — splash + #SCENE share one vertical slice of the wall. */
+        --home-mobile-bg-y: -100dvh;
+    }
+
+    /* Rubber-band past first/last column — plain white, not stone texture. */
+    html,
+    body {
+        background-color: #fff;
     }
 }
 
@@ -2053,11 +2068,6 @@ body.home-titles-instant .home-main-stage {
 
 /* —— Hero: mobile-only (desktop keeps rules above to match last committed layout) —— */
 @media (max-width: 900px) {
-    /* Align hero stone with first pane (.column-section[data-col="1"]). */
-    :root {
-        --home-mobile-first-slab-bg-x: 8%;
-    }
-
     #first-container {
         position: fixed;
         inset: 0;
@@ -2077,10 +2087,10 @@ body.home-titles-instant .home-main-stage {
         min-height: 100dvh;
         height: auto;
         box-sizing: border-box;
-        /* Match column stone grid (not cover) so the wall seam stays continuous */
+        /* Column 1 slice — same phase as .column-section[data-col="1"] after splash */
         background-image: var(--bg-image);
-        background-size: 50vw auto;
-        background-position: 0 0;
+        background-size: var(--home-mobile-bg-size-x) auto;
+        background-position: 0 var(--home-mobile-bg-y);
         background-repeat: repeat;
         /*
          * Mobile fill: open leading so mid lines breathe; keep width under the
@@ -2110,10 +2120,20 @@ body.home-titles-instant .home-main-stage {
 
     #top-text,
     #mid-text,
-    #bottom-text {
-        background-size: cover;
-        background-position: var(--home-mobile-first-slab-bg-x) 0;
-        background-attachment: scroll;
+    #bottom-text,
+    html[data-home-texture='grycon'] #top-text,
+    html[data-home-texture='grycon'] #mid-text,
+    html[data-home-texture='grycon'] #bottom-text,
+    html[data-home-texture='stucco'] #top-text,
+    html[data-home-texture='stucco'] #mid-text,
+    html[data-home-texture='stucco'] #bottom-text,
+    html[data-home-texture='stucco8'] #top-text,
+    html[data-home-texture='stucco8'] #mid-text,
+    html[data-home-texture='stucco8'] #bottom-text {
+        background-size: var(--home-mobile-bg-size-x) auto !important;
+        background-position: 0 var(--home-mobile-bg-y) !important;
+        background-repeat: repeat !important;
+        background-attachment: scroll !important;
         line-height: var(--splash-type-leading);
         max-width: 100%;
         overflow: hidden;
@@ -2121,10 +2141,20 @@ body.home-titles-instant .home-main-stage {
 
     #top-text::before,
     #mid-text::before,
-    #bottom-text::before {
-        background-size: cover;
-        background-position: var(--home-mobile-first-slab-bg-x) 0;
-        background-attachment: scroll;
+    #bottom-text::before,
+    html[data-home-texture='grycon'] #top-text::before,
+    html[data-home-texture='grycon'] #mid-text::before,
+    html[data-home-texture='grycon'] #bottom-text::before,
+    html[data-home-texture='stucco'] #top-text::before,
+    html[data-home-texture='stucco'] #mid-text::before,
+    html[data-home-texture='stucco'] #bottom-text::before,
+    html[data-home-texture='stucco8'] #top-text::before,
+    html[data-home-texture='stucco8'] #mid-text::before,
+    html[data-home-texture='stucco8'] #bottom-text::before {
+        background-size: var(--home-mobile-bg-size-x) auto !important;
+        background-position: 0 var(--home-mobile-bg-y) !important;
+        background-repeat: repeat !important;
+        background-attachment: scroll !important;
     }
 }
 
@@ -3769,6 +3799,8 @@ body.search-closing .home-main-stage {
         z-index: 2;
         overflow: hidden;
         pointer-events: none;
+        background-color: #fff;
+        background-image: none;
     }
 
     /* Re-establish hit-testing under the stage (same as desktop base rules); some engines lose it
@@ -3801,14 +3833,10 @@ body.search-closing .home-main-stage {
         -webkit-transform: none !important;
         touch-action: pan-x;
         /*
-         * Overscroll (rubber-band past first/last pane) reveals this layer.
-         * Match column tiling — cover/center was a different crop of the same
-         * bitmap and read as a second “mystery” texture at the edge.
+         * Overscroll (rubber-band past first/last pane) reveals this layer — keep it white.
          */
-        background-image: var(--bg-image);
-        background-size: 50vw auto;
-        background-position: 0 -100vh;
-        background-repeat: repeat;
+        background-color: #fff;
+        background-image: none;
         overscroll-behavior-x: contain;
     }
 
@@ -3829,17 +3857,12 @@ body.search-closing .home-main-stage {
         overflow-y: visible;
     }
 
-    /*
-     * Panels are ~100vw: 50vw + repeat-x shows two horizontal tiles → mid-screen seam.
-     * Use one full-width horizontal tile (no-repeat on x) and repeat only vertically.
-     * Do not shift by 2× --col-start on a 100vw tile — that pulls the bitmap off-panel (white) and
-     * breaks background-clip:text on titles. Vary slice per column with background-position % instead.
-     */
+    /* One desktop column per pane — 5× scale on the shared 50vw stone grid. */
     .home-main-pane > .column-section[data-col] {
         background-image: var(--bg-image);
-        background-size: 50vw auto;
-        background-position-x: calc(-1 * var(--col-start, 0vw));
-        background-position-y: -100vh;
+        background-size: var(--home-mobile-bg-size-x) auto;
+        background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
+        background-position-y: var(--home-mobile-bg-y);
         background-repeat: repeat;
         position: absolute !important;
         top: 0 !important;
@@ -3860,8 +3883,35 @@ body.search-closing .home-main-stage {
     .home-main-pane > .column-section[data-col="3"],
     .home-main-pane > .column-section[data-col="4"],
     .home-main-pane > .column-section[data-col="5"] {
-        background-position-x: calc(-1 * var(--col-start, 0vw));
-        background-position-y: -100vh;
+        background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
+        background-position-y: var(--home-mobile-bg-y);
+    }
+
+    .home-main-pane .title-section > .section-title-container {
+        background-size: var(--home-mobile-bg-size-x) auto;
+        background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
+        background-position-y: var(--home-mobile-bg-y);
+        background-repeat: repeat;
+    }
+
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before,
+    html[data-home-texture='grycon'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+    html[data-home-texture='grycon'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+        background-size: var(--home-mobile-bg-size-x) auto !important;
+        background-position: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw)) var(--home-mobile-bg-y) !important;
+        background-repeat: repeat !important;
+        background-attachment: scroll !important;
     }
 
     .home-main-pane .column-section {
@@ -3888,6 +3938,11 @@ body.search-closing .home-main-stage {
 
     /* Beat `.home-main-pane > .column-section[data-col] { overflow-x: hidden }` cropping tags. */
     .home-main-pane > .column-section.author-section {
+        overflow-x: visible;
+    }
+
+    /* LOGIN sits on the rail — don’t clip embossed type at the pane edge. */
+    .home-main-pane:has(.author-section) {
         overflow-x: visible;
     }
 
@@ -4033,9 +4088,29 @@ body.search-closing .home-main-stage {
         transform: none !important;
     }
 
+    /* LOGIN / APPLY: author column slice on the mobile stone grid. */
+    #auth-login-card .blog-title,
+    #auth-login-card .blog-title::before,
+    #auth-apply-card .blog-title,
+    #auth-apply-card .blog-title::before,
+    html[data-home-texture='stucco'] #auth-login-card .blog-title,
+    html[data-home-texture='stucco'] #auth-login-card .blog-title::before,
+    html[data-home-texture='stucco'] #auth-apply-card .blog-title,
+    html[data-home-texture='stucco'] #auth-apply-card .blog-title::before,
+    html[data-home-texture='stucco8'] #auth-login-card .blog-title,
+    html[data-home-texture='stucco8'] #auth-login-card .blog-title::before,
+    html[data-home-texture='stucco8'] #auth-apply-card .blog-title,
+    html[data-home-texture='stucco8'] #auth-apply-card .blog-title::before {
+        background-size: var(--home-mobile-bg-size-x) auto !important;
+        background-position: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 80vw)) var(--home-mobile-bg-y) !important;
+        background-repeat: repeat !important;
+        background-attachment: scroll !important;
+    }
+
     #auth-login-wrap .blog-title,
     #auth-apply-card .blog-title {
-        text-align: left;
+        text-align: right;
+        overflow: visible;
     }
 
     /* Disable desktop hover rails on narrow layout. */

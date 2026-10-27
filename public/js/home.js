@@ -4221,7 +4221,7 @@ function createBlogCard(blog, section, sectionIndex) {
         if (tapWasSwipe(card)) return;
         // Mobile narrow: one tap → handoff + warm embed + slab reveal.
         if (homeDirectArticleTapNav()) {
-            expandArticlePanelAndNavigate(blog.id, card);
+        expandArticlePanelAndNavigate(blog.id, card);
             return;
         }
         // Desktop: click opens preview; click same title again closes it. Preview click opens article.
@@ -4633,7 +4633,8 @@ function layoutAuthControlTitle(titleEl, { align = 'left' } = {}) {
     document.body.appendChild(probe);
     // Extra slack for Impact emboss (::before + text-shadow) so the last glyph
     // isn't clipped by the author column's overflow-x: hidden.
-    const w = Math.ceil(probe.getBoundingClientRect().width + 8);
+    const edgePad = align === 'right' ? 14 : align === 'left' ? 10 : 8;
+    const w = Math.ceil(probe.getBoundingClientRect().width + edgePad);
     const h = Math.ceil(probe.getBoundingClientRect().height + 2);
     document.body.removeChild(probe);
     const card = titleEl.closest('.blog-card');
