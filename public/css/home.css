@@ -4198,6 +4198,31 @@ body.search-closing .home-main-stage {
         transform: translateX(100vw);
     }
 
+    /*
+     * Author in-app bio: hinge at the right edge — authors column stone slides LEFT
+     * (articles use seam splits with right slabs moving +100vw).
+     */
+    body.mobile-author-reader-open.article-open .home-main-pane[data-col="5"] > .column-section,
+    body.mobile-author-reader-open.article-open .column-section[data-col="5"] {
+        transform: translateX(-100vw);
+    }
+
+    body.mobile-author-reader-open.article-closing .home-main-pane[data-col="5"] > .column-section,
+    body.mobile-author-reader-open.article-closing .column-section[data-col="5"] {
+        transform: translateX(0);
+    }
+
+    body.mobile-author-reader-open.article-open .column-section[data-col="1"],
+    body.mobile-author-reader-open.article-open .column-section[data-col="2"],
+    body.mobile-author-reader-open.article-open .column-section[data-col="3"],
+    body.mobile-author-reader-open.article-open .column-section[data-col="4"],
+    body.mobile-author-reader-open.article-closing .column-section[data-col="1"],
+    body.mobile-author-reader-open.article-closing .column-section[data-col="2"],
+    body.mobile-author-reader-open.article-closing .column-section[data-col="3"],
+    body.mobile-author-reader-open.article-closing .column-section[data-col="4"] {
+        transform: none;
+    }
+
     /* Mobile underlay reveal: slabs move away to reveal panel beneath, not a top overlay card. */
     body.article-open .article-panel:not(.expanding-fullscreen) {
         z-index: 1;

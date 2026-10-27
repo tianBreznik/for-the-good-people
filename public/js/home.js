@@ -877,11 +877,19 @@ function openMobileEmbedShell({
     const frame = mobileReaderFrameEl;
     if (!frame) return;
 
-    setActivePreviewSeam(seamIndex);
+    const isAuthorShell = Boolean(historyState.author);
+    if (isAuthorShell) {
+        document.body.classList.remove('mobile-author-reader-open');
+        document.documentElement.style.setProperty('--seamX', '100vw');
+        document.body.setAttribute('data-open-seam', 'author-right');
+    } else {
+        document.body.classList.remove('mobile-author-reader-open');
+        setActivePreviewSeam(seamIndex);
+    }
     if (sourceCard) setPreviewSourceHighlight(sourceCard);
 
     const sameUrlAlready = frame.getAttribute('src') === embedUrl;
-    if (historyState.author) {
+    if (isAuthorShell) {
         mobileReaderOpenAuthorHandle = String(historyState.author).trim().toLowerCase();
     } else {
         mobileReaderOpenAuthorHandle = null;
@@ -903,6 +911,9 @@ function openMobileEmbedShell({
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 document.body.classList.add('article-open', 'mobile-reader-open');
+                if (isAuthorShell) {
+                    document.body.classList.add('mobile-author-reader-open');
+                }
                 triggerMobileHaptic('preview-reveal');
             });
         });
@@ -945,6 +956,7 @@ function openMobileAuthorPage(authorName, sourceCard = null) {
     if (!handle) return;
     void ensureAuthorBioClosed();
     void ensureArticlePreviewClosed();
+    if (sourceCard) void anchorMobilePaneToViewport(sourceCard);
     writeAuthorBioHandoffForOpen(handle);
     void fetchAuthorProfile(handle).then((profile) => {
         const posts = authorHomeProfiles[handle]?.posts || [];
@@ -970,6 +982,12 @@ function openMobileAuthorPage(authorName, sourceCard = null) {
     });
 }
 
+function clearAuthorMobileReaderSeam() {
+    if (document.body.getAttribute('data-open-seam') === 'author-right') {
+        document.body.removeAttribute('data-open-seam');
+    }
+}
+
 function closeMobileInAppReader(options = {}) {
     const fromPopstate = Boolean(options.fromPopstate);
     if (!document.body.classList.contains('mobile-reader-open')) {
@@ -985,9 +1003,14 @@ function closeMobileInAppReader(options = {}) {
 
     document.body.classList.add('article-closing');
     document.body.classList.remove('article-open');
+    const closingAuthorReader = Boolean(mobileReaderOpenAuthorHandle);
     requestAnimationFrame(() => {
         if (closeSeq !== mobileReaderCloseSeq) return;
-        clearActivePreviewSeam();
+        if (closingAuthorReader) {
+            clearAuthorMobileReaderSeam();
+        } else {
+            clearActivePreviewSeam();
+        }
     });
 
     if (mobileReaderShellEl) {
@@ -999,7 +1022,11 @@ function closeMobileInAppReader(options = {}) {
         mobileReaderClosingTimer = null;
 
         const hadAuthorReader = Boolean(mobileReaderOpenAuthorHandle);
-        document.body.classList.remove('article-closing', 'mobile-reader-open');
+        document.body.classList.remove(
+            'article-closing',
+            'mobile-reader-open',
+            'mobile-author-reader-open'
+        );
         mobileReaderPendingOpen = null;
         mobileReaderOpenAuthorHandle = null;
         if (mobileReaderShellEl) {
@@ -2319,7 +2346,6 @@ function mountHomeWall(blogs) {
                     }
                     requestAnimationFrame(() => applyAuthorBioHighlight(name));
                     openMobileAuthorPage(name, card);
-                    void anchorMobilePaneToViewport(card);
                     return;
                 }
 
