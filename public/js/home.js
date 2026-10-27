@@ -505,9 +505,11 @@ let articlePreviewCloseResolve = null;
 let articleExpandNavigateTimer = null;
 let articleExpandInFlight = false;
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
+const AUTHOR_BIO_HANDOFF_KEY = 'authorBioHandoffPayload';
 const READER_EMBED_READY_TYPE = 'gpp-reader-embed-ready';
 const READER_EMBED_HANDOFF_TYPE = 'gpp-reader-handoff';
 const MOBILE_READER_REVEAL_FALLBACK_MS = 900;
+const MOBILE_AUTHOR_REVEAL_FALLBACK_MS = 480;
 let mobileReaderShellEl = null;
 let mobileReaderFrameEl = null;
 let mobileReaderHistoryPushed = false;
@@ -516,6 +518,18 @@ let mobileReaderCloseSeq = 0;
 let mobileReaderEmbedReadyBound = false;
 /** { blogId, reveal } while warming under the wall */
 let mobileReaderPendingOpen = null;
+/** Lowercase author handle when the mobile shell shows /author/…; null for articles. */
+let mobileReaderOpenAuthorHandle = null;
+
+function authorEmbedReadyId(authorName) {
+    return `author:${String(authorName || '').trim().toLowerCase()}`;
+}
+
+function isMobileAuthorReaderOpenFor(authorName) {
+    if (!document.body.classList.contains('mobile-reader-open')) return false;
+    const key = String(authorName || '').trim().toLowerCase();
+    return key && mobileReaderOpenAuthorHandle === key;
+}
 
 /** Full-viewport panes on small screens; desktop keeps five columns inside the same wrapper. */
 const HOME_NARROW_QUERY = '(max-width: 900px)';
@@ -825,8 +839,35 @@ function loadMobileReaderFrame(frame, embedUrl) {
     return false;
 }
 
-function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null, handoffPayload = null) {
-    if (!blogId) return;
+function writeAuthorBioHandoffForOpen(handle) {
+    const name = String(handle || '').trim();
+    if (!name) return;
+    const key = authorHandleKey(name);
+    const profile = authorProfileCache[key] || emptyAuthorProfile(name);
+    const posts = authorHomeProfiles[name]?.posts || [];
+    try {
+        sessionStorage.setItem(
+            AUTHOR_BIO_HANDOFF_KEY,
+            JSON.stringify({
+                handle: name,
+                profile,
+                posts,
+                ts: Date.now(),
+            })
+        );
+    } catch (_) {}
+}
+
+function openMobileEmbedShell({
+    embedUrl,
+    readyId,
+    seamIndex = 2,
+    sourceCard = null,
+    handoffPayload = null,
+    historyState = {},
+    revealFallbackMs = MOBILE_READER_REVEAL_FALLBACK_MS,
+}) {
+    if (!embedUrl || !readyId) return;
     if (mobileReaderClosingTimer) {
         clearTimeout(mobileReaderClosingTimer);
         mobileReaderClosingTimer = null;
@@ -839,8 +880,12 @@ function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null, handoff
     setActivePreviewSeam(seamIndex);
     if (sourceCard) setPreviewSourceHighlight(sourceCard);
 
-    const embedUrl = `/${blogId}?embed=1`;
     const sameUrlAlready = frame.getAttribute('src') === embedUrl;
+    if (historyState.author) {
+        mobileReaderOpenAuthorHandle = String(historyState.author).trim().toLowerCase();
+    } else {
+        mobileReaderOpenAuthorHandle = null;
+    }
 
     let opened = false;
     let fallbackTimer = null;
@@ -863,7 +908,7 @@ function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null, handoff
         });
 
         if (!mobileReaderHistoryPushed) {
-            history.pushState({ mobileReader: true, blogId }, '', window.location.pathname);
+            history.pushState({ mobileReader: true, ...historyState }, '', window.location.pathname);
             mobileReaderHistoryPushed = true;
         }
         if (fallbackTimer) {
@@ -872,16 +917,57 @@ function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null, handoff
         }
     };
 
-    mobileReaderPendingOpen = { blogId: String(blogId), reveal };
+    mobileReaderPendingOpen = { blogId: String(readyId), reveal };
 
     loadMobileReaderFrame(frame, embedUrl);
     if (handoffPayload && sameUrlAlready) {
         pushMobileReaderHandoffToEmbed(frame, handoffPayload);
     }
 
-    // Slabs part after embed paints first spread (postMessage), with a generous fallback.
     frame.addEventListener('load', reveal, { once: true });
-    fallbackTimer = setTimeout(reveal, MOBILE_READER_REVEAL_FALLBACK_MS);
+    fallbackTimer = setTimeout(reveal, revealFallbackMs);
+}
+
+function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null, handoffPayload = null) {
+    if (!blogId) return;
+    openMobileEmbedShell({
+        embedUrl: `/${blogId}?embed=1`,
+        readyId: String(blogId),
+        seamIndex,
+        sourceCard,
+        handoffPayload,
+        historyState: { blogId: String(blogId) },
+    });
+}
+
+function openMobileAuthorPage(authorName, sourceCard = null) {
+    const handle = String(authorName || '').trim();
+    if (!handle) return;
+    void ensureAuthorBioClosed();
+    void ensureArticlePreviewClosed();
+    writeAuthorBioHandoffForOpen(handle);
+    void fetchAuthorProfile(handle).then((profile) => {
+        const posts = authorHomeProfiles[handle]?.posts || [];
+        try {
+            sessionStorage.setItem(
+                AUTHOR_BIO_HANDOFF_KEY,
+                JSON.stringify({
+                    handle,
+                    profile,
+                    posts,
+                    ts: Date.now(),
+                })
+            );
+        } catch (_) {}
+    });
+    openMobileEmbedShell({
+        embedUrl: `/author/${encodeURIComponent(handle)}?embed=1`,
+        readyId: authorEmbedReadyId(handle),
+        seamIndex: SEAM_BY_SECTION[5] || 3,
+        sourceCard,
+        historyState: { author: handle },
+        revealFallbackMs: MOBILE_AUTHOR_REVEAL_FALLBACK_MS,
+    });
 }
 
 function closeMobileInAppReader(options = {}) {
@@ -912,8 +998,10 @@ function closeMobileInAppReader(options = {}) {
         if (closeSeq !== mobileReaderCloseSeq) return;
         mobileReaderClosingTimer = null;
 
+        const hadAuthorReader = Boolean(mobileReaderOpenAuthorHandle);
         document.body.classList.remove('article-closing', 'mobile-reader-open');
         mobileReaderPendingOpen = null;
+        mobileReaderOpenAuthorHandle = null;
         if (mobileReaderShellEl) {
             stopMobileReaderShellWarm();
             mobileReaderShellEl.hidden = true;
@@ -921,6 +1009,9 @@ function closeMobileInAppReader(options = {}) {
             mobileReaderShellEl.classList.remove('mobile-reader-closing');
         }
         clearPreviewSourceHighlight();
+        if (hadAuthorReader && homeDirectArticleTapNav()) {
+            clearAuthorBioHighlight();
+        }
         // Keep src so a reopen of the same piece can paint immediately; blank only on leave.
         if (mobileReaderFrameEl && options.clearFrame) {
             mobileReaderFrameEl.removeAttribute('src');
@@ -936,7 +1027,7 @@ function closeMobileInAppReader(options = {}) {
 }
 
 const CONTENT_TYPES = ['scene_report', 'interview', 'opinion', 'ideas'];
-const SEAM_BY_SECTION = { 1: 1, 2: 2, 3: 2, 4: 3 };
+const SEAM_BY_SECTION = { 1: 1, 2: 2, 3: 2, 4: 3, 5: 3 };
 const SECTION_LABELS = {
     1: '#SCENE',
     2: 'interview',
@@ -2219,24 +2310,29 @@ function mountHomeWall(blogs) {
                 e.stopPropagation();
                 if (tapWasSwipe(card)) return;
                 if (isBioHoverQuiet()) return;
+                clearBioHoverTimer();
+
+                if (homeDirectArticleTapNav()) {
+                    if (isMobileAuthorReaderOpenFor(name)) {
+                        closeMobileInAppReader();
+                        return;
+                    }
+                    requestAnimationFrame(() => applyAuthorBioHighlight(name));
+                    openMobileAuthorPage(name, card);
+                    void anchorMobilePaneToViewport(card);
+                    return;
+                }
+
                 const openAuthor = String(bioEl.dataset.author || '');
                 const alreadyOpen =
                     (document.body.classList.contains('bio-open') ||
                         document.body.classList.contains('bio-closing')) &&
                     openAuthor.toLowerCase() === String(name || '').toLowerCase();
                 if (alreadyOpen) {
-                    clearBioHoverTimer();
                     closeHomeAuthorBio();
                     return;
                 }
-                clearBioHoverTimer();
-                // Mobile: open immediately — delay made taps feel dead when the strip
-                // was also hidden under the stage stone.
-                const delay = homeDirectArticleTapNav() ? 0 : AUTHOR_BIO_CLICK_DELAY_MS;
-                if (delay <= 0) {
-                    openBioFromClick(name);
-                    return;
-                }
+                const delay = AUTHOR_BIO_CLICK_DELAY_MS;
                 bioHoverTimer = setTimeout(() => {
                     bioHoverTimer = null;
                     openBioFromClick(name);

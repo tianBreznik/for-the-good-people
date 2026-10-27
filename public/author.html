@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Good People</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/css/blog.css">
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/author-bio-embed.css">
+    <script src="/js/page-geometry-boot.js"></script>
+</head>
+<body class="reader-loading">
+
+    <div class="blog">
+        <div id="article-body" class="article-columns author-bio-columns">
+            <div class="article-spread author-bio-embed">
+                <section class="bio-panel" id="author-bio-root" aria-label="Author bio">
+                    <div class="bio-panel-cards" id="bio-panel-cards">
+                        <div class="bio-panel-profile bio-identity-card" id="bio-panel-profile">
+                            <div class="bio-card-main">
+                                <div class="bio-card-head">
+                                    <div class="bio-avatar-wrap" id="bio-avatar-wrap">
+                                        <img class="bio-avatar" id="bio-avatar" src="" alt="" width="168" height="168" decoding="async" hidden />
+                                    </div>
+                                    <div class="bio-identity-row bio-view-only">
+                                        <p class="bio-author-name" id="bio-author-name"></p>
+                                    </div>
+                                </div>
+                                <p class="bio-text bio-view-only" id="bio-text"></p>
+                                <div class="bio-card-foot bio-view-only" id="bio-view-block">
+                                    <ul class="bio-meta" id="bio-meta" hidden></ul>
+                                    <div class="bio-links" id="bio-links" hidden></div>
+                                </div>
+                            </div>
+                        </div>
+                        <aside class="bio-latest-card bio-identity-card bio-view-only" id="bio-latest-card" hidden>
+                            <p class="bio-latest" id="bio-latest-single" hidden>
+                                <span class="bio-latest-label">Latest</span>
+                                <a class="bio-latest-link" id="bio-latest-link" href="#"></a>
+                            </p>
+                            <div class="bio-index" id="bio-index" hidden>
+                                <ol class="bio-index-list" id="bio-index-list"></ol>
+                            </div>
+                        </aside>
+                        <aside class="bio-capture-card bio-identity-card" id="bio-capture-card" hidden>
+                            <div class="bio-capture-mount" id="bio-capture-mount" aria-label="Currently captured by"></div>
+                        </aside>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-firestore.js"></script>
+    <script src="/js/firebase.js"></script>
+    <script type="module" src="/js/page-geometry.js"></script>
+    <script defer src="/js/bio-social.js"></script>
+    <script defer src="/js/bio-capture.js"></script>
+    <script defer src="/js/author-bio-view.js"></script>
+    <script defer src="/js/author-page.js"></script>
+</body>
+</html>

@@ -660,6 +660,10 @@ app.get('/reset', (req, res) => {
     res.sendFile(path.join(initial_path, 'reset.html'));
 });
 
+app.get('/author/:name', (req, res) => {
+    res.sendFile(path.join(initial_path, 'author.html'));
+});
+
 app.get('/:blog', (req, res) => {
     res.sendFile(path.join(initial_path, 'blog.html'));
 });

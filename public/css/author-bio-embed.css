@@ -1,0 +1,191 @@
+/*
+ * Author bio in mobile reader iframe — full-width stacked cards (same shell ratio
+ * as desktop bio cards: --bioCardRatio). Interior type/spacing matches the home
+ * strip via --bio-card-content-scale.
+ */
+body.reader-embed .blog {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+}
+
+body.reader-embed #article-body.author-bio-columns {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    padding-inline: 0;
+    gap: 0;
+    /* Article reader zoom shrinks the column; author bio fills the iframe width. */
+    zoom: 1;
+}
+
+body.reader-embed #article-body.author-bio-columns .article-spread.author-bio-embed {
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    padding-bottom: 8px;
+    margin-inline: 0;
+}
+
+/* No iframe scroll — three cards + gaps should fit under the slab close chrome. */
+body.reader-embed:has(.author-bio-embed) {
+    overflow: hidden;
+    overscroll-behavior: none;
+    height: 100%;
+    max-height: 100svh;
+}
+
+body.reader-embed:has(.author-bio-embed) .blog {
+    padding-top: 6px;
+    padding-bottom: 0;
+}
+
+body.reader-embed .author-bio-embed {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+    --bio-strip-card-h: calc(clamp(220px, 58vw, 280px) - 12px);
+    /* Inset from iframe edges so the gray canvas shows on left/right. */
+    --author-bio-card-w: calc(100vw - 18px);
+    --author-bio-card-h: min(
+        calc(var(--author-bio-card-w) * 2 / 3.5 * 1.03),
+        calc((100svh - 40px) / 3)
+    );
+    --bio-card-height: var(--author-bio-card-h);
+    --bio-card-content-scale: calc(var(--bio-card-height) / var(--bio-strip-card-h));
+}
+
+body.reader-embed .author-bio-embed .bio-panel {
+    --bio-handle-size: calc(clamp(68px, 7.2vw, 120px) * var(--bio-card-content-scale));
+    position: static;
+    display: block !important;
+    visibility: visible !important;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+    contain: none;
+    pointer-events: auto;
+    background: transparent;
+}
+
+body.reader-embed .author-bio-embed .bio-panel-cards {
+    --bio-card-height: var(--author-bio-card-h);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: var(--author-bio-card-w);
+    max-width: var(--author-bio-card-w);
+    margin-inline: auto;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    gap: 10px;
+}
+
+body.reader-embed .author-bio-embed .bio-identity-card {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: var(--bio-card-height);
+    min-height: var(--bio-card-height);
+    max-height: var(--bio-card-height);
+    overflow: hidden;
+    flex: 0 0 auto;
+}
+
+body.reader-embed .author-bio-embed .bio-panel-profile .bio-card-main {
+    height: 100%;
+    min-height: 0;
+}
+
+body.reader-embed .author-bio-embed .bio-panel .bio-text,
+body.reader-embed .author-bio-embed .bio-panel .bio-latest-label {
+    font-size: calc(clamp(14px, 1vw, 17px) * var(--bio-card-content-scale));
+    line-height: 1.35;
+}
+
+body.reader-embed .author-bio-embed .bio-card-foot .bio-meta-item,
+body.reader-embed .author-bio-embed .bio-card-foot .bio-social-link {
+    font-size: calc(clamp(12px, 0.9vw, 14px) * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-index-meta {
+    font-size: calc(clamp(13px, 1.05vw, 15px) * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-index-link {
+    font-size: calc(clamp(15px, 1.25vw, 18px) * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-index-item {
+    grid-template-columns: calc(7em * var(--bio-card-content-scale)) minmax(0, 1fr);
+}
+
+body.reader-embed .author-bio-embed .bio-capture-play-btn {
+    font-size: calc(clamp(28px, 3.2vw, 42px) * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-latest-card.is-index {
+    justify-content: flex-start;
+    align-items: stretch;
+    padding: calc(14px * var(--bio-card-content-scale)) calc(16px * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-latest-card.is-index .bio-index {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+body.reader-embed .author-bio-embed .bio-latest-card.is-index .bio-index-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    gap: calc(0.7em * var(--bio-card-content-scale));
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+body.reader-embed .author-bio-embed .bio-latest-card.is-index.is-solo {
+    justify-content: center;
+    align-items: center;
+}
+
+body.reader-embed .author-bio-embed .bio-latest-card.is-index.is-solo .bio-index {
+    flex: 0 1 auto;
+    width: auto;
+    max-width: 100%;
+}
+
+body.reader-embed .author-bio-embed .bio-capture-card {
+    position: relative;
+    padding: 0;
+    gap: 0;
+    border: 1px solid rgba(20, 20, 20, 0.14);
+    box-shadow: none;
+}
+
+body.reader-embed .author-bio-embed .bio-capture-card.is-empty {
+    display: none;
+}
+
+body.reader-embed .author-bio-embed .bio-capture-mount,
+body.reader-embed .author-bio-embed .bio-capture-card .bio-capture-shell {
+    position: absolute;
+    inset: 0;
+}
+
+body.reader-embed .author-bio-embed .bio-identity-card {
+    padding: calc(14px * var(--bio-card-content-scale)) calc(16px * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-capture-card.bio-identity-card {
+    padding: 0;
+}

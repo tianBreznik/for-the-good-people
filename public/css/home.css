@@ -204,7 +204,7 @@ body{
  * bio / about underlays paint first and flash their card outlines on refresh
  * and on return navigations to /.
  */
-body:not(.home-wall-ready) .bio-panel {
+body:not(.home-wall-ready):not(.reader-embed) .bio-panel {
     visibility: hidden !important;
     pointer-events: none !important;
 }
@@ -1248,29 +1248,10 @@ body.bio-editing .bio-panel #bio-capture-card {
     display: flex !important;
 }
 
-/* Narrow: one bio card at a time, swipe sideways between profile / articles / capture */
+/* Narrow: author bio uses the in-app reader shell — hide the home wall strip only. */
 @media (max-width: 900px) {
-    .bio-panel-cards {
-        width: 100%;
-        height: var(--bio-card-height);
-        gap: 10px;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scroll-snap-type: x mandatory;
-        scroll-padding-inline: 0;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-x: contain;
-        touch-action: pan-x;
-        scrollbar-width: thin;
-    }
-
-    .bio-identity-card {
-        flex: 0 0 100%;
-        width: 100%;
-        min-width: 100%;
-        max-width: 100%;
-        scroll-snap-align: start;
-        scroll-snap-stop: always;
+    body:not(.reader-embed) .bio-panel {
+        display: none !important;
     }
 
     /*
