@@ -523,6 +523,13 @@ let mobileReaderEmbedReadyBound = false;
 let mobileReaderPendingOpen = null;
 /** Lowercase author handle when the mobile shell shows /author/…; null for articles. */
 let mobileReaderOpenAuthorHandle = null;
+let mobileReaderOpenSeq = 0;
+let authorBioHighlightClearTimer = null;
+
+function isAuthorEmbedUrl(src) {
+    const url = String(src || '');
+    return /\/author\/[^/?#]+/.test(url) && url.includes('embed=1');
+}
 
 function authorEmbedReadyId(authorName) {
     return `author:${String(authorName || '').trim().toLowerCase()}`;
@@ -771,6 +778,7 @@ function bindMobileReaderEmbedReadyListener() {
         if (!data || data.type !== READER_EMBED_READY_TYPE) return;
         const pending = mobileReaderPendingOpen;
         if (!pending) return;
+        if (pending.openSeq !== mobileReaderOpenSeq) return;
         if (String(data.blogId || '') !== String(pending.blogId || '')) return;
         pending.reveal();
     });
@@ -891,9 +899,18 @@ function openMobileEmbedShell({
     }
     if (sourceCard) setPreviewSourceHighlight(sourceCard);
 
-    const sameUrlAlready = frame.getAttribute('src') === embedUrl;
+    const openSeq = ++mobileReaderOpenSeq;
+    const prevSrc = frame.getAttribute('src') || '';
+    const sameUrlAlready = prevSrc === embedUrl;
     if (isAuthorShell) {
         mobileReaderOpenAuthorHandle = String(historyState.author).trim().toLowerCase();
+        /* Don’t part the wall over a stale article embed — blank first, then author URL. */
+        if (prevSrc && !isAuthorEmbedUrl(prevSrc)) {
+            try {
+                frame.src = 'about:blank';
+            } catch (_) {}
+            frame.dataset.embedReady = '0';
+        }
     } else {
         mobileReaderOpenAuthorHandle = null;
     }
@@ -901,7 +918,8 @@ function openMobileEmbedShell({
     let opened = false;
     let fallbackTimer = null;
     const reveal = () => {
-        if (opened) return;
+        if (opened || openSeq !== mobileReaderOpenSeq) return;
+        if (isAuthorShell && frame.getAttribute('src') !== embedUrl) return;
         opened = true;
         mobileReaderPendingOpen = null;
         markMobileReaderFrameReady(frame);
@@ -931,15 +949,28 @@ function openMobileEmbedShell({
         }
     };
 
-    mobileReaderPendingOpen = { blogId: String(readyId), reveal };
+    mobileReaderPendingOpen = { blogId: String(readyId), reveal, openSeq };
 
     loadMobileReaderFrame(frame, embedUrl);
     if (handoffPayload && sameUrlAlready) {
         pushMobileReaderHandoffToEmbed(frame, handoffPayload);
     }
 
-    frame.addEventListener('load', reveal, { once: true });
-    fallbackTimer = setTimeout(reveal, revealFallbackMs);
+    if (isAuthorShell) {
+        if (sameUrlAlready && frame.dataset.embedReady === '1') {
+            requestAnimationFrame(() => reveal());
+        }
+        /* Author: wait for embed-ready (handoff paint) — not iframe load / 480ms fallback
+           while the previous document was still an article. */
+        fallbackTimer = setTimeout(() => {
+            if (openSeq !== mobileReaderOpenSeq) return;
+            if (frame.getAttribute('src') !== embedUrl) return;
+            reveal();
+        }, Math.max(revealFallbackMs, 3500));
+    } else {
+        frame.addEventListener('load', reveal, { once: true });
+        fallbackTimer = setTimeout(reveal, revealFallbackMs);
+    }
 }
 
 function openMobileInAppReader(blogId, seamIndex = 2, sourceCard = null, handoffPayload = null) {
@@ -1007,6 +1038,17 @@ function closeMobileInAppReader(options = {}) {
     document.body.classList.add('article-closing');
     document.body.classList.remove('article-open');
     const closingAuthorReader = Boolean(mobileReaderOpenAuthorHandle);
+    if (authorBioHighlightClearTimer) {
+        clearTimeout(authorBioHighlightClearTimer);
+        authorBioHighlightClearTimer = null;
+    }
+    if (closingAuthorReader && homeDirectArticleTapNav()) {
+        authorBioHighlightClearTimer = setTimeout(() => {
+            authorBioHighlightClearTimer = null;
+            if (closeSeq !== mobileReaderCloseSeq) return;
+            clearAuthorBioHighlight();
+        }, getMobileAuthorCloseMs());
+    }
     requestAnimationFrame(() => {
         if (closeSeq !== mobileReaderCloseSeq) return;
         if (closingAuthorReader) {
@@ -1039,7 +1081,11 @@ function closeMobileInAppReader(options = {}) {
             mobileReaderShellEl.classList.remove('mobile-reader-closing');
         }
         clearPreviewSourceHighlight();
-        if (hadAuthorReader && homeDirectArticleTapNav()) {
+        if (hadAuthorReader) {
+            if (authorBioHighlightClearTimer) {
+                clearTimeout(authorBioHighlightClearTimer);
+                authorBioHighlightClearTimer = null;
+            }
             clearAuthorBioHighlight();
         }
         // Keep src so a reopen of the same piece can paint immediately; blank only on leave.
@@ -4221,7 +4267,7 @@ function createBlogCard(blog, section, sectionIndex) {
         if (tapWasSwipe(card)) return;
         // Mobile narrow: one tap → handoff + warm embed + slab reveal.
         if (homeDirectArticleTapNav()) {
-        expandArticlePanelAndNavigate(blog.id, card);
+            expandArticlePanelAndNavigate(blog.id, card);
             return;
         }
         // Desktop: click opens preview; click same title again closes it. Preview click opens article.
@@ -4633,8 +4679,11 @@ function layoutAuthControlTitle(titleEl, { align = 'left' } = {}) {
     document.body.appendChild(probe);
     // Extra slack for Impact emboss (::before + text-shadow) so the last glyph
     // isn't clipped by the author column's overflow-x: hidden.
-    const edgePad = align === 'right' ? 14 : align === 'left' ? 10 : 8;
-    const w = Math.ceil(probe.getBoundingClientRect().width + edgePad);
+    const narrow =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(max-width: 900px)').matches;
+    const embossSlack = align === 'right' ? (narrow ? 18 : 12) : narrow ? 12 : 8;
+    const w = Math.ceil(probe.getBoundingClientRect().width + embossSlack);
     const h = Math.ceil(probe.getBoundingClientRect().height + 2);
     document.body.removeChild(probe);
     const card = titleEl.closest('.blog-card');
@@ -4662,6 +4711,11 @@ function layoutAuthControlTitle(titleEl, { align = 'left' } = {}) {
     titleEl.style.whiteSpace = 'nowrap';
     titleEl.style.width = `${w}px`;
     titleEl.style.display = 'block';
+    titleEl.style.overflow = 'visible';
+    if (align === 'right' && narrow) {
+        titleEl.style.paddingRight = '3px';
+        titleEl.style.boxSizing = 'content-box';
+    }
 }
 
 const AUTH_FOLDER_CLOSED = '📁';
@@ -5348,6 +5402,14 @@ function getArticlePreviewRevealMs() {
     const raw = getComputedStyle(document.documentElement).getPropertyValue('--articlePreviewRevealDuration').trim();
     const n = parseFloat(raw);
     return Number.isFinite(n) ? n : 2200;
+}
+
+function getMobileAuthorCloseMs() {
+    const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue('--mobileAuthorCloseDuration')
+        .trim();
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 840;
 }
 
 function clearWallLinkHighlight() {

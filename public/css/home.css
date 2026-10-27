@@ -1973,7 +1973,28 @@ body.home-titles-instant .home-main-stage {
     visibility: hidden;
 }
 
-#mid-text::before {
+.splash-mid-line {
+    position: relative;
+    margin: 0;
+    padding: 0 0.1em;
+    box-sizing: border-box;
+    text-transform: uppercase;
+    font-weight: bold;
+    font-size: var(--splash-type-size);
+    line-height: var(--splash-type-leading);
+    font-family: 'Impact', sans-serif;
+    text-align: center;
+    color: transparent;
+    white-space: nowrap;
+    background-image: var(--bg-image);
+    background-position: center;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+#mid-text::before,
+.splash-mid-line::before {
     content: attr(data-text);
     position: absolute;
     top: -1.5px;
@@ -1985,7 +2006,6 @@ body.home-titles-instant .home-main-stage {
     line-height: inherit;
     font-family: 'Impact', sans-serif;
     text-align: center;
-    white-space: inherit;
     background-image: var(--bg-image);
     background-position: center;
     -webkit-background-clip: text;
@@ -1995,6 +2015,11 @@ body.home-titles-instant .home-main-stage {
     text-shadow: 2px 5px 5px rgba(255, 255, 255, 0.3);
     pointer-events: none;
     z-index: 0;
+}
+
+#mid-text::before,
+.splash-mid-line::before {
+    white-space: inherit;
 }
 
 /*#top-text {*/
@@ -2093,13 +2118,62 @@ body.home-titles-instant .home-main-stage {
         background-position: 0 var(--home-mobile-bg-y);
         background-repeat: repeat;
         /*
-         * Mobile fill: open leading so mid lines breathe; keep width under the
-         * longest token (PERSPECTIVES) so nothing clips.
+         * Mobile: tall line gaps + height-sized type so GOOD PEOPLE / mid / POSTING
+         * spread evenly (see SPLASH_MID_LINE_MOBILE in home.js).
          */
-        --splash-type-leading: 1.38;
+        --splash-line-count: 7;
+        --splash-type-leading: 1.72;
         --splash-type-width-cap: 14.8vw;
-        --splash-type-size: min(var(--splash-type-width-cap), 12.5vh);
-        padding: max(2px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(2px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+        --splash-type-size: min(
+            var(--splash-type-width-cap),
+            calc(100dvh / (var(--splash-line-count) * var(--splash-type-leading)))
+        );
+        padding: max(2px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right))
+            max(2px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+    }
+
+    /* Seven lines (top + 5 mid + bottom): equal gaps, endpoints pinned to top/bottom. */
+    #first-container-hold.splash-even-lines {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-sizing: border-box;
+        min-height: 100dvh;
+    }
+
+    #first-container-hold.splash-even-lines #top-text,
+    #first-container-hold.splash-even-lines #bottom-text,
+    #first-container-hold.splash-even-lines .splash-mid-line {
+        flex: 0 0 auto;
+        width: 100%;
+        margin: 0;
+        min-height: calc(var(--splash-type-leading) * var(--splash-type-size));
+        text-align: center;
+    }
+
+    #first-container-hold.splash-even-lines #mid-text {
+        display: none !important;
+    }
+
+    #first-container-hold.splash-even-lines #mid-text-slot,
+    #first-container-hold.splash-even-lines .splash-mid-lines {
+        display: contents;
+    }
+
+    .splash-mid-lines {
+        display: none;
+    }
+
+    #first-container-hold.splash-even-lines .splash-mid-line:empty {
+        visibility: hidden;
+    }
+
+    #first-container-hold.splash-even-lines .splash-mid-line {
+        max-width: min(96vw, 100%);
+        margin-inline: auto;
+        padding-inline: max(6px, env(safe-area-inset-left, 0px))
+            max(6px, env(safe-area-inset-right, 0px));
+        overflow: visible;
     }
 
     /*
@@ -2121,15 +2195,19 @@ body.home-titles-instant .home-main-stage {
     #top-text,
     #mid-text,
     #bottom-text,
+    .splash-mid-line,
     html[data-home-texture='grycon'] #top-text,
     html[data-home-texture='grycon'] #mid-text,
     html[data-home-texture='grycon'] #bottom-text,
+    html[data-home-texture='grycon'] .splash-mid-line,
     html[data-home-texture='stucco'] #top-text,
     html[data-home-texture='stucco'] #mid-text,
     html[data-home-texture='stucco'] #bottom-text,
+    html[data-home-texture='stucco'] .splash-mid-line,
     html[data-home-texture='stucco8'] #top-text,
     html[data-home-texture='stucco8'] #mid-text,
-    html[data-home-texture='stucco8'] #bottom-text {
+    html[data-home-texture='stucco8'] #bottom-text,
+    html[data-home-texture='stucco8'] .splash-mid-line {
         background-size: var(--home-mobile-bg-size-x) auto !important;
         background-position: 0 var(--home-mobile-bg-y) !important;
         background-repeat: repeat !important;
@@ -2142,15 +2220,19 @@ body.home-titles-instant .home-main-stage {
     #top-text::before,
     #mid-text::before,
     #bottom-text::before,
+    .splash-mid-line::before,
     html[data-home-texture='grycon'] #top-text::before,
     html[data-home-texture='grycon'] #mid-text::before,
     html[data-home-texture='grycon'] #bottom-text::before,
+    html[data-home-texture='grycon'] .splash-mid-line::before,
     html[data-home-texture='stucco'] #top-text::before,
     html[data-home-texture='stucco'] #mid-text::before,
     html[data-home-texture='stucco'] #bottom-text::before,
+    html[data-home-texture='stucco'] .splash-mid-line::before,
     html[data-home-texture='stucco8'] #top-text::before,
     html[data-home-texture='stucco8'] #mid-text::before,
-    html[data-home-texture='stucco8'] #bottom-text::before {
+    html[data-home-texture='stucco8'] #bottom-text::before,
+    html[data-home-texture='stucco8'] .splash-mid-line::before {
         background-size: var(--home-mobile-bg-size-x) auto !important;
         background-position: 0 var(--home-mobile-bg-y) !important;
         background-repeat: repeat !important;
@@ -3384,6 +3466,7 @@ body.search-closing .home-main-pane:has(.section-title-container:hover)::after {
     --sheet-scale: 1;
     /* Longer + ease below = slower, heavier stone slabs (preview only; bio/about unchanged) */
     --articlePreviewRevealDuration: 2200ms;
+    --mobileAuthorCloseDuration: 840ms;
     /* Extra slab separation so preview page borders are clearly visible pre-click. */
     --articlePreviewBorderReveal: 12px;
     --articleExpandDuration: 1100ms;
@@ -3408,8 +3491,28 @@ body.article-open {
  */
 body.article-open .home-main-stage .home-main-track,
 body.article-open .home-main-stage .home-main-pane,
-body.article-open .home-main-stage .column-section {
+body.article-open .home-main-stage .column-section,
+body.article-open .home-main-stage .cardcontainer,
+body.article-open .home-main-stage .blog-card,
+body.article-open .home-main-stage .blog-title,
+body.article-open .home-main-stage .section-title-container,
+body.article-open .home-main-stage #auth-controls,
+/* In-app reader: pass hits to the shell. Mobile re-enables .blog-title / cards inside
+   @media (max-width: 900px) — those must be disabled here too or Safari steals × taps. */
+body.mobile-reader-open .home-main-stage .home-main-track,
+body.mobile-reader-open .home-main-stage .home-main-pane,
+body.mobile-reader-open .home-main-stage .column-section,
+body.mobile-reader-open .home-main-stage .cardcontainer,
+body.mobile-reader-open .home-main-stage .blog-card,
+body.mobile-reader-open .home-main-stage .blog-title,
+body.mobile-reader-open .home-main-stage .section-title-container,
+body.mobile-reader-open .home-main-stage #auth-controls {
     pointer-events: none;
+}
+
+/* Author wall stays tappable while the bio reader is open (swap without closing). */
+body.mobile-author-reader-open.mobile-reader-open .home-main-stage .author-section .blog-title {
+    pointer-events: auto;
 }
 
 .article-panel {
@@ -4113,6 +4216,21 @@ body.search-closing .home-main-stage {
         overflow: visible;
     }
 
+    #auth-login-wrap,
+    #auth-login-card {
+        overflow: visible;
+    }
+
+    /* Impact emboss on the last glyph (esp. LOGIN “n”) — don’t clip ::before on the rail. */
+    #auth-login-card .blog-title::before,
+    #auth-apply-card .blog-title::before {
+        overflow: visible;
+        width: calc(100% + 6px);
+        max-width: none;
+        padding-right: 2px;
+        box-sizing: content-box;
+    }
+
     /* Disable desktop hover rails on narrow layout. */
     .home-main-pane:has(.section-title-container:hover)::before,
     .home-main-pane:has(.section-title-container:hover)::after {
@@ -4302,6 +4420,9 @@ body.search-closing .home-main-stage {
     body.mobile-author-reader-open.article-closing .home-main-pane[data-col="5"] > .column-section,
     body.mobile-author-reader-open.article-closing .column-section[data-col="5"] {
         transform: translateX(0);
+        transition:
+            transform var(--mobileAuthorCloseDuration) cubic-bezier(0.58, 0.06, 0.22, 0.98),
+            translate var(--aboutDuration) ease-in-out;
     }
 
     body.mobile-author-reader-open.article-open .column-section[data-col="1"],
@@ -4443,13 +4564,22 @@ body.search-closing .home-main-stage {
         pointer-events: none;
     }
 
-    body.mobile-reader-open .mobile-reader-shell,
-    body.article-closing .mobile-reader-shell.mobile-reader-closing {
+    body.mobile-reader-open:not(.mobile-reader-closing) .mobile-reader-shell {
         pointer-events: auto;
     }
 
-    body.mobile-reader-open {
+    /* Shut animation: don’t let the full-screen shell eat wall swipes — × stays clickable. */
+    body.mobile-reader-closing .mobile-reader-shell {
+        pointer-events: none;
+    }
+
+    /* Only while the iframe must capture scroll — not during the slab shut (swipe wall again). */
+    body.mobile-reader-open:not(.mobile-reader-closing) {
         overflow: hidden;
+    }
+
+    body.mobile-reader-closing .mobile-reader-frame {
+        pointer-events: none;
     }
 
     body.article-open .mobile-reader-shell,
@@ -4464,12 +4594,13 @@ body.search-closing .home-main-stage {
     }
 
     .mobile-reader-close {
-        position: absolute;
+        position: fixed;
         top: max(4px, env(safe-area-inset-top, 0px));
         right: max(4px, env(safe-area-inset-right, 0px));
-        z-index: 4;
+        z-index: 100;
         width: 26px;
         height: 26px;
+        box-sizing: content-box;
         border: 1px solid #8f1427;
         border-radius: 0;
         background: linear-gradient(to bottom, #f06a7a 0%, #cd2f47 52%, #a9152d 100%);
@@ -4486,9 +4617,20 @@ body.search-closing .home-main-stage {
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 1px 0 rgba(0, 0, 0, 0.25);
     }
 
+    body.mobile-reader-open .mobile-reader-close,
+    body.mobile-reader-closing .mobile-reader-close,
     body.article-open .mobile-reader-close,
     body.article-closing .mobile-reader-close {
         display: inline-flex;
+        pointer-events: auto;
+        touch-action: manipulation;
+    }
+
+    /* Visual size stays 26px; extra tap area without a chunky control. */
+    .mobile-reader-close::before {
+        content: '';
+        position: absolute;
+        inset: -14px;
     }
 
     .mobile-reader-close:active {

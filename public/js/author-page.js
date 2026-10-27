@@ -35,9 +35,9 @@ function readAuthorBioHandoff() {
         const payload = JSON.parse(raw);
         if (!payload || !payload.handle) return null;
         if (Date.now() - Number(payload.ts || 0) > AUTHOR_BIO_HANDOFF_MAX_AGE_MS) return null;
-        const view = window.GppAuthorBioView;
-        const key = view?.authorHandleKey(payload.handle);
-        if (key !== view?.authorHandleKey(handle)) return null;
+        const fromHandoff = String(payload.handle || '').trim().toLowerCase();
+        const pageHandle = String(handle || '').trim().toLowerCase();
+        if (fromHandoff !== pageHandle) return null;
         return payload;
     } catch (_) {
         return null;
