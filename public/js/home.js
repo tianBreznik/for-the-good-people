@@ -205,7 +205,8 @@ function ensureHomeBioPanel() {
                     </div>
                     <p class="bio-text bio-view-only" id="bio-text"></p>
                     <div class="bio-edit-only bio-edit-bottom" hidden>
-                        <textarea class="bio-inline-input bio-inline-textarea" id="bio-edit-bio" rows="3" maxlength="600" placeholder="Bio"></textarea>
+                        <textarea class="bio-inline-input bio-inline-textarea" id="bio-edit-bio" rows="5" maxlength="${AUTHOR_PROFILE_BIO_MAX_LENGTH}" placeholder="Bio" aria-describedby="bio-edit-bio-hint"></textarea>
+                        <p class="bio-edit-char-hint" id="bio-edit-bio-hint"></p>
                         <p class="bio-edit-error" id="bio-edit-error" hidden></p>
                     </div>
                     <div class="bio-card-foot bio-view-only" id="bio-view-block">
@@ -316,6 +317,8 @@ const AUTHOR_BIO_CLICK_DELAY_MS = 200;
 const AUTHOR_BIO_DEEP_LINK_DELAY_MS = 200;
 /** About card hover. */
 const PANEL_HOVER_DWELL_MS = 800;
+/** Must match lib/author-profile-limits.js — five lines in the bio identity card. */
+const AUTHOR_PROFILE_BIO_MAX_LENGTH = 220;
 
 function isBioHoverQuiet() {
     return Date.now() < bioHoverQuietUntil;
@@ -3617,6 +3620,24 @@ function createSocialLinkEl(rawUrl) {
     return a;
 }
 
+function clampAuthorBioText(raw) {
+    return String(raw ?? '').slice(0, AUTHOR_PROFILE_BIO_MAX_LENGTH);
+}
+
+function updateBioEditCharHint() {
+    const ta = document.getElementById('bio-edit-bio');
+    const hint = document.getElementById('bio-edit-bio-hint');
+    if (!hint) return;
+    if (!ta) {
+        hint.textContent = '';
+        hint.classList.remove('is-at-limit');
+        return;
+    }
+    const n = ta.value.length;
+    hint.textContent = `${n} / ${AUTHOR_PROFILE_BIO_MAX_LENGTH}`;
+    hint.classList.toggle('is-at-limit', n >= AUTHOR_PROFILE_BIO_MAX_LENGTH);
+}
+
 function exitAuthorBioEditMode() {
     document.body.classList.remove('bio-editing');
     closeBioAvatarMenu();
@@ -3625,6 +3646,7 @@ function exitAuthorBioEditMode() {
         err.hidden = true;
         err.textContent = '';
     }
+    updateBioEditCharHint();
     const editBtn = document.getElementById('bio-edit-btn');
     const panel = document.querySelector('.bio-panel');
     if (editBtn && panel) {
@@ -3652,7 +3674,8 @@ function enterAuthorBioEditMode(profile) {
         handleEl.style.setProperty('--bio-author-color', color);
         handleEl.style.color = color;
     }
-    setVal('bio-edit-bio', p.bio);
+    setVal('bio-edit-bio', clampAuthorBioText(p.bio));
+    updateBioEditCharHint();
     setVal('bio-edit-location', p.location);
     setVal('bio-edit-website', p.website);
     const links = Array.isArray(p.socialLinks) ? p.socialLinks : [];
@@ -3683,7 +3706,7 @@ function readBioEditFormValues() {
     const avatar = normalizeClientAvatarPath(val('bio-edit-avatar'));
     const out = {
         statusEmoji: '',
-        bio: val('bio-edit-bio'),
+        bio: clampAuthorBioText(val('bio-edit-bio')),
         location: val('bio-edit-location'),
         website: val('bio-edit-website'),
         socialLinks,
@@ -3749,6 +3772,15 @@ async function saveAuthorBioEdits(panel) {
 function bindAuthorBioEditor(panel) {
     if (bioEditorBound || !panel) return;
     bioEditorBound = true;
+
+    const bioTa = document.getElementById('bio-edit-bio');
+    if (bioTa) {
+        bioTa.maxLength = AUTHOR_PROFILE_BIO_MAX_LENGTH;
+        if (!bioTa.dataset.bioLimitBound) {
+            bioTa.dataset.bioLimitBound = '1';
+            bioTa.addEventListener('input', updateBioEditCharHint);
+        }
+    }
 
     document.getElementById('bio-edit-btn')?.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -3998,6 +4030,9 @@ function applyAuthorProfileToPanel(authorName, profile) {
     if (textEl) {
         textEl.textContent = bio;
         textEl.hidden = !bio;
+        if (typeof GppBioTextScale !== 'undefined') {
+            GppBioTextScale.applyBioTextLengthScale(textEl, bio);
+        }
     }
     if (profileCard) {
         profileCard.classList.toggle('bio-no-bio', !bio);

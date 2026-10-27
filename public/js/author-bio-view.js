@@ -191,6 +191,9 @@
         if (textEl) {
             textEl.textContent = bio;
             textEl.hidden = !bio;
+            if (typeof GppBioTextScale !== 'undefined') {
+                GppBioTextScale.applyBioTextLengthScale(textEl, bio);
+            }
         }
         if (profileCard) {
             profileCard.classList.toggle('bio-no-bio', !bio);

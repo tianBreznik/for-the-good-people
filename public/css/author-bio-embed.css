@@ -101,7 +101,13 @@ body.reader-embed .author-bio-embed .bio-panel-profile .bio-card-main {
     min-height: 0;
 }
 
-body.reader-embed .author-bio-embed .bio-panel .bio-text,
+body.reader-embed .author-bio-embed .bio-panel .bio-text {
+    font-size: calc(
+        clamp(14px, 1vw, 17px) * var(--bio-card-content-scale) * var(--bio-text-length-scale, 1)
+    );
+    line-height: 1.35;
+}
+
 body.reader-embed .author-bio-embed .bio-panel .bio-latest-label {
     font-size: calc(clamp(14px, 1vw, 17px) * var(--bio-card-content-scale));
     line-height: 1.35;
@@ -110,6 +116,46 @@ body.reader-embed .author-bio-embed .bio-panel .bio-latest-label {
 body.reader-embed .author-bio-embed .bio-card-foot .bio-meta-item,
 body.reader-embed .author-bio-embed .bio-card-foot .bio-social-link {
     font-size: calc(clamp(12px, 0.9vw, 14px) * var(--bio-card-content-scale));
+}
+
+/* Location/website on one row; socials wrap on the next — avoids 4+ link overlap. */
+body.reader-embed .author-bio-embed .bio-card-foot {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: calc(6px * var(--bio-card-content-scale));
+    column-gap: calc(10px * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-card-foot .bio-meta,
+body.reader-embed .author-bio-embed .bio-card-foot .bio-links {
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-width: 0;
+    row-gap: calc(6px * var(--bio-card-content-scale));
+    column-gap: calc(10px * var(--bio-card-content-scale));
+}
+
+body.reader-embed .author-bio-embed .bio-card-foot .bio-links {
+    flex: 1 1 100%;
+}
+
+body.reader-embed .author-bio-embed .bio-card-foot .bio-meta-item > span:not(.bio-meta-icon),
+body.reader-embed .author-bio-embed .bio-card-foot .bio-meta-item > a {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: min(42vw, 14em);
+}
+
+body.reader-embed .author-bio-embed .bio-social-link {
+    min-width: 0;
+    max-width: 100%;
+}
+
+body.reader-embed .author-bio-embed .bio-social-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 body.reader-embed .author-bio-embed .bio-index-meta {

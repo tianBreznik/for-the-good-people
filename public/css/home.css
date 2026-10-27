@@ -1116,6 +1116,21 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
     -webkit-text-fill-color: #b1123a;
 }
 
+.bio-edit-char-hint {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: clamp(11px, 0.75vw, 13px);
+    line-height: 1.2;
+    color: rgba(0, 0, 0, 0.42);
+    -webkit-text-fill-color: rgba(0, 0, 0, 0.42);
+    text-align: right;
+}
+
+.bio-edit-char-hint.is-at-limit {
+    color: #b1123a;
+    -webkit-text-fill-color: #b1123a;
+}
+
 /* In-place editors — same type language as the bio strip */
 .bio-panel .bio-inline-input,
 .bio-panel .bio-meta-edit input,
@@ -1152,9 +1167,11 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
 
 .bio-panel .bio-inline-textarea {
     resize: none;
-    min-height: 2.2em;
-    max-height: 3.6em;
+    min-height: calc(1.35em * 2);
+    max-height: calc(1.35em * 5);
     line-height: 1.35;
+    overflow-y: auto;
+    font-style: italic;
 }
 
 /*
@@ -1310,7 +1327,6 @@ body.bio-editing .bio-panel #bio-capture-card {
 .bio-panel .bio-latest-label {
     font-family: Georgia, 'Times New Roman', Times, serif;
     line-height: 1.35;
-    font-size: clamp(14px, 1vw, 17px);
     color: transparent;
     -webkit-text-fill-color: transparent;
     background-image:
@@ -1397,6 +1413,7 @@ body.bio-editing .bio-panel #bio-capture-card {
     overflow: hidden;
     max-width: 100%;
     font-style: italic;
+    font-size: calc(clamp(14px, 1vw, 17px) * var(--bio-text-length-scale, 1));
 }
 
 .bio-panel .bio-latest-label {
