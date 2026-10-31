@@ -1,19 +1,19 @@
-import { Editor, Extension, Node } from 'https://esm.sh/@tiptap/core@2.11.5';
-import { Plugin, PluginKey, TextSelection, NodeSelection } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
-import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.11.5';
-import Underline from 'https://esm.sh/@tiptap/extension-underline@2.11.5';
-import Image from 'https://esm.sh/@tiptap/extension-image@2.11.5';
-import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.11.5';
-import Paragraph from 'https://esm.sh/@tiptap/extension-paragraph@2.11.5';
-import Blockquote from 'https://esm.sh/@tiptap/extension-blockquote@2.11.5';
-import HorizontalRule from 'https://esm.sh/@tiptap/extension-horizontal-rule@2.11.5';
-import TextAlign from 'https://esm.sh/@tiptap/extension-text-align@2.11.5';
-import Link from 'https://esm.sh/@tiptap/extension-link@2.11.5';
-import TextStyle from 'https://esm.sh/@tiptap/extension-text-style@2.11.5';
-import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2.11.5';
-import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2.11.5';
-import Color from 'https://esm.sh/@tiptap/extension-color@2.11.5';
-import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2.11.5';
+import { Editor, Extension, Node } from '@tiptap/core';
+import { Plugin, PluginKey, TextSelection, NodeSelection } from '@tiptap/pm/state';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import Image from '@tiptap/extension-image';
+import Placeholder from '@tiptap/extension-placeholder';
+import Paragraph from '@tiptap/extension-paragraph';
+import Blockquote from '@tiptap/extension-blockquote';
+import HorizontalRule from '@tiptap/extension-horizontal-rule';
+import TextAlign from '@tiptap/extension-text-align';
+import Link from '@tiptap/extension-link';
+import TextStyle from '@tiptap/extension-text-style';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
+import Color from '@tiptap/extension-color';
+import Highlight from '@tiptap/extension-highlight';
 import {
     createEditorPaginationExtension,
     requestEditorPaginationRefresh,

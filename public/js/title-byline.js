@@ -1,10 +1,10 @@
 /**
  * Title heading marker (data-doc-title) + byline widget that travels with it.
  */
-import { Extension } from 'https://esm.sh/@tiptap/core@2.11.5';
-import Heading from 'https://esm.sh/@tiptap/extension-heading@2.11.5';
-import { Plugin, PluginKey } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
-import { Decoration, DecorationSet } from 'https://esm.sh/@tiptap/pm@2.11.5/view';
+import { Extension } from '@tiptap/core';
+import Heading from '@tiptap/extension-heading';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 export const titleBylineKey = new PluginKey('titleByline');
 

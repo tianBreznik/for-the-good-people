@@ -6,9 +6,9 @@
  * CSS margin-collapse cannot inflate `used` and trigger a short mid-page spacer —
  * that was what parked body text in the gutter / footer.
  */
-import { Extension } from 'https://esm.sh/@tiptap/core@2.11.5';
-import { Plugin, PluginKey } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
-import { Decoration, DecorationSet } from 'https://esm.sh/@tiptap/pm@2.11.5/view';
+import { Extension } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
     applyCanonicalSheetCssVars,
     applyPageMetricsCssVars,
