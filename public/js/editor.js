@@ -269,6 +269,24 @@ function setContentTypeSelect(value, blogIdForFallback) {
     contentTypeSelect.value = normalized || '';
 }
 
+const POETRY_ALIGNMENTS = ['left', 'center', 'right', 'justify'];
+
+function getPoetryDialogAlign() {
+    const dialog = document.getElementById('poetry-dialog');
+    const active = dialog?.querySelector('.editor-dialog-align-btn.is-active');
+    const value = active?.getAttribute('data-poetry-align') || 'center';
+    return POETRY_ALIGNMENTS.includes(value) ? value : 'center';
+}
+
+function setPoetryDialogAlign(alignment) {
+    const dialog = document.getElementById('poetry-dialog');
+    if (!dialog) return;
+    const value = POETRY_ALIGNMENTS.includes(alignment) ? alignment : 'center';
+    dialog.querySelectorAll('.editor-dialog-align-btn').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-poetry-align') === value);
+    });
+}
+
 function clearPoetryDialogFields() {
     const bodyEl = document.getElementById('poetry-dialog-body');
     const authorEl = document.getElementById('poetry-dialog-author');
@@ -276,6 +294,7 @@ function clearPoetryDialogFields() {
     if (bodyEl) bodyEl.value = '';
     if (authorEl) authorEl.value = '';
     if (italicEl) italicEl.checked = false;
+    setPoetryDialogAlign('center');
 }
 
 function closePoetryDialog() {
@@ -292,6 +311,13 @@ function openPoetryDialog() {
     const authorEl = document.getElementById('poetry-dialog-author');
     const italicEl = document.getElementById('poetry-dialog-italic');
     if (!dialog || !bodyEl || !authorEl || !italicEl) return;
+    if (editor?.isActive('paragraph')) {
+        const attrs = editor.getAttributes('paragraph');
+        const v = attrs.variant;
+        if (v === 'poetry' || v === 'poetry-author') {
+            setPoetryDialogAlign(attrs.textAlign || 'center');
+        }
+    }
     dialog.hidden = false;
     dialog.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => bodyEl.focus());
@@ -305,6 +331,11 @@ function setupPoetryDialog() {
     if (!dialog || !bodyEl || !authorEl || !italicEl) return;
 
     dialog.querySelector('[data-poetry-cancel]')?.addEventListener('click', closePoetryDialog);
+    dialog.querySelectorAll('[data-poetry-align]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            setPoetryDialogAlign(btn.getAttribute('data-poetry-align'));
+        });
+    });
     // No backdrop dismiss — cancel is the only intentional close (keeps draft until insert).
     dialog.querySelector('[data-poetry-insert]')?.addEventListener('click', () => {
         if (!editor) return;
@@ -315,7 +346,8 @@ function setupPoetryDialog() {
         }
         const author = authorEl.value.trim();
         const italic = italicEl.checked;
-        const poemAttrs = { variant: 'poetry' };
+        const textAlign = getPoetryDialogAlign();
+        const poemAttrs = { variant: 'poetry', textAlign };
         if (italic) poemAttrs.poetryItalic = true;
         const nodes = [
             {
@@ -327,7 +359,7 @@ function setupPoetryDialog() {
         if (author) {
             nodes.push({
                 type: 'paragraph',
-                attrs: { variant: 'poetry-author' },
+                attrs: { variant: 'poetry-author', textAlign },
                 content: [{ type: 'text', text: `- ${author}` }]
             });
         }
@@ -632,6 +664,7 @@ function syncToolbarFromSelection() {
     if (highlightWrap) highlightWrap.style.setProperty('--highlight-label-color', textColor);
 
     const paraVariant = editor.getAttributes('paragraph').variant || null;
+    const resolvedAlign = resolvedTextAlignForToolbar();
     const bqVariant = editor.isActive('blockquote')
         ? editor.getAttributes('blockquote').variant || null
         : null;
@@ -652,10 +685,10 @@ function syncToolbarFromSelection() {
         superscript: editor.isActive('superscript'),
         'bullet-list': editor.isActive('bulletList'),
         'ordered-list': editor.isActive('orderedList'),
-        'align-left': editor.isActive({ textAlign: 'left' }),
-        'align-center': editor.isActive({ textAlign: 'center' }),
-        'align-right': editor.isActive({ textAlign: 'right' }),
-        'align-justify': editor.isActive({ textAlign: 'justify' }),
+        'align-left': resolvedAlign === 'left',
+        'align-center': resolvedAlign === 'center',
+        'align-right': resolvedAlign === 'right',
+        'align-justify': resolvedAlign === 'justify',
         link: editor.isActive('link'),
         subheading: inSubheading,
         blockquote: editor.isActive('blockquote') && bqVariant !== 'quote',
@@ -681,6 +714,71 @@ function syncToolbarFromSelection() {
 }
 
 const BLOCK_INDENT_MAX = 4;
+
+/** Poetry defaults to centered block layout when textAlign is unset. */
+function resolvedTextAlignForToolbar() {
+    if (!editor) return null;
+    if (editor.isActive('heading')) {
+        return editor.getAttributes('heading').textAlign || null;
+    }
+    if (editor.isActive('paragraph')) {
+        const attrs = editor.getAttributes('paragraph');
+        if (attrs.variant === 'poetry' || attrs.variant === 'poetry-author') {
+            return attrs.textAlign || 'center';
+        }
+        return attrs.textAlign || null;
+    }
+    return null;
+}
+
+function poetrySiblingAlignIndices(parent, index) {
+    const node = parent.child(index);
+    if (node.type.name !== 'paragraph') return [];
+    const variant = node.attrs.variant;
+    if (variant !== 'poetry' && variant !== 'poetry-author') return [];
+    const indices = new Set([index]);
+    if (variant === 'poetry') {
+        const next = parent.child(index + 1);
+        if (next?.type.name === 'paragraph' && next.attrs.variant === 'poetry-author') {
+            indices.add(index + 1);
+        }
+    } else if (index > 0) {
+        const prev = parent.child(index - 1);
+        if (prev.type.name === 'paragraph' && prev.attrs.variant === 'poetry') {
+            indices.add(index - 1);
+        }
+    }
+    return [...indices].sort((a, b) => a - b);
+}
+
+/** Toolbar align — poetry + optional author line move together. */
+function setBlockTextAlign(alignment) {
+    if (!editor || !POETRY_ALIGNMENTS.includes(alignment)) return false;
+    const { state } = editor;
+    const { $from } = state.selection;
+    if ($from.parent.type.name !== 'paragraph') {
+        return editor.chain().focus().setTextAlign(alignment).run();
+    }
+    const index = $from.index();
+    const parent = $from.parent;
+    const indices = poetrySiblingAlignIndices(parent, index);
+    if (!indices.length) {
+        return editor.chain().focus().setTextAlign(alignment).run();
+    }
+    const parentPos = $from.before();
+    let tr = state.tr;
+    let offset = parentPos + 1;
+    for (let i = 0; i < parent.childCount; i++) {
+        const child = parent.child(i);
+        if (indices.includes(i)) {
+            tr = tr.setNodeMarkup(offset, undefined, { ...child.attrs, textAlign: alignment });
+        }
+        offset += child.nodeSize;
+    }
+    editor.view.dispatch(tr);
+    editor.commands.focus();
+    return true;
+}
 
 function parseBlockIndent(element) {
     const raw = element?.getAttribute?.('data-indent');
@@ -2116,16 +2214,16 @@ function setupToolbar() {
                     break;
                 }
                 case 'align-left':
-                    chain.setTextAlign('left').run();
+                    setBlockTextAlign('left');
                     break;
                 case 'align-center':
-                    chain.setTextAlign('center').run();
+                    setBlockTextAlign('center');
                     break;
                 case 'align-right':
-                    chain.setTextAlign('right').run();
+                    setBlockTextAlign('right');
                     break;
                 case 'align-justify':
-                    chain.setTextAlign('justify').run();
+                    setBlockTextAlign('justify');
                     break;
                 case 'bullet-list':
                     chain.toggleBulletList().run();

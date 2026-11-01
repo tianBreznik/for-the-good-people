@@ -113,6 +113,13 @@
                 <input type="checkbox" id="poetry-dialog-italic">
                 Italic
             </label>
+            <span class="editor-dialog-label" id="poetry-dialog-align-label">Alignment</span>
+            <div class="editor-dialog-align-row" role="radiogroup" aria-labelledby="poetry-dialog-align-label">
+                <button type="button" class="popover-btn editor-dialog-align-btn" data-poetry-align="left" title="Align left">←</button>
+                <button type="button" class="popover-btn editor-dialog-align-btn is-active" data-poetry-align="center" title="Align center">↔</button>
+                <button type="button" class="popover-btn editor-dialog-align-btn" data-poetry-align="right" title="Align right">→</button>
+                <button type="button" class="popover-btn editor-dialog-align-btn" data-poetry-align="justify" title="Align justify">≡</button>
+            </div>
             <div class="editor-dialog-actions">
                 <button type="button" class="popover-btn" data-poetry-cancel>cancel</button>
                 <button type="button" class="popover-btn" data-poetry-insert>insert</button>

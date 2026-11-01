@@ -392,6 +392,13 @@
     margin-right: 0;
 }
 
+.article-page p[data-variant="poetry"][style*="text-align: justify"],
+.article-page p[data-variant="poetry-author"][style*="text-align: justify"] {
+    margin-left: 0;
+    margin-right: 0;
+    max-width: none;
+}
+
 .article-page p[data-variant="epigraph"] {
     font-style: italic;
     max-width: 76%;

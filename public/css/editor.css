@@ -954,6 +954,13 @@ body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
     margin-right: 0;
 }
 
+.tiptap-editor .ProseMirror p[data-variant="poetry"][style*="text-align: justify"],
+.tiptap-editor .ProseMirror p[data-variant="poetry-author"][style*="text-align: justify"] {
+    margin-left: 0;
+    margin-right: 0;
+    max-width: none !important;
+}
+
 .tiptap-editor .ProseMirror p[data-variant="epigraph"] {
     font-style: italic;
     max-width: 75%;
@@ -1510,6 +1517,23 @@ body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
 
 .editor-dialog-check input {
     margin: 0;
+}
+
+.editor-dialog-align-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0 0 0.85rem;
+}
+
+.editor-dialog-align-btn {
+    min-width: 2.25rem;
+    padding: 0.35rem 0.55rem;
+}
+
+.editor-dialog-align-btn.is-active {
+    outline: 2px solid var(--ink, #171717);
+    outline-offset: 1px;
 }
 
 .editor-dialog-actions {
