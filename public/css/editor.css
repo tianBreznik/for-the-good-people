@@ -463,6 +463,8 @@ body.editor-page {
     /* Match reader body measure (fixed with canonical sheet) */
     font-size: 1.0625rem;
     line-height: 1.42;
+    --article-doc-title-size: 1.5625rem;
+    --article-doc-title-leading: 1.14;
     color: #171717;
     background: transparent;
     resize: none;
@@ -597,16 +599,34 @@ body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
 .tiptap-editor .ProseMirror h2[data-indent="4"],
 .tiptap-editor .ProseMirror h3[data-indent="4"] { margin-left: 5.4em; }
 
+/* Article ink (matches article-prose.css body type). */
+.tiptap-editor .ProseMirror > h1[data-doc-title="true"],
+.tiptap-editor .ProseMirror > h2[data-doc-title="true"],
+.tiptap-editor .ProseMirror > h3[data-doc-title="true"],
+.tiptap-editor .ProseMirror > h2:not([data-doc-title="true"]) {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-image:
+        linear-gradient(#171717, #171717),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 -0.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: auto, 48px 48px;
+    background-blend-mode: multiply;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.45);
+    text-shadow: 0 0 0.45px rgba(0, 0, 0, 0.32);
+    -webkit-font-smoothing: none;
+}
+
 /* Document title — data-doc-title heading (editable, positionable). */
 .tiptap-editor .ProseMirror > h1[data-doc-title="true"],
 .tiptap-editor .ProseMirror > h2[data-doc-title="true"],
 .tiptap-editor .ProseMirror > h3[data-doc-title="true"] {
-    font-size: 1.42rem;
-    line-height: 1.16;
+    font-size: var(--article-doc-title-size);
+    line-height: var(--article-doc-title-leading);
     font-weight: 700;
     letter-spacing: normal;
     margin: 0 0 0.3125rem;
-    color: #141414;
     min-height: 1.2em;
 }
 
@@ -675,14 +695,20 @@ body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
     font-weight: 700;
 }
 
-/* Body subheading — clearly below title (size + weight), above body. */
+/* Toolbar subtitle (§) — below title, above body. */
 .tiptap-editor .ProseMirror > h2:not([data-doc-title="true"]) {
     font-size: 1.18rem;
     line-height: 1.28;
     font-weight: 600;
     margin-top: 1.15em;
     margin-bottom: 0.35em;
-    color: #141414;
+}
+
+.tiptap-editor .ProseMirror > h1[data-doc-title="true"] + .editor-title-byline + h2:not([data-doc-title="true"]),
+.tiptap-editor .ProseMirror > h2[data-doc-title="true"] + .editor-title-byline + h2:not([data-doc-title="true"]),
+.tiptap-editor .ProseMirror > h3[data-doc-title="true"] + .editor-title-byline + h2:not([data-doc-title="true"]),
+.tiptap-editor .ProseMirror > h1[data-doc-title="true"] + h2:not([data-doc-title="true"]) {
+    margin-top: 0.45em;
 }
 
 .tiptap-editor .ProseMirror > h3:not([data-doc-title="true"]) {

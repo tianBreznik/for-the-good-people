@@ -3,6 +3,11 @@
  * Scope: .article-page (both surfaces). Keep home.css / blog.css for chrome only.
  */
 
+.article-page {
+    --article-doc-title-size: 1.5625rem;
+    --article-doc-title-leading: 1.14;
+}
+
 /* —— Base ink type —— */
 .article-page p,
 .article-page h1,
@@ -86,7 +91,7 @@
 .article-page h2[data-indent="4"],
 .article-page h3[data-indent="4"] { margin-left: 5.4em; }
 
-/* —— Title / masthead (no ink) —— */
+/* —— Title / toolbar subtitle (§) — same grain ink as body —— */
 .article-title-block {
     margin: 0 0 0.65rem;
     break-inside: avoid;
@@ -104,18 +109,8 @@
 .article-page .article-title-block > h2[data-doc-title],
 .article-page .article-title-block > h3[data-doc-title] {
     margin: 0 0 0.3125rem;
-    color: #141414;
-    -webkit-text-fill-color: #141414;
-    background: none;
-    background-image: none;
-    -webkit-background-clip: border-box;
-    background-clip: border-box;
-    -webkit-text-stroke: 0;
-    text-shadow: none;
-    -webkit-font-smoothing: antialiased;
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 1.42rem;
-    line-height: 1.16;
+    font-size: var(--article-doc-title-size);
+    line-height: var(--article-doc-title-leading);
     font-weight: 700;
     letter-spacing: normal;
 }
@@ -158,22 +153,18 @@
 }
 
 .article-page .article-inline-masthead .title {
-    color: #141414;
-    -webkit-text-fill-color: #141414;
-    background: none;
-    background-image: none;
-    -webkit-background-clip: border-box;
-    background-clip: border-box;
-    -webkit-text-stroke: 0;
-    text-shadow: none;
-    -webkit-font-smoothing: antialiased;
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 1.42rem;
-    line-height: 1.16;
+    font-size: var(--article-doc-title-size);
+    line-height: var(--article-doc-title-leading);
     font-weight: 700;
     letter-spacing: normal;
     margin-top: 0;
     margin-bottom: 0.3125rem;
+}
+
+/* Subtitle (§) directly under masthead — keep hierarchy, less section break */
+.article-page .article-title-block + .article-page-body > h2:first-child,
+.article-page .article-inline-masthead + .article-page-body > h2:first-child {
+    margin-top: 0.45em;
 }
 
 .article-byline {
