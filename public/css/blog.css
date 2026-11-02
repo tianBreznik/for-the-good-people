@@ -17,7 +17,7 @@ body {
     isolation: isolate;
 }
 
-/* During handoff/bootstrap, never show comment UI before the article layout is ready. */
+/* During bootstrap, keep comment UI out of the way until the article layout is ready. */
 body.reader-loading #comment-screen {
     display: none !important;
     visibility: hidden;

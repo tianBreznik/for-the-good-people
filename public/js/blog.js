@@ -1060,7 +1060,7 @@ function ensureCommentsVisible() {
 
 function renderReaderHandoffIfPresent() {
     const payload = readReaderHandoffPayload();
-    if (!payload) return;
+    if (!payload) return false;
     /* Sheet size is canonical (page-geometry) — ignore measured preview rects. */
     const titleTag = document.querySelector('title');
     const title = payload.title || '';
@@ -1069,9 +1069,16 @@ function renderReaderHandoffIfPresent() {
     titleTag.textContent = title || 'Good People';
     currentBlogMeta = { title, publishedAt, author };
     if (typeof payload.article === 'string' && payload.article.trim()) {
+        handoffArticleHtml = payload.article;
         renderArticleBody(payload.article, { provisional: true });
+        return true;
     }
+    return false;
 }
+
+/** Session handoff spread is painted — skip Firestore re-render when HTML matches. */
+let handoffSpreadPainted = false;
+let handoffArticleHtml = null;
 
 resolveBlogDocument(blogId)
     .then((doc) => {
@@ -1469,6 +1476,25 @@ function renderThreadedComments() {
     mountCommentScreenForLayout(lastArticlePageElForComments);
 }
 
+function finalizeHandoffSpreadWithoutRebuild() {
+    readerReady = true;
+    handoffSpreadPainted = false;
+    handoffArticleHtml = null;
+    const bodyEl = document.getElementById('article-body');
+    if (bodyEl && typeof ContentRefs !== 'undefined') {
+        if (ContentRefs.linkifyElement) ContentRefs.linkifyElement(bodyEl);
+        if (ContentRefs.enhanceAuthorRefs) ContentRefs.enhanceAuthorRefs(bodyEl);
+    }
+    syncNotesGateUi();
+    setupCommentSection();
+    setupCommentContentRefs();
+    attachAnnotationsListener();
+    bindAnnotationSelectionUi();
+    clearReaderHandoffPayload();
+    ensureCommentsVisible();
+    if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
+}
+
 const setupBlog = (data) => {
     setupFootnoteRefNavigation();
     const titleTag = document.querySelector('title');
@@ -1483,7 +1509,24 @@ const setupBlog = (data) => {
     numberofcomments = data.numberofcomments;
 
     const render = () => {
-        renderArticleBody(data.article);
+        const articleHtml = data.article;
+        const reuseHandoff =
+            handoffSpreadPainted &&
+            handoffArticleHtml != null &&
+            String(articleHtml || '') === String(handoffArticleHtml);
+
+        if (reuseHandoff) {
+            if (READER_EMBED) bindCommentInputEmbedFocusFix();
+            bindReaderSpreadAndAnnotationListeners();
+            applyAnnotationHighlights();
+            renderAnnotationList();
+            finalizeHandoffSpreadWithoutRebuild();
+            return;
+        }
+
+        renderArticleBody(articleHtml);
+        handoffSpreadPainted = false;
+        handoffArticleHtml = null;
         syncNotesGateUi();
         setupCommentSection();
         setupCommentContentRefs();
@@ -2770,17 +2813,9 @@ function renderArticleSpread(blocks, footnoteDefMap) {
     articleBody.dataset.lastPage = 'left';
 }
 
-const renderArticleBody = (articleData, options = {}) => {
-    articleBlocksCache = parseArticleBlocks(articleData);
-    renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
-    syncNotesGateUi();
-    if (READER_EMBED) bindCommentInputEmbedFocusFix();
-    applyAnnotationHighlights();
-    renderAnnotationList();
-
+function bindReaderSpreadAndAnnotationListeners() {
     if (!spreadResizeBound) {
         spreadResizeBound = true;
-        /* Pack is viewport-independent; resize only updates display scale. */
         const onSheetScale = () => {
             clearTimeout(spreadReflowTimer);
             spreadReflowTimer = setTimeout(() => {
@@ -2793,20 +2828,24 @@ const renderArticleBody = (articleData, options = {}) => {
             window.visualViewport.addEventListener('resize', onSheetScale);
         }
     }
-
     if (!annotationLayoutListenersBound) {
         annotationLayoutListenersBound = true;
-        /*
-         * Overlay lives inside #article-body — highlights scroll with the sheet.
-         * Re-measuring on every scroll made mobile paint stutter / “pop in”.
-         * Only reflow on viewport size changes.
-         */
         const onLayoutResize = () => scheduleAnnotationLayoutSync();
         window.addEventListener('resize', onLayoutResize);
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', onLayoutResize);
         }
     }
+}
+
+const renderArticleBody = (articleData, options = {}) => {
+    articleBlocksCache = parseArticleBlocks(articleData);
+    renderArticleSpread(articleBlocksCache.blocks, articleBlocksCache.footnoteDefs);
+    syncNotesGateUi();
+    if (READER_EMBED) bindCommentInputEmbedFocusFix();
+    applyAnnotationHighlights();
+    renderAnnotationList();
+    bindReaderSpreadAndAnnotationListeners();
 
     if (options.provisional) {
         scheduleEmbedParentReadyAfterPaint();
@@ -2820,30 +2859,26 @@ const renderArticleBody = (articleData, options = {}) => {
 }
 
 applyReaderSheetScale();
-renderReaderHandoffIfPresent();
+if (renderReaderHandoffIfPresent()) {
+    handoffSpreadPainted = true;
+}
 
 const addArticle = (ele, data) => {
     data = data.split("\n").filter(item => item.length);
-    // console.log(data);
 
     data.forEach(item => {
-        // check for heading
-        if(item[0] == '#'){
+        if (item[0] == '#') {
             let hCount = 0;
             let i = 0;
-            while(item[i] == '#'){
+            while (item[i] == '#') {
                 hCount++;
                 i++;
             }
-            let tag = `h${hCount}`;
-            ele.innerHTML += `<${tag}>${item.slice(hCount, item.length)}</${tag}>`
-        } 
-        //checking for image format
-        else if(item[0] == "!" && item[1] == "["){
+            ele.innerHTML += `<h${hCount}>${item.slice(i)}</h${hCount}>`;
+        } else if (item[0] == "!" && item[1] == "[") {
             let seperator;
-
-            for(let i = 0; i <= item.length; i++){
-                if(item[i] == "]" && item[i + 1] == "(" && item[item.length - 1] == ")"){
+            for (let i = 0; i <= item.length; i++) {
+                if (item[i] == "]" && item[i + 1] == "(" && item[item.length - 1] == ")") {
                     seperator = i;
                 }
             }
@@ -2853,13 +2888,11 @@ const addArticle = (ele, data) => {
             ele.innerHTML += `
             <img src="${src}" alt="${alt}" class="article-image">
             `;
-        }
-
-        else{
+        } else {
             ele.innerHTML += `<p>${item}</p>`;
         }
-    })
-}
+    });
+};
 
 function scrollToAnchor(scrollid) {
     const target = document.getElementById(scrollid);

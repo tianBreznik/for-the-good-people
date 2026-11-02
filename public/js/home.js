@@ -376,7 +376,7 @@ function applyAuthorBioHighlight(authorName) {
 
     document.querySelectorAll('.blog-card.author-card').forEach((authorCard) => {
         const authorCardName = authorCard.getAttribute('data-author') || '';
-        if (authorCardName.toLowerCase() === 'about') return;
+        if (isAuthorRailUtilityCard(authorCardName)) return;
         authorCard.classList.remove('link-glow', 'bio-dim', 'hover', 'tap-active', 'author-bio-active');
         if (authorCardName === name) {
             // Tap mode: tap-active only — link-glow’s transparent fill + hidden
@@ -2265,8 +2265,10 @@ function mountHomeWall(blogs) {
     // Desktop search control under author tags (hidden on mobile via CSS)
     createSearchCard(authorSection);
     
-    // Add a static ABOUT card under authors
+    // Add a static ABOUT card under authors, then POST → editor
     createAboutCard(authorSection);
+    createPostCard(authorSection);
+    setupPostCardNavigation();
 
     // About floating card (bio-card look — hover open, drag, click-away close)
     const aboutPopup = document.createElement('aside');
@@ -2344,7 +2346,7 @@ function mountHomeWall(blogs) {
     setupHoverInteractions();
     
     const authorCardsForBio = Array.from(document.querySelectorAll('.blog-card.author-card')).filter(
-        card => (card.getAttribute('data-author') || '').toLowerCase() !== 'about'
+        card => !isAuthorRailUtilityCard(card.getAttribute('data-author'))
     );
     const bioEl = document.querySelector('.bio-panel');
     if (bioEl && authorCardsForBio.length) {
@@ -3656,6 +3658,7 @@ function createSocialLinkEl(rawUrl) {
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.title = parsed.href;
+    a.dataset.bioLinkFull = String(rawUrl || '').trim();
 
     a.appendChild(createSocialIconEl(parsed));
 
@@ -4033,6 +4036,10 @@ function fitBioPanelAuthorNames() {
         el.style.maxWidth = '100%';
         syncBioAvatarToHandleLine(scale);
     });
+    const bioFoot = document.getElementById('bio-view-block');
+    if (bioFoot && typeof GppBioSocial !== 'undefined' && GppBioSocial.packBioCardFoot) {
+        GppBioSocial.packBioCardFoot(bioFoot);
+    }
 }
 
 function applyAuthorProfileToPanel(authorName, profile) {
@@ -4089,13 +4096,7 @@ function applyAuthorProfileToPanel(authorName, profile) {
         metaEl.innerHTML = '';
         const rows = [
             p.location ? { icon: '📍', text: p.location } : null,
-            p.website
-                ? {
-                      icon: '🔗',
-                      text: p.website.replace(/^https?:\/\//i, ''),
-                      href: p.website
-                  }
-                : null
+            p.website ? { icon: '🔗', href: p.website } : null,
         ].filter(Boolean);
         if (!rows.length) {
             metaEl.hidden = true;
@@ -4116,10 +4117,13 @@ function applyAuthorProfileToPanel(authorName, profile) {
                     a.href = row.href;
                     a.target = '_blank';
                     a.rel = 'noopener noreferrer';
-                    a.textContent = row.text;
+                    a.dataset.bioLinkFull = row.href;
+                    a.textContent = row.href.replace(/^https?:\/\//i, '');
                     li.appendChild(a);
                 } else {
                     const span = document.createElement('span');
+                    span.className = 'bio-meta-text';
+                    span.dataset.bioTextFull = row.text;
                     span.textContent = row.text;
                     li.appendChild(span);
                 }
@@ -4225,6 +4229,12 @@ function applyAuthorProfileToPanel(authorName, profile) {
     if (editBtn) editBtn.hidden = !isSelf;
 
     syncAuthorCardEmoji(name);
+    const bioFoot = document.getElementById('bio-view-block');
+    if (bioFoot && typeof GppBioSocial !== 'undefined' && GppBioSocial.packBioCardFoot) {
+        requestAnimationFrame(() => {
+            GppBioSocial.packBioCardFoot(bioFoot);
+        });
+    }
     requestAnimationFrame(() => fitBioPanelAuthorNames());
 }
 
@@ -4361,6 +4371,11 @@ function createAuthorCard(authorName, section) {
     `;
 }
 
+function isAuthorRailUtilityCard(name) {
+    const n = String(name || '').toLowerCase();
+    return n === 'about' || n === 'post';
+}
+
 function createAboutCard(section) {
     section.innerHTML += `
         <div class="cardcontainer">
@@ -4369,6 +4384,26 @@ function createAboutCard(section) {
             </div>
         </div>
     `;
+}
+
+function createPostCard(section) {
+    section.innerHTML += `
+        <div class="cardcontainer">
+            <div class="blog-card author-card" data-author="post" id="post-card" style="cursor: pointer;">
+                <h1 class="blog-title" id="post" data-text="post">post</h1>
+            </div>
+        </div>
+    `;
+}
+
+function setupPostCardNavigation() {
+    const card = document.getElementById('post-card');
+    if (!card) return;
+    card.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.location.href = '/editor';
+    });
 }
 
 function createSearchCard(section) {
@@ -5035,7 +5070,7 @@ function syncSelfAuthorTagLabel(user, isRealPerson) {
 
     document.querySelectorAll('.blog-card.author-card').forEach((card) => {
         const name = (card.getAttribute('data-author') || '').trim();
-        if (!name || name.toLowerCase() === 'about') return;
+        if (!name || isAuthorRailUtilityCard(name)) return;
         const title = card.querySelector('.blog-title');
         if (!title) return;
 
@@ -5713,7 +5748,7 @@ function setupHoverInteractions() {
         const name = String(authorName || '');
         authorCards.forEach((authorCard) => {
             const authorCardName = authorCard.getAttribute('data-author') || '';
-            if (authorCardName.toLowerCase() === 'about' || authorCard.id === 'search-card') {
+            if (isAuthorRailUtilityCard(authorCardName) || authorCard.id === 'search-card') {
                 authorCard.classList.remove('hover', 'link-glow');
                 return;
             }
@@ -5750,7 +5785,7 @@ function setupHoverInteractions() {
         
         authorCard.addEventListener('mouseenter', () => {
                 if (bioInteractionsLocked()) return;
-            if ((authorName || '').toLowerCase() === 'about') return;
+            if (isAuthorRailUtilityCard(authorName)) return;
                 if (authorCard.id === 'search-card') return;
                 applyCrossHighlight(authorName, { washOthers: true });
         });

@@ -56,10 +56,10 @@ html[data-home-texture='stucco'] #mid-text,
 html[data-home-texture='stucco'] #mid-text::before,
 html[data-home-texture='stucco'] #bottom-text,
 html[data-home-texture='stucco'] #bottom-text::before,
-html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
-html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
-html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview::before {
     background-image: url(/img/STUCCO.JPG) !important;
     background-size: auto !important;
     background-position: center !important;
@@ -75,10 +75,10 @@ html[data-home-texture='stucco8'] #mid-text,
 html[data-home-texture='stucco8'] #mid-text::before,
 html[data-home-texture='stucco8'] #bottom-text,
 html[data-home-texture='stucco8'] #bottom-text::before,
-html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
-html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
-html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview::before {
     background-image: url(/img/STUCCO8.JPG) !important;
     background-size: auto !important;
     background-position: center !important;
@@ -100,8 +100,8 @@ html[data-home-texture='stucco8'] #bottom-text::before {
 }
 
 /* Home titles — raised emboss; mid-point between solid-bright and full-grain */
-html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview::before {
     top: 1.5px;
     left: 1.5px;
     filter: brightness(0.95) contrast(1.18) blur(0.0005px) !important;
@@ -110,8 +110,8 @@ html[data-home-texture='stucco'] .blog-card:not(.section-heading-card):not([data
         1.5px 1.5px 2px rgba(35, 28, 22, 0.48);
 }
 
-html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview::before {
     top: 1.5px;
     left: 1.5px;
     filter: brightness(0.94) contrast(1.18) blur(0.0005px) !important;
@@ -124,7 +124,9 @@ html[data-home-texture='stucco8'] .blog-card:not(.section-heading-card):not([dat
 html[data-home-texture] .section-heading-card .blog-title,
 html[data-home-texture] .section-heading-card .blog-title::before,
 html[data-home-texture] .blog-card[data-author='about'] .blog-title,
-html[data-home-texture] .blog-card[data-author='about'] .blog-title::before {
+html[data-home-texture] .blog-card[data-author='about'] .blog-title::before,
+html[data-home-texture] .blog-card[data-author='post'] .blog-title,
+html[data-home-texture] .blog-card[data-author='post'] .blog-title::before {
     background-image: none !important;
 }
 
@@ -773,11 +775,14 @@ body.bio-editing .bio-panel-profile.bio-no-bio .bio-card-head {
     flex: 0 0 auto;
     display: flex;
     flex-direction: row;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px 14px;
+    align-content: flex-start;
+    justify-content: flex-start;
+    gap: 8px 12px;
     min-width: 0;
     width: 100%;
+    max-width: 100%;
     margin-top: auto;
     padding-top: 4px;
 }
@@ -953,25 +958,23 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
     font-style: italic;
 }
 
+/* Flatten meta + social into one wrapping chip row on the view foot (packBioCardFoot). */
+.bio-card-foot.bio-view-only .bio-meta,
+.bio-card-foot.bio-view-only .bio-links {
+    display: contents;
+}
+
 .bio-meta {
     list-style: none;
     margin: 0;
     padding: 0;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 10px 14px;
-    align-items: center;
-    min-width: 0;
-    width: auto;
-    flex: 0 1 auto;
 }
 
 .bio-meta-item {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    max-width: none;
+    max-width: 100%;
     min-width: 0;
     flex: 0 0 auto;
     font-family: Georgia, 'Times New Roman', Times, serif;
@@ -983,9 +986,11 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
 .bio-meta-item > span:not(.bio-meta-icon),
 .bio-meta-item > a {
     min-width: 0;
-    overflow: visible;
-    text-overflow: clip;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 100%;
 }
 
 .bio-meta-item a,
@@ -1008,15 +1013,7 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
 }
 
 .bio-links {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 10px 14px;
     margin: 0;
-    align-items: center;
-    min-width: 0;
-    width: auto;
-    flex: 0 1 auto;
 }
 
 .bio-links a,
@@ -1031,7 +1028,8 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
     align-items: center;
     gap: 7px;
     flex: 0 0 auto;
-    max-width: none;
+    min-width: 0;
+    max-width: 100%;
     font-family: Georgia, 'Times New Roman', Times, serif;
     font-size: clamp(13px, 0.95vw, 15px);
     line-height: 1.3;
@@ -1062,6 +1060,9 @@ body.bio-editing .bio-panel .bio-avatar-change.bio-edit-only:active {
 
 .bio-social-label {
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .bio-actions {
@@ -2340,7 +2341,7 @@ body.home-titles-instant .home-main-stage {
 /* Keep about’s meme drop-shadow (::before); hide carved layer on title cards.
  * Do NOT hide on author @tags — their stone face is the ::before; with white-rim
  * gone, :hover { display:none } made the handle vanish. */
-.blog-card:not(.author-card):not([data-author="about"]):hover .blog-title::before,
+.blog-card:not(.author-card):not([data-author="about"]):not([data-author="post"]):hover .blog-title::before,
 .blog-card.preview-source .blog-title::before {
     display: none;
 }
@@ -2979,8 +2980,8 @@ html[data-home-texture] #auth-login-card[data-logout="true"]:hover .blog-title {
  * Solid black Impact + letterpress offset — no wall stone fill.
  * Must beat html[data-home-texture] .blog-title { background-image: url(...) !important }.
  */
-html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
-html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
 .auth-menu-stack .blog-title,
 .auth-menu-stack .blog-title::before {
     font-family: 'Impact', Haettenschweiler, 'Arial Narrow Bold', sans-serif !important;
@@ -2996,7 +2997,7 @@ html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):n
     -webkit-text-stroke: 0 !important;
 }
 
-html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
 .auth-menu-stack .blog-title {
     --auth-ink: #111111;
     color: var(--auth-ink) !important;
@@ -3004,7 +3005,7 @@ html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):n
     text-shadow: none !important;
 }
 
-html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
 .auth-menu-stack .blog-title::before {
     color: var(--auth-ink) !important;
     -webkit-text-fill-color: var(--auth-ink) !important;
@@ -3016,7 +3017,7 @@ html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):n
     opacity: 0.55;
 }
 
-html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):hover .blog-title,
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']):hover .blog-title,
 .auth-menu-stack .blog-card:hover .blog-title,
 .auth-menu-stack .blog-card:not(.author-card):hover .blog-title {
     background-image: none !important;
@@ -3025,7 +3026,7 @@ html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):n
     /* --auth-ink set by JS on pointerenter for a random hue */
 }
 
-html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):hover .blog-title::before,
+html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']):hover .blog-title::before,
 .auth-menu-stack .blog-card:hover .blog-title::before,
 .auth-menu-stack .blog-card:not(.author-card):hover .blog-title::before {
     display: block !important;
@@ -3038,33 +3039,33 @@ html[data-home-texture] .auth-menu-stack .blog-card:not(.section-heading-card):n
  * grycon: lift toward fog. stucco / stucco8: darken so wash doesn’t outshine the link.
  * When ::before emboss is hidden, nudge the base glyph so it doesn’t jump.
  * 3px is empirical (emboss top/left 1–1.5px + shadow extent), not the raw offset. */
-.blog-card.hover:not([data-author="about"]) .blog-title,
+.blog-card.hover:not([data-author="about"]):not([data-author="post"]) .blog-title,
 .blog-card.bio-dim .blog-title {
     filter: brightness(1.2) !important;
     transform: translate(3px, 3px);
 }
 
-html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]) .blog-title,
+html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]):not([data-author="post"]) .blog-title,
 html[data-home-texture='stucco'] .blog-card.bio-dim .blog-title,
-html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]) .blog-title,
+html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]):not([data-author="post"]) .blog-title,
 html[data-home-texture='stucco8'] .blog-card.bio-dim .blog-title {
     filter: brightness(0.78) !important;
     transform: translate(3px, 3px);
 }
 
-.blog-card.hover:not([data-author="about"]) .blog-title::before,
+.blog-card.hover:not([data-author="about"]):not([data-author="post"]) .blog-title::before,
 .blog-card.bio-dim .blog-title::before,
 .blog-card.author-card.link-glow .blog-title::before {
     display: none;
 }
 
-.blog-card.hover:not([data-author="about"]):hover .blog-title {
+.blog-card.hover:not([data-author="about"]):not([data-author="post"]):hover .blog-title {
     filter: brightness(1.2) !important;
     transform: translate(3px, 3px);
 }
 
-html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]):hover .blog-title,
-html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]):hover .blog-title {
+html[data-home-texture='stucco'] .blog-card.hover:not([data-author="about"]):not([data-author="post"]):hover .blog-title,
+html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]):not([data-author="post"]):hover .blog-title {
     filter: brightness(0.78) !important;
     transform: translate(3px, 3px);
 }
@@ -3432,6 +3433,45 @@ body.search-closing .home-main-pane:has(.section-title-container:hover)::after {
         0 0 3px rgba(0,0,0,0.45);
     pointer-events: none;
     z-index: -1; /* render behind the primary text */
+}
+
+/* POST: same meme shape as about — red outline, red fill on hover */
+.blog-card[data-author="post"]:hover .blog-title {
+    color: #dc2626;
+    -webkit-text-fill-color: #dc2626;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    filter: none;
+    background-image: none;
+}
+
+.blog-card[data-author="post"]:hover .blog-title::before {
+    display: block;
+}
+
+.blog-card[data-author="post"] .blog-title {
+    font-family: 'Impact', sans-serif;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    -webkit-text-stroke: 1px #dc2626;
+    text-shadow: none;
+    background-image: none;
+    position: relative;
+    z-index: 1;
+}
+
+.blog-card[data-author="post"] .blog-title::before {
+    content: attr(data-text);
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    text-shadow:
+        0 4px 5px rgba(0,0,0,0.7),
+        0 0 3px rgba(0,0,0,0.45);
+    pointer-events: none;
+    z-index: -1;
 }
 
 /* Each column gets a perfectly aligned texture slice.
@@ -3997,20 +4037,20 @@ body.search-closing .home-main-stage {
         background-repeat: repeat;
     }
 
-    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
-    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
-    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before,
-    html[data-home-texture='grycon'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
-    html[data-home-texture='grycon'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
-    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
-    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before,
-    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title,
-    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-title::before,
-    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview,
-    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']) .blog-overview::before {
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview,
+    .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview::before,
+    html[data-home-texture='grycon'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
+    html[data-home-texture='grycon'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview,
+    html[data-home-texture='stucco'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview::before,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title::before,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview,
+    html[data-home-texture='stucco8'] .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-overview::before {
         background-size: var(--home-mobile-bg-size-x) auto !important;
         background-position: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw)) var(--home-mobile-bg-y) !important;
         background-repeat: repeat !important;

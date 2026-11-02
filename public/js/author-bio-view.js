@@ -204,13 +204,7 @@
             metaEl.innerHTML = '';
             const rows = [
                 p.location ? { icon: '📍', text: p.location } : null,
-                p.website
-                    ? {
-                          icon: '🔗',
-                          text: p.website.replace(/^https?:\/\//i, ''),
-                          href: p.website,
-                      }
-                    : null,
+                p.website ? { icon: '🔗', href: p.website } : null,
             ].filter(Boolean);
             if (!rows.length) {
                 metaEl.hidden = true;
@@ -231,10 +225,13 @@
                         a.href = row.href;
                         a.target = '_blank';
                         a.rel = 'noopener noreferrer';
-                        a.textContent = row.text;
+                        a.dataset.bioLinkFull = row.href;
+                        a.textContent = row.href.replace(/^https?:\/\//i, '');
                         li.appendChild(a);
                     } else {
                         const span = document.createElement('span');
+                        span.className = 'bio-meta-text';
+                        span.dataset.bioTextFull = row.text;
                         span.textContent = row.text;
                         li.appendChild(span);
                     }
@@ -319,6 +316,10 @@
             capture.syncCaptureCardVisibility(captureUrl, { editing: false });
         }
 
+        const bioFoot = document.getElementById('bio-view-block');
+        if (bioFoot && social?.packBioCardFoot) {
+            requestAnimationFrame(() => social.packBioCardFoot(bioFoot));
+        }
         requestAnimationFrame(() => fitBioPanelAuthorNames());
     }
 

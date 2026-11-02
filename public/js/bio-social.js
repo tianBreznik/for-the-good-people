@@ -156,6 +156,86 @@ function createSocialIconEl(parsed) {
     return icon;
 }
 
+/** Full website label (no https://); use CSS ellipsis unless the chip overflows its row slot. */
+function formatBioWebsiteDisplay(rawUrl) {
+    const title = String(rawUrl || '').trim();
+    const label = title.replace(/^https?:\/\//i, '');
+    return { label, title };
+}
+
+function applyBioFootLabelsFull(footEl) {
+    footEl.querySelectorAll('.bio-website-link[data-bio-link-full]').forEach((a) => {
+        const fmt = formatBioWebsiteDisplay(a.dataset.bioLinkFull);
+        a.textContent = fmt.label;
+        a.title = fmt.title;
+    });
+
+    footEl.querySelectorAll('.bio-meta-text[data-bio-text-full]').forEach((el) => {
+        const full = el.dataset.bioTextFull || '';
+        el.textContent = full;
+        el.removeAttribute('title');
+    });
+
+    footEl.querySelectorAll('.bio-social-link[data-bio-link-full]').forEach((a) => {
+        const parsed = parseSocialLink(a.dataset.bioLinkFull);
+        if (!parsed) return;
+        const labelEl = a.querySelector('.bio-social-label');
+        if (!labelEl) return;
+        labelEl.textContent = parsed.label;
+        a.title = parsed.href;
+    });
+}
+
+/** Cap chip width only when a row is wider than the foot (CSS ellipsis on the label). */
+function applyBioFootChipWidthCaps(footEl) {
+    const footW = Math.floor(footEl.getBoundingClientRect().width || footEl.clientWidth || 0);
+    if (footW < 8) return;
+
+    const chips = [...footEl.querySelectorAll('.bio-meta-item, .bio-social-link')];
+    chips.forEach((chip) => chip.style.removeProperty('max-width'));
+    void footEl.offsetHeight;
+
+    const rows = new Map();
+    chips.forEach((chip) => {
+        const top = Math.round(chip.getBoundingClientRect().top);
+        if (!rows.has(top)) rows.set(top, []);
+        rows.get(top).push(chip);
+    });
+
+    const gap = 12;
+    const minChip = 44;
+
+    rows.forEach((rowChips) => {
+        const widths = rowChips.map((c) => c.getBoundingClientRect().width);
+        let total = widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, rowChips.length - 1);
+        if (total <= footW + 1) return;
+
+        let excess = total - footW;
+        for (let i = rowChips.length - 1; i >= 0 && excess > 0; i--) {
+            const w = widths[i];
+            const shrink = Math.min(excess, Math.max(0, w - minChip));
+            if (shrink <= 0) continue;
+            rowChips[i].style.maxWidth = `${Math.floor(w - shrink)}px`;
+            widths[i] = w - shrink;
+            excess -= shrink;
+        }
+    });
+}
+
+/**
+ * Pack bio foot chips: full link text, ellipsis only when a chip exceeds its row in the card.
+ */
+function packBioCardFoot(footEl) {
+    if (!footEl) return;
+    applyBioFootLabelsFull(footEl);
+    applyBioFootChipWidthCaps(footEl);
+}
+
+/** @deprecated alias */
+function layoutBioCardFoot(footEl) {
+    packBioCardFoot(footEl);
+}
+
 function createSocialLinkEl(rawUrl) {
     const parsed = parseSocialLink(rawUrl);
     if (!parsed) return null;
@@ -166,6 +246,7 @@ function createSocialLinkEl(rawUrl) {
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.title = parsed.href;
+    a.dataset.bioLinkFull = String(rawUrl || '').trim();
 
     a.appendChild(createSocialIconEl(parsed));
 
@@ -178,6 +259,9 @@ function createSocialLinkEl(rawUrl) {
 
     global.GppBioSocial = {
         parseSocialLink,
+        formatBioWebsiteDisplay,
+        packBioCardFoot,
+        layoutBioCardFoot,
         createSocialLinkEl,
     };
 })(typeof window !== 'undefined' ? window : globalThis);
