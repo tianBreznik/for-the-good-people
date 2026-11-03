@@ -91,6 +91,7 @@ const getUserWrittenBlogs = (user) => {
                 rows.sort((a, b) => blogSortMs(b.data()) - blogSortMs(a.data()));
                 blogsSection.innerHTML = '';
                 rows.forEach((blog) => createBlog(blog));
+                ensureDashboardNewPostLink();
             })
             .catch((err) => {
                 console.log(err);
@@ -103,14 +104,31 @@ const getUserWrittenBlogs = (user) => {
     tokenPromise.then(runQuery).catch(runQuery);
 }
 
+const dashboardNewPostHtml = `
+    <div class="dashboard-new-post-wrap">
+        <a href="/editor" class="dashboard-new-post" data-text="new post">new post</a>
+    </div>
+`;
+
+function ensureDashboardNewPostLink() {
+    if (!blogsSection || blogsSection.querySelector('.dashboard-new-post-wrap')) return;
+    blogsSection.insertAdjacentHTML('beforeend', dashboardNewPostHtml);
+}
+
+function isPdfBlog(data) {
+    if (!data || typeof data !== 'object') return false;
+    if (data.contentKind === 'pdf' || data.articleFormat === 'pdf') return true;
+    return Array.isArray(data.pdfPages) && data.pdfPages.length > 0;
+}
+
 const showEmptyState = () => {
     blogsSection.innerHTML = `
     <div class="empty-state">
         <h2>No blogs yet</h2>
         <p>Start writing your first blog post!</p>
-        <a href="/editor" class="btn dark">Create New Post</a>
     </div>
     `;
+    ensureDashboardNewPostLink();
 }
 
 const createBlog = (blog) => {
@@ -120,18 +138,24 @@ const createBlog = (blog) => {
     const dateLabel = escapeHtml(formatDashboardDate(data));
     const id = escapeHtml(blog.id);
     const notesOpen = data.notesOpen === true;
-    const editControl = notesOpen
-        ? `<span class="btn grey edit-locked" aria-disabled="true" title="Open for notes — editing locked">edit</span>`
-        : `<a href="/${id}/editor" class="btn grey">edit</a>`;
+    const pdfPost = isPdfBlog(data);
+    const editControl = pdfPost
+        ? `<span class="btn grey edit-locked" aria-disabled="true" title="PDF posts are published as-is — use the editor PDF tool for new uploads">edit</span>`
+        : notesOpen
+          ? `<span class="btn grey edit-locked" aria-disabled="true" title="Open for notes — editing locked">edit</span>`
+          : `<a href="/${id}/editor" class="btn grey">edit</a>`;
+    const notesControl = pdfPost
+        ? ''
+        : `<button type="button" class="btn notes-toggle-btn ${notesOpen ? 'is-open' : ''}" data-notes-id="${id}" data-notes-open="${notesOpen ? '1' : '0'}" title="${notesOpen ? 'Close notes to unlock editing' : 'Allow readers to annotate (locks editing)'}">${notesOpen ? 'notes on' : 'open notes'}</button>`;
 
     blogsSection.insertAdjacentHTML(
         'beforeend',
         `
-    <article class="blog-row" data-blog-id="${id}">
+    <article class="blog-row" data-blog-id="${id}"${pdfPost ? ' data-content-kind="pdf"' : ''}>
         <time class="blog-date">${dateLabel}</time>
         <a class="blog-title" href="/${id}">${safeTitle}</a>
         <div class="blog-actions">
-            <button type="button" class="btn notes-toggle-btn ${notesOpen ? 'is-open' : ''}" data-notes-id="${id}" data-notes-open="${notesOpen ? '1' : '0'}" title="${notesOpen ? 'Close notes to unlock editing' : 'Allow readers to annotate (locks editing)'}">${notesOpen ? 'notes on' : 'open notes'}</button>
+            ${notesControl}
             <a href="/${id}" class="btn dark">read</a>
             ${editControl}
             <button type="button" class="btn danger" data-delete-id="${id}">delete</button>
@@ -143,6 +167,7 @@ const createBlog = (blog) => {
 
 function syncRowEditLock(row, notesOpen) {
     if (!row) return;
+    if (row.getAttribute('data-content-kind') === 'pdf') return;
     const actions = row.querySelector('.blog-actions');
     if (!actions) return;
     const existingEdit = actions.querySelector('a.btn.grey[href*="/editor"], span.edit-locked');

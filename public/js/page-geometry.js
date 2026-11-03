@@ -59,9 +59,20 @@ function isReaderEmbed() {
 }
 
 export function getSheetFitScale(opts = {}) {
-    if (typeof window !== 'undefined' && window.PageGeometryBoot?.getSheetFitScale && opts.marginX == null && opts.marginY == null) {
+    const customHeight = Number.isFinite(opts.pageHeight);
+    const customWidth = Number.isFinite(opts.pageWidth);
+    if (
+        typeof window !== 'undefined' &&
+        window.PageGeometryBoot?.getSheetFitScale &&
+        opts.marginX == null &&
+        opts.marginY == null &&
+        !customHeight &&
+        !customWidth
+    ) {
         return window.PageGeometryBoot.getSheetFitScale(opts);
     }
+    const pageWidth = customWidth ? opts.pageWidth : CANONICAL_PAGE_WIDTH;
+    const pageHeight = customHeight ? opts.pageHeight : CANONICAL_PAGE_HEIGHT;
     const narrow = isNarrowViewport();
     const embed = isReaderEmbed();
     const marginX = Number.isFinite(opts.marginX)
@@ -80,8 +91,8 @@ export function getSheetFitScale(opts = {}) {
             : 52;
     const availW = Math.max(120, getViewportWidth() - marginX);
     const availH = Math.max(120, getViewportHeight() - marginY);
-    const sx = availW / CANONICAL_PAGE_WIDTH;
-    const sy = availH / CANONICAL_PAGE_HEIGHT;
+    const sx = availW / pageWidth;
+    const sy = availH / pageHeight;
     const scale = Math.min(1, sx, sy);
     return Math.max(0.35, Math.round(scale * 1000) / 1000);
 }

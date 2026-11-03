@@ -1,5 +1,82 @@
 /* Editor page styles — Word/Docs desk around article-sized pages */
 
+.toolbar-pdf-btn {
+    font-family: Impact, 'Arial Black', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    min-width: 2.5rem;
+    color: #000;
+    -webkit-text-fill-color: #000;
+}
+
+.toolbar-pdf-btn.is-active {
+    background: linear-gradient(to bottom, #fff 0%, #e8e8e8 100%);
+    box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888;
+}
+
+.editor-pdf-pages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    width: var(--editor-page-width, 620px);
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.editor-pdf-sheet {
+    width: var(--editor-page-width, 620px);
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid rgba(20, 20, 20, 0.14);
+    box-shadow:
+        0 6px 18px rgba(0, 0, 0, 0.07),
+        0 1px 4px rgba(0, 0, 0, 0.045);
+    overflow: hidden;
+    display: block;
+}
+
+.editor-pdf-sheet .article-pdf-page {
+    display: block;
+    width: 100%;
+    height: auto;
+    vertical-align: top;
+}
+
+.editor-dialog-file {
+    display: block;
+    width: 100%;
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.editor-pdf-upload-status {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: #444;
+    min-height: 1.2em;
+}
+
+body.editor-pdf-mode .editor-page-backs {
+    display: none !important;
+}
+
+body.editor-pdf-mode #tiptap-editor {
+    display: none !important;
+}
+
+body.editor-pdf-mode .toolbar-buttons .toolbar-btn:not(.toolbar-pdf-btn),
+body.editor-pdf-mode .toolbar-buttons .toolbar-color,
+body.editor-pdf-mode .toolbar-buttons .toolbar-color-wrap,
+body.editor-pdf-mode .toolbar-buttons .toolbar-divider:not(.toolbar-publish-divider) {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
 body {
     background: #fff;
     font-family: Helvetica, Arial, sans-serif;

@@ -324,6 +324,19 @@
     clear: both;
 }
 
+/* PDF sheets — full bleed; title/byline/page numbers come from the PDF itself. */
+.article-page.article-page-pdf-sheet {
+    padding: 0 !important;
+}
+
+.article-page.article-page-pdf-sheet .article-page-number {
+    display: none !important;
+}
+
+.article-page.article-page-pdf-sheet .article-page-body::after {
+    display: none;
+}
+
 .article-page p:has(> img:only-child),
 .article-page p:has(> img:only-of-type):not(:has(br)) {
     color: unset;

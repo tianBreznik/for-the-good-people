@@ -1806,6 +1806,9 @@ function refreshEditorArticleMetaFromAuth() {
 /** Keep hidden title input in sync with the in-page heading. */
 function syncTitleFromEditor() {
     if (!titleInput || !editor) return;
+    if (typeof window.GppEditorPdf !== 'undefined' && window.GppEditorPdf.isPdfMode()) {
+        return;
+    }
     const title = extractTitleFromEditor();
     if (titleInput.value !== title) {
         titleInput.value = title;
@@ -2003,15 +2006,35 @@ function positionPublishConfirmPopover() {
     panel.style.setProperty('--publish-caret-left', `${Math.round(caretLeft)}px`);
 }
 
+function isEditorPdfPublishMode() {
+    return typeof window.GppEditorPdf !== 'undefined' && window.GppEditorPdf.isPdfMode();
+}
+
 function openPublishConfirmDialog() {
     const dialog = document.getElementById('publish-confirm-dialog');
     if (!dialog) return;
+    const pdfMode = isEditorPdfPublishMode();
+    const openNotesBtn = dialog.querySelector('[data-publish-open-notes]');
+    const draftBtn = dialog.querySelector('[data-publish-draft]');
+    const pdfPublishBtn = dialog.querySelector('[data-publish-pdf]');
+    const hint = dialog.querySelector('#publish-confirm-title');
+    if (openNotesBtn) openNotesBtn.hidden = pdfMode;
+    if (draftBtn) draftBtn.hidden = pdfMode;
+    if (pdfPublishBtn) pdfPublishBtn.hidden = !pdfMode;
+    if (hint) {
+        hint.textContent = pdfMode
+            ? 'Publish this PDF to the wall.'
+            : 'if this is your final version, you can open it for notes!';
+    }
     dialog.hidden = false;
     dialog.setAttribute('aria-hidden', 'false');
     positionPublishConfirmPopover();
     requestAnimationFrame(() => {
         positionPublishConfirmPopover();
-        dialog.querySelector('[data-publish-open-notes]')?.focus();
+        (pdfMode
+            ? pdfPublishBtn
+            : dialog.querySelector('[data-publish-open-notes]')
+        )?.focus();
     });
 }
 
@@ -2027,6 +2050,10 @@ function setupPublishConfirmDialog() {
         closePublishConfirmDialog();
         // TODO: persist as dashboard draft (hidden from home). See EDITOR_AUDIT §5.
         commitPublish({ openNotes: false });
+    });
+    dialog.querySelector('[data-publish-pdf]')?.addEventListener('click', () => {
+        closePublishConfirmDialog();
+        commitPublishPdf();
     });
     document.addEventListener('mousedown', (e) => {
         if (dialog.hidden) return;
@@ -2044,14 +2071,30 @@ function setupPublishConfirmDialog() {
 /** Validate + show publish confirmation (final / open notes). */
 function requestPublish() {
     syncTitleFromEditor();
-    if (!extractTitleFromEditor() || !getBodyTextExcludingTitle()) {
-        alert('Please fill in both title and content');
-        return;
-    }
     const contentType = getSelectedContentType();
     if (!contentType) {
         alert('Please choose which section this article belongs to');
         contentTypeSelect?.focus();
+        return;
+    }
+    if (isEditorPdfPublishMode()) {
+        const pieceTitle =
+            (window.GppEditorPdf.getTitle && window.GppEditorPdf.getTitle()) ||
+            titleInput.value.trim();
+        if (!pieceTitle) {
+            alert('Please add a title (use the PDF button to set title and upload).');
+            window.GppEditorPdf.openPdfUploadDialog?.();
+            return;
+        }
+        if (!window.GppEditorPdf.hasReadyPdf()) {
+            alert('Please upload a PDF first');
+            return;
+        }
+        openPublishConfirmDialog();
+        return;
+    }
+    if (!extractTitleFromEditor() || !getBodyTextExcludingTitle()) {
+        alert('Please fill in both title and content');
         return;
     }
     openPublishConfirmDialog();
@@ -2511,8 +2554,51 @@ async function handleImageUpload(event) {
 }
 
 
+async function resolvePublishDocName() {
+    const candidateId =
+        (isEditing ? decodePathSegment(blogID[0]) : '') ||
+        publishTargetBlogId ||
+        readLocalDraft()?.blogId ||
+        '';
+
+    let docName = candidateId;
+    let prior = null;
+    if (candidateId) {
+        const priorSnap = await window.db.collection('blogs').doc(candidateId).get();
+        if (priorSnap.exists) {
+            prior = priorSnap.data() || {};
+            docName = candidateId;
+            if (prior.notesOpen === true) {
+                alert('This article is open for notes and locked from editing.');
+                location.replace(`/${docName}`);
+                return { blocked: true };
+            }
+        } else if (isEditing) {
+            docName = candidateId;
+        } else {
+            docName = generateBlogId();
+            publishTargetBlogId = null;
+        }
+    } else {
+        docName = generateBlogId();
+    }
+    return { docName, prior };
+}
+
+async function finalizeSuccessfulPublish(docName) {
+    localStorage.removeItem('blog_draft');
+    markChangesSaved();
+    if (window.auth?.currentUser) {
+        await window.db.collection('drafts').doc(window.auth.currentUser.uid).delete();
+    }
+    location.href = `/${docName}`;
+}
+
 async function commitPublish({ openNotes = false } = {}) {
     syncTitleFromEditor();
+    if (isEditorPdfPublishMode()) {
+        return commitPublishPdf();
+    }
     const pieceTitle = extractTitleFromEditor();
     if (!pieceTitle || !getBodyTextExcludingTitle()) {
         alert('Please fill in both title and content');
@@ -2529,37 +2615,10 @@ async function commitPublish({ openNotes = false } = {}) {
     try {
         publishBtn.disabled = true;
         publishBtn.textContent = 'Publishing...';
-        
-        // Prefer edit URL id, then draft-linked id (continues an edit opened via /editor).
-        const candidateId =
-            (isEditing ? decodePathSegment(blogID[0]) : '') ||
-            publishTargetBlogId ||
-            readLocalDraft()?.blogId ||
-            '';
 
-        let docName = candidateId;
-        let prior = null;
-        if (candidateId) {
-            const priorSnap = await window.db.collection('blogs').doc(candidateId).get();
-            if (priorSnap.exists) {
-                prior = priorSnap.data() || {};
-                docName = candidateId;
-                if (prior.notesOpen === true) {
-                    alert('This article is open for notes and locked from editing.');
-                    location.replace(`/${docName}`);
-                    return;
-                }
-            } else if (isEditing) {
-                // Edit URL points at a missing doc — still write that id.
-                docName = candidateId;
-            } else {
-                // Stale draft blogId — create a new post instead of clobbering nothing useful.
-                docName = generateBlogId();
-                publishTargetBlogId = null;
-            }
-        } else {
-            docName = generateBlogId();
-        }
+        const resolved = await resolvePublishDocName();
+        if (resolved.blocked) return;
+        const { docName, prior } = resolved;
 
         const notesOpen = openNotes === true || prior?.notesOpen === true;
         // Title heading stays in article HTML (with data-doc-title); byline attaches beside it in the reader.
@@ -2581,17 +2640,66 @@ async function commitPublish({ openNotes = false } = {}) {
         };
         
         await window.db.collection("blogs").doc(docName).set(blogData);
-        
-        localStorage.removeItem('blog_draft');
-        markChangesSaved();
-        if (window.auth?.currentUser) {
-            await window.db.collection('drafts').doc(window.auth.currentUser.uid).delete();
-        }
-        
-        location.href = `/${docName}`;
+        await finalizeSuccessfulPublish(docName);
     } catch (error) {
         console.error('Publish error:', error);
         alert('Failed to publish blog. Please try again.');
+        publishBtn.disabled = false;
+        publishBtn.textContent = 'Publish';
+    }
+}
+
+async function commitPublishPdf() {
+    syncTitleFromEditor();
+    const pieceTitle =
+        (window.GppEditorPdf.getTitle && window.GppEditorPdf.getTitle()) ||
+        titleInput.value.trim();
+    if (!pieceTitle) {
+        alert('Please add a title.');
+        window.GppEditorPdf.openPdfUploadDialog?.();
+        return;
+    }
+    if (!window.GppEditorPdf?.hasReadyPdf()) {
+        alert('Please upload a PDF first');
+        return;
+    }
+    const contentType = getSelectedContentType();
+    if (!contentType) {
+        alert('Please choose which section this article belongs to');
+        contentTypeSelect?.focus();
+        return;
+    }
+
+    try {
+        publishBtn.disabled = true;
+        publishBtn.textContent = 'Publishing...';
+
+        const resolved = await resolvePublishDocName();
+        if (resolved.blocked) return;
+        const { docName, prior } = resolved;
+        const pdfPages = window.GppEditorPdf.getPageUrls();
+
+        const blogData = {
+            title: pieceTitle,
+            preview: pieceTitle,
+            article: '',
+            articleFormat: 'pdf',
+            contentKind: 'pdf',
+            pdfPages,
+            contentType,
+            publishedAt: prior?.publishedAt || formatPublishedAt(),
+            author: prior?.author || authorIdFromAuth() || 'Anonymous',
+            numberofcomments: typeof prior?.numberofcomments === 'number' ? prior.numberofcomments : 0,
+            notesOpen: false,
+            notesOpenedAt: null,
+            lastModified: new Date().toISOString()
+        };
+
+        await window.db.collection('blogs').doc(docName).set(blogData);
+        await finalizeSuccessfulPublish(docName);
+    } catch (error) {
+        console.error('Publish error:', error);
+        alert('Failed to publish PDF. Please try again.');
         publishBtn.disabled = false;
         publishBtn.textContent = 'Publish';
     }
@@ -2632,6 +2740,10 @@ async function loadBlogData() {
         const blogId = decodePathSegment(blogID[0]);
         if (data.notesOpen === true) {
             // Open for notes ⇒ locked from further edits.
+            location.replace(`/${encodeURIComponent(blogId)}`);
+            return;
+        }
+        if (Array.isArray(data.pdfPages) && data.pdfPages.length) {
             location.replace(`/${encodeURIComponent(blogId)}`);
             return;
         }

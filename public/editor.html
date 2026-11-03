@@ -10,6 +10,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
 
     <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/article-prose.css">
     <link rel="stylesheet" href="/css/editor.css">
     <link rel="stylesheet" href="/css/content-refs.css">
     <script src="/js/page-geometry-boot.js"></script>
@@ -32,6 +33,7 @@
                         <option value="opinion">Opinion</option>
                         <option value="ideas">Ideas</option>
                     </select>
+                    <button type="button" class="toolbar-btn toolbar-pdf-btn" id="toolbar-pdf-btn" title="Publish from PDF">PDF</button>
                     <span class="toolbar-divider toolbar-publish-divider" aria-hidden="true"></span>
                     <button type="button" class="btn dark publish-btn" title="Publish">Publish</button>
                     <span class="toolbar-divider" aria-hidden="true"></span>
@@ -92,6 +94,7 @@
         
         <div class="editor-content editor-pages-canvas">
             <div id="tiptap-editor" class="tiptap-editor"></div>
+            <div id="editor-pdf-pages" class="editor-pdf-pages" hidden aria-label="PDF pages"></div>
             <p id="editor-post-loading" class="editor-post-loading" hidden role="status" aria-live="polite">loading post...</p>
         </div>
 
@@ -199,12 +202,30 @@
         </div>
     </div>
 
+    <div id="pdf-upload-dialog" class="editor-dialog" hidden aria-hidden="true">
+        <div class="editor-dialog-backdrop" data-pdf-upload-cancel aria-hidden="true"></div>
+        <div class="editor-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="pdf-upload-dialog-title">
+            <h2 id="pdf-upload-dialog-title" class="editor-dialog-title">Publish PDF</h2>
+            <p class="editor-dialog-hint">Add a wall title and upload your PDF. Pages replace the editor sheets.</p>
+            <label class="editor-dialog-label" for="pdf-upload-title">Title</label>
+            <input type="text" id="pdf-upload-title" class="editor-dialog-input" placeholder="Article title" autocomplete="off" required>
+            <label class="editor-dialog-label" for="pdf-upload-file">PDF file</label>
+            <input type="file" id="pdf-upload-file" class="editor-dialog-file" accept="application/pdf,.pdf">
+            <p id="pdf-upload-status" class="editor-pdf-upload-status" role="status" aria-live="polite"></p>
+            <div class="editor-dialog-actions">
+                <button type="button" class="popover-btn" data-pdf-upload-cancel>cancel</button>
+                <button type="button" class="popover-btn" data-pdf-upload-submit>upload</button>
+            </div>
+        </div>
+    </div>
+
     <div id="publish-confirm-dialog" class="publish-confirm-popover" hidden aria-hidden="true">
         <div class="publish-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="publish-confirm-title">
             <p id="publish-confirm-title" class="publish-confirm-hint">if this is your final version, you can open it for notes!</p>
             <div class="publish-confirm-actions">
                 <button type="button" class="popover-btn" data-publish-open-notes>publish &amp; open notes</button>
                 <button type="button" class="popover-btn" data-publish-draft>publish draft</button>
+                <button type="button" class="popover-btn" data-publish-pdf hidden>Publish</button>
                 <button type="button" class="popover-btn" data-publish-cancel>cancel</button>
             </div>
         </div>
@@ -216,6 +237,9 @@
 
     <script src="/js/firebase.js"></script>
     <script src="/js/content-refs.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="/js/pdf-page-meta.js"></script>
+    <script src="/js/editor-pdf.js"></script>
     <script type="module" src="/js/editor.bundle.mjs"></script>
 
 

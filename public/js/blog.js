@@ -126,7 +126,15 @@ function applyReaderHandoffPayload(payload) {
     const author = payload.author || 'Anonymous';
     if (titleTag) titleTag.textContent = title || 'Good People';
     currentBlogMeta = { title, publishedAt, author };
+    const pdfPages = Array.isArray(payload.pdfPages) ? payload.pdfPages.filter(Boolean) : [];
+    if (pdfPages.length) {
+        applyReaderSheetScaleForPdf(pdfPages);
+        handoffPdfPagesJson = pdfPagesSnapshot(pdfPages);
+        renderPdfArticleBody(pdfPages, { provisional: true });
+        return true;
+    }
     if (typeof payload.article === 'string' && payload.article.trim()) {
+        handoffArticleHtml = payload.article;
         renderArticleBody(payload.article, { provisional: true });
         return true;
     }
@@ -266,6 +274,11 @@ function mountCommentScreenForLayout(lastArticlePageEl) {
 
     commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
     composeDock.classList.remove('comment-compose--page-foot', 'comment-compose--above-footnotes');
+
+    if (readerUsesPdfSheets(articleBody)) {
+        mountPdfCommentLayout(articleBody, composeDock);
+        return;
+    }
 
     // Same as desktop: compose on last content page foot; thread on its own sheet.
     if (anchor) pinComposeToContentPageFoot(composeDock, anchor);
@@ -1068,6 +1081,13 @@ function renderReaderHandoffIfPresent() {
     const author = payload.author || 'Anonymous';
     titleTag.textContent = title || 'Good People';
     currentBlogMeta = { title, publishedAt, author };
+    const pdfPages = Array.isArray(payload.pdfPages) ? payload.pdfPages.filter(Boolean) : [];
+    if (pdfPages.length) {
+        applyReaderSheetScaleForPdf(pdfPages);
+        handoffPdfPagesJson = pdfPagesSnapshot(pdfPages);
+        renderPdfArticleBody(pdfPages, { provisional: true });
+        return true;
+    }
     if (typeof payload.article === 'string' && payload.article.trim()) {
         handoffArticleHtml = payload.article;
         renderArticleBody(payload.article, { provisional: true });
@@ -1079,6 +1099,45 @@ function renderReaderHandoffIfPresent() {
 /** Session handoff spread is painted — skip Firestore re-render when HTML matches. */
 let handoffSpreadPainted = false;
 let handoffArticleHtml = null;
+let handoffPdfPagesJson = null;
+/** When set, viewport scale follows PDF sheet heights instead of 874px prose. */
+let readerPdfPagesForScale = null;
+
+function pdfPagesSnapshot(pages) {
+    if (typeof window.GppPdfPages !== 'undefined') {
+        return window.GppPdfPages.handoffSnapshot(pages);
+    }
+    const list = Array.isArray(pages) ? pages.filter(Boolean) : [];
+    return JSON.stringify(
+        list.map((p) => (typeof p === 'string' ? p : String(p?.url || '').trim())).filter(Boolean)
+    );
+}
+
+function applyReaderSheetScaleForPdf(pages) {
+    if (typeof window.GppPdfPages !== 'undefined') {
+        window.GppPdfPages.applyReaderGeometryForPages(pages);
+        return;
+    }
+    applyReaderSheetScale();
+}
+
+function applyInitialReaderSheetScaleFromHandoff() {
+    const payload = readReaderHandoffPayload();
+    const pdfPages = payload && Array.isArray(payload.pdfPages) ? payload.pdfPages.filter(Boolean) : [];
+    if (pdfPages.length) {
+        applyReaderSheetScaleForPdf(pdfPages);
+        return;
+    }
+    applyReaderSheetScale();
+}
+
+function applyReaderSheetScaleActive() {
+    if (readerPdfPagesForScale && readerPdfPagesForScale.length) {
+        applyReaderSheetScaleForPdf(readerPdfPagesForScale);
+        return;
+    }
+    applyReaderSheetScale();
+}
 
 resolveBlogDocument(blogId)
     .then((doc) => {
@@ -1480,6 +1539,7 @@ function finalizeHandoffSpreadWithoutRebuild() {
     readerReady = true;
     handoffSpreadPainted = false;
     handoffArticleHtml = null;
+    handoffPdfPagesJson = null;
     const bodyEl = document.getElementById('article-body');
     if (bodyEl && typeof ContentRefs !== 'undefined') {
         if (ContentRefs.linkifyElement) ContentRefs.linkifyElement(bodyEl);
@@ -1509,6 +1569,35 @@ const setupBlog = (data) => {
     numberofcomments = data.numberofcomments;
 
     const render = () => {
+        const pdfPages = Array.isArray(data.pdfPages) ? data.pdfPages.filter(Boolean) : [];
+        if (pdfPages.length) {
+            const snapshot = pdfPagesSnapshot(pdfPages);
+            const reuseHandoff =
+                handoffSpreadPainted &&
+                handoffPdfPagesJson != null &&
+                snapshot === handoffPdfPagesJson;
+
+            if (reuseHandoff) {
+                if (READER_EMBED) bindCommentInputEmbedFocusFix();
+                bindReaderSpreadAndAnnotationListeners();
+                applyAnnotationHighlights();
+                renderAnnotationList();
+                finalizeHandoffSpreadWithoutRebuild();
+                return;
+            }
+
+            renderPdfArticleBody(pdfPages);
+            handoffSpreadPainted = false;
+            handoffPdfPagesJson = null;
+            handoffArticleHtml = null;
+            syncNotesGateUi();
+            setupCommentSection();
+            setupCommentContentRefs();
+            attachAnnotationsListener();
+            bindAnnotationSelectionUi();
+            return;
+        }
+
         const articleHtml = data.article;
         const reuseHandoff =
             handoffSpreadPainted &&
@@ -1524,9 +1613,11 @@ const setupBlog = (data) => {
             return;
         }
 
+        readerPdfPagesForScale = null;
         renderArticleBody(articleHtml);
         handoffSpreadPainted = false;
         handoffArticleHtml = null;
+        handoffPdfPagesJson = null;
         syncNotesGateUi();
         setupCommentSection();
         setupCommentContentRefs();
@@ -1607,6 +1698,22 @@ function createArticleByline(meta) {
         tmp.innerHTML = ContentRefs.htmlForSelection('author', { id: author });
         authorEl = tmp.firstElementChild || document.createElement('a');
         authorEl.classList.add('article-byline-author');
+        const img = authorEl.querySelector('.content-ref-author-avatar');
+        const fallback =
+            typeof ContentRefs.displayAvatarUrl === 'function'
+                ? ContentRefs.displayAvatarUrl(author)
+                : '';
+        if (img && fallback && !img.getAttribute('src')) img.src = fallback;
+        else if (!img && fallback) {
+            const avatarImg = document.createElement('img');
+            avatarImg.className = 'content-ref-author-avatar';
+            avatarImg.src = fallback;
+            avatarImg.alt = '';
+            avatarImg.width = 14;
+            avatarImg.height = 14;
+            avatarImg.decoding = 'async';
+            authorEl.insertBefore(avatarImg, authorEl.firstChild);
+        }
     } else {
         authorEl = document.createElement('span');
         authorEl.className = 'article-byline-author';
@@ -2582,8 +2689,14 @@ function pruneEmptyInlineNodes(root) {
     walk(root);
 }
 
+function readerUsesPdfSheets(articleBodyEl) {
+    const root = articleBodyEl || document.getElementById('article-body');
+    return Boolean(root?.querySelector('.article-page-pdf-sheet'));
+}
+
 function applyPageNumbers(articleBodyEl) {
     if (!articleBodyEl) return;
+    if (readerUsesPdfSheets(articleBodyEl)) return;
     const pages = articleBodyEl.querySelectorAll('.article-page-left');
     pages.forEach((pageEl, index) => {
         pageEl.querySelector('.article-page-number')?.remove();
@@ -2592,6 +2705,144 @@ function applyPageNumbers(articleBodyEl) {
         number.textContent = String(index + 1);
         pageEl.appendChild(number);
     });
+}
+
+function lastPdfArticleSheetPage(articleBody) {
+    if (!articleBody) return null;
+    const pages = articleBody.querySelectorAll('.article-page-pdf-sheet');
+    return pages.length ? pages[pages.length - 1] : null;
+}
+
+/** PDF-only: compose on the last raster sheet (prose uses pinComposeToContentPageFoot). */
+function pinComposeToPdfSheetFoot(dock, pdfPageEl) {
+    if (!dock || !pdfPageEl) return;
+    dock.classList.remove(
+        'comment-compose--above-footnotes',
+        'comment-compose--page-foot'
+    );
+    dock.classList.add('comment-compose--pdf-sheet');
+    pdfPageEl.appendChild(dock);
+}
+
+/**
+ * PDF reader comment layout — separate from prose mountCommentScreenForLayout.
+ * Compose on the last PDF page; comment thread (if any) on a normal comments sheet.
+ */
+function mountPdfCommentLayout(articleBody, composeDock) {
+    removeDedicatedCommentsPages(articleBody);
+
+    const anchor =
+        lastPdfArticleSheetPage(articleBody) ||
+        (lastArticlePageElForComments?.classList?.contains('article-page-pdf-sheet')
+            ? lastArticlePageElForComments
+            : null);
+    if (anchor) {
+        lastArticlePageElForComments = anchor;
+        pinComposeToPdfSheetFoot(composeDock, anchor);
+    }
+
+    if (!articleHasCommentThread()) {
+        commentScreenEl.hidden = true;
+        return;
+    }
+
+    commentScreenEl.hidden = false;
+    const spread = createSpread();
+    articleBody.appendChild(spread.spread);
+    const page = spread.leftPage;
+    page.classList.add('article-page-comments', 'article-page-comments-pdf');
+    const PG = window.PageGeometry;
+    const boot = window.PageGeometryBoot;
+    const canonicalSheetH =
+        (PG && Number.isFinite(PG.CANONICAL_PAGE_HEIGHT) && PG.CANONICAL_PAGE_HEIGHT) ||
+        (boot && Number.isFinite(boot.CANONICAL_PAGE_HEIGHT) && boot.CANONICAL_PAGE_HEIGHT) ||
+        874;
+    page.style.setProperty('--pdf-comments-sheet-height', `${canonicalSheetH}px`);
+    ensureArticlePageBody(page);
+    page.appendChild(commentScreenEl);
+}
+
+function renderPdfArticleSpread(pdfPages) {
+    const articleBody = document.getElementById('article-body');
+    const pages =
+        typeof window.GppPdfPages !== 'undefined'
+            ? window.GppPdfPages.normalize(pdfPages)
+            : pdfPages;
+    if (!articleBody || !pages.length) return;
+    readerPdfPagesForScale = pages;
+
+    const blogRoot = document.querySelector('.blog');
+    if (blogRoot) {
+        const composeDock = document.getElementById('comment-compose');
+        if (composeDock) blogRoot.appendChild(composeDock);
+        if (commentScreenEl) blogRoot.appendChild(commentScreenEl);
+    }
+    const overlay = document.getElementById('annotation-overlay-root');
+    if (overlay) document.body.appendChild(overlay);
+    lastArticlePageElForComments = null;
+
+    articleBody.innerHTML = '';
+    if (overlay) {
+        articleBody.appendChild(overlay);
+        annotationOverlayRoot = overlay;
+    }
+
+    pages.forEach((entry, index) => {
+        const url = entry.url || entry;
+        const spread = createSpread();
+        spread.spread.classList.add('article-spread-pdf');
+        articleBody.appendChild(spread.spread);
+        const pageEl = spread.leftPage;
+        pageEl.classList.add('article-page-pdf-sheet');
+        const pageBody = ensureArticlePageBody(pageEl);
+        const wrap = document.createElement('div');
+        wrap.className = 'article-pdf-page-wrap';
+        const img = document.createElement('img');
+        img.className = 'article-pdf-page';
+        img.src = typeof url === 'string' ? url : entry.url;
+        img.alt = `Page ${index + 1}`;
+        img.decoding = 'async';
+        if (index > 0) img.loading = 'lazy';
+        wrap.appendChild(img);
+        pageBody.appendChild(wrap);
+
+        lastArticlePageElForComments = pageEl;
+    });
+
+    applyReaderSheetScaleForPdf(pages);
+    bindReaderSpreadAndAnnotationListeners();
+}
+
+function renderPdfArticleBody(pdfPages, options = {}) {
+    const finish = (pages) => {
+        renderPdfArticleSpread(pages);
+        syncNotesGateUi();
+        if (READER_EMBED) bindCommentInputEmbedFocusFix();
+        applyAnnotationHighlights();
+        renderAnnotationList();
+
+        if (options.provisional) {
+            scheduleEmbedParentReadyAfterPaint();
+            return;
+        }
+
+        readerReady = true;
+        setupCommentSection();
+        ensureCommentsVisible();
+        if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
+    };
+
+    if (typeof window.GppPdfPages !== 'undefined') {
+        const normalized = window.GppPdfPages.normalize(pdfPages);
+        const needsMeasure = normalized.some((p) => !(Number(p.height) > 0));
+        if (needsMeasure) {
+            window.GppPdfPages.ensureHeights(pdfPages).then(finish);
+            return;
+        }
+        finish(normalized);
+        return;
+    }
+    finish(pdfPages);
 }
 
 function renderArticleSpread(blocks, footnoteDefMap) {
@@ -2819,7 +3070,7 @@ function bindReaderSpreadAndAnnotationListeners() {
         const onSheetScale = () => {
             clearTimeout(spreadReflowTimer);
             spreadReflowTimer = setTimeout(() => {
-                applyReaderSheetScale();
+                applyReaderSheetScaleActive();
                 scheduleAnnotationLayoutSync();
             }, 80);
         };
@@ -2858,7 +3109,7 @@ const renderArticleBody = (articleData, options = {}) => {
     if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
 }
 
-applyReaderSheetScale();
+applyInitialReaderSheetScaleFromHandoff();
 if (renderReaderHandoffIfPresent()) {
     handoffSpreadPainted = true;
 }

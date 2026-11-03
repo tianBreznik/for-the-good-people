@@ -53,6 +53,32 @@
         return avatarByHandle[key] || '';
     }
 
+    function hashHandleKey(key) {
+        let h = 2166136261;
+        const s = String(key || '');
+        for (let i = 0; i < s.length; i++) {
+            h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+        }
+        return h >>> 0;
+    }
+
+    /** Stable preset /pfps/ when no saved profile avatar (bylines, refs). */
+    function presetAvatarUrlForHandle(handle) {
+        const key = normalizeAuthor(handle).toLowerCase();
+        if (!key || key === 'anonymous') return '';
+        const files = Array.isArray(global.AUTHOR_AVATAR_FILES) ? global.AUTHOR_AVATAR_FILES : [];
+        if (!files.length) return '';
+        const file = files[hashHandleKey(key) % files.length];
+        return file ? `/pfps/${file}` : '';
+    }
+
+    /** Sync URL for byline paint: saved profile cache, else stable preset. */
+    function displayAvatarUrl(handle) {
+        const saved = cachedAvatarUrl(handle);
+        if (saved) return saved;
+        return presetAvatarUrlForHandle(handle);
+    }
+
     function resolveAuthorAvatar(handle) {
         const key = normalizeAuthor(handle).toLowerCase();
         if (!key) return Promise.resolve('');
@@ -61,11 +87,16 @@
         avatarFetchInflight[key] = fetch(`/api/author-profile/${encodeURIComponent(key)}`)
             .then((res) => (res.ok ? res.json() : null))
             .then((data) => {
-                const url = normalizeAvatarPath(data && data.profile && data.profile.avatar);
+                const saved = normalizeAvatarPath(data && data.profile && data.profile.avatar);
+                const url = saved || presetAvatarUrlForHandle(handle);
                 if (url) avatarByHandle[key] = url;
                 return url || '';
             })
-            .catch(() => '')
+            .catch(() => {
+                const fallback = presetAvatarUrlForHandle(handle);
+                if (fallback) avatarByHandle[key] = fallback;
+                return fallback;
+            })
             .finally(() => {
                 delete avatarFetchInflight[key];
             });
@@ -75,7 +106,7 @@
     /** Rendered author mention: little pfp + handle (no leading @). Homepage wall tags keep @. */
     function authorRefHtml(handle) {
         const h = normalizeAuthor(handle);
-        const src = cachedAvatarUrl(h);
+        const src = displayAvatarUrl(h);
         const img = src
             ? `<img class="content-ref-author-avatar" src="${escapeHtml(src)}" alt="" width="14" height="14" decoding="async" />`
             : '';
@@ -97,7 +128,7 @@
             let img = a.querySelector('img.content-ref-author-avatar');
             let nameEl = a.querySelector('.content-ref-author-name');
             if (!nameEl || !img) {
-                const src = cachedAvatarUrl(handle);
+                const src = displayAvatarUrl(handle);
                 a.innerHTML =
                     (src
                         ? `<img class="content-ref-author-avatar" src="${escapeHtml(src)}" alt="" width="14" height="14" decoding="async" />`
@@ -484,6 +515,7 @@
         linkifyPlainText,
         linkifyElement,
         enhanceAuthorRefs,
+        displayAvatarUrl,
         htmlForSelection,
         tokenForSelection,
         labelForSelection,

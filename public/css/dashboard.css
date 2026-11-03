@@ -89,6 +89,59 @@ body {
     border-top: 1px solid #d0d0d0;
 }
 
+/* Homepage POST card parity — red outline, red fill on hover */
+.dashboard-new-post-wrap {
+    margin-top: clamp(1.25rem, 4vw, 2rem);
+    padding-top: clamp(0.75rem, 2vw, 1.25rem);
+    border-top: 1px solid #d0d0d0;
+}
+
+.dashboard-new-post {
+    display: inline-block;
+    font-family: 'Impact', Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    font-size: clamp(44px, 11vw, 96px);
+    font-weight: bold;
+    line-height: 0.95;
+    text-decoration: none;
+    text-transform: lowercase;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    -webkit-text-stroke: 1px #dc2626;
+    text-shadow: none;
+    background-image: none;
+    position: relative;
+    z-index: 1;
+}
+
+.dashboard-new-post::before {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    text-shadow:
+        0 4px 5px rgba(0, 0, 0, 0.7),
+        0 0 3px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    z-index: -1;
+}
+
+.dashboard-new-post:hover {
+    color: #dc2626;
+    -webkit-text-fill-color: #dc2626;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+    filter: none;
+    background-image: none;
+}
+
+.dashboard-new-post:hover::before {
+    display: block;
+}
+
 .blog-row {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr) auto;

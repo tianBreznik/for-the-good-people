@@ -34,6 +34,8 @@
      */
     function fitScale(opts) {
         opts = opts || {};
+        var pageW = Number.isFinite(opts.pageWidth) ? opts.pageWidth : W;
+        var pageH = Number.isFinite(opts.pageHeight) ? opts.pageHeight : H;
         var narrow = isNarrow();
         var embed = isEmbed();
         var mx = Number.isFinite(opts.marginX)
@@ -51,8 +53,8 @@
                 ? 12
                 : 52;
         var size = viewportSize();
-        var sx = Math.max(120, size.vw - mx) / W;
-        var sy = Math.max(120, size.vh - my) / H;
+        var sx = Math.max(120, size.vw - mx) / pageW;
+        var sy = Math.max(120, size.vh - my) / pageH;
         var s = Math.min(1, sx, sy);
         if (s < 0.35) s = 0.35;
         return Math.round(s * 1000) / 1000;
