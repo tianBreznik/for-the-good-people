@@ -4,16 +4,27 @@ const topdiv = document.querySelector('#first-container');
 /** Fixed sheet + display scale (see page-geometry.js). */
 function applyHomeSheetScale() {
     const panel = document.querySelector('.article-panel');
+    const handoffPdfUrl = String(panel?.dataset?.handoffPdfUrl || '').trim();
     const pdfHandoff = panel?.dataset?.handoffPdfPages;
     if (
-        pdfHandoff &&
         document.body.classList.contains('article-open') &&
         typeof window.GppPdfPages !== 'undefined'
     ) {
-        const pages = parseCardPdfPages({ dataset: { pdfPages: pdfHandoff } });
-        if (pages.length) {
-            window.GppPdfPages.applyReaderGeometryForPages(pages);
+        if (handoffPdfUrl) {
+            const h = Number(panel?.dataset?.handoffPreviewPageHeight);
+            const height =
+                Number.isFinite(h) && h > 0 ? h : window.GppPdfPages.DEFAULT_HEIGHT;
+            window.GppPdfPages.applyReaderGeometryForPages([
+                { url: handoffPdfUrl, width: window.GppPdfPages.CANONICAL_WIDTH, height },
+            ]);
             return;
+        }
+        if (pdfHandoff) {
+            const pages = parseCardPdfPages({ dataset: { pdfPages: pdfHandoff } });
+            if (pages.length) {
+                window.GppPdfPages.applyReaderGeometryForPages(pages);
+                return;
+            }
         }
     }
     const PG = window.PageGeometry;
@@ -524,6 +535,7 @@ const READER_HANDOFF_KEY = 'readerHandoffPayload';
 const AUTHOR_BIO_HANDOFF_KEY = 'authorBioHandoffPayload';
 const READER_EMBED_READY_TYPE = 'gpp-reader-embed-ready';
 const READER_EMBED_HANDOFF_TYPE = 'gpp-reader-handoff';
+const READER_EMBED_CLOSE_TYPE = 'gpp-reader-embed-close';
 const MOBILE_READER_REVEAL_FALLBACK_MS = 900;
 const MOBILE_AUTHOR_REVEAL_FALLBACK_MS = 480;
 let mobileReaderShellEl = null;
@@ -773,7 +785,11 @@ function ensureMobileReaderShell() {
     });
 
     window.addEventListener('popstate', () => {
-        if (mobileReaderHistoryPushed && document.body.classList.contains('mobile-reader-open')) {
+        if (
+            mobileReaderHistoryPushed &&
+            (document.body.classList.contains('mobile-reader-open') ||
+                document.body.classList.contains('desktop-pdf-reader-open'))
+        ) {
             closeMobileInAppReader({ fromPopstate: true });
         }
     });
@@ -788,7 +804,17 @@ function bindMobileReaderEmbedReadyListener() {
     window.addEventListener('message', (event) => {
         if (event.origin !== window.location.origin) return;
         const data = event.data;
-        if (!data || data.type !== READER_EMBED_READY_TYPE) return;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === READER_EMBED_CLOSE_TYPE) {
+            if (
+                document.body.classList.contains('desktop-pdf-reader-open') ||
+                document.body.classList.contains('mobile-reader-open')
+            ) {
+                closeMobileInAppReader({ goWall: true });
+            }
+            return;
+        }
+        if (data.type !== READER_EMBED_READY_TYPE) return;
         const pending = mobileReaderPendingOpen;
         if (!pending) return;
         if (pending.openSeq !== mobileReaderOpenSeq) return;
@@ -813,7 +839,6 @@ function stopMobileReaderShellWarm() {
 async function writeMobileReaderHandoffFromCard(blogId, card) {
     if (!card) return null;
     await ensureBlogCardArticle(card);
-    const pdfPages = parseCardPdfPages(card);
     const payload = {
         blogId: String(blogId || ''),
         title: card.dataset.title || '',
@@ -823,13 +848,7 @@ async function writeMobileReaderHandoffFromCard(blogId, card) {
         ...canonicalHandoffPageSize(),
         ts: Date.now(),
     };
-    if (pdfPages.length) {
-        payload.pdfPages = pdfPages;
-        if (typeof window.GppPdfPages !== 'undefined') {
-            payload.previewPageHeight = window.GppPdfPages.sheetHeight(pdfPages[0]);
-            payload.previewPageWidth = window.GppPdfPages.CANONICAL_WIDTH;
-        }
-    }
+    attachPdfFieldsToHandoffPayload(payload, card);
     try {
         sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
     } catch (_) {}
@@ -890,6 +909,22 @@ function writeAuthorBioHandoffForOpen(handle) {
     } catch (_) {}
 }
 
+function openDesktopNativePdfReader(blogId, articlePanel, handoffPayload) {
+    if (!blogId || !handoffPayload?.pdfUrl) return false;
+    const seamIndex = Number(document.body.getAttribute('data-open-seam') || 2) || 2;
+    document.body.classList.add('desktop-pdf-reader-open');
+    openMobileEmbedShell({
+        embedUrl: `/${blogId}?embed=1&readerChrome=1`,
+        readyId: String(blogId),
+        seamIndex,
+        handoffPayload,
+        historyState: { blogId: String(blogId), desktopPdfReader: true },
+        revealOnEmbedReady: true,
+        revealFallbackMs: 4500,
+    });
+    return true;
+}
+
 function openMobileEmbedShell({
     embedUrl,
     readyId,
@@ -898,6 +933,7 @@ function openMobileEmbedShell({
     handoffPayload = null,
     historyState = {},
     revealFallbackMs = MOBILE_READER_REVEAL_FALLBACK_MS,
+    revealOnEmbedReady = false,
 }) {
     if (!embedUrl || !readyId) return;
     if (mobileReaderClosingTimer) {
@@ -950,18 +986,33 @@ function openMobileEmbedShell({
         shell.classList.remove('mobile-reader-closing');
 
         document.body.classList.remove('article-closing');
+        const desktopPdf = Boolean(historyState.desktopPdfReader);
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                document.body.classList.add('article-open', 'mobile-reader-open');
-                if (isAuthorShell) {
-                    document.body.classList.add('mobile-author-reader-open');
+                document.body.classList.add('article-open');
+                if (desktopPdf) {
+                    document.body.classList.add('mobile-reader-open');
+                    const panel = document.querySelector('.article-panel');
+                    if (panel) {
+                        panel.classList.remove('expanding-fullscreen', 'article-expand-run', 'article-preview-closing');
+                        panel.classList.add('article-panel-desktop-pdf-handoff');
+                    }
+                } else {
+                    document.body.classList.add('mobile-reader-open');
+                    if (isAuthorShell) {
+                        document.body.classList.add('mobile-author-reader-open');
+                    }
+                    triggerMobileHaptic('preview-reveal');
                 }
-                triggerMobileHaptic('preview-reveal');
             });
         });
 
         if (!mobileReaderHistoryPushed) {
-            history.pushState({ mobileReader: true, ...historyState }, '', window.location.pathname);
+            const nextUrl =
+                historyState.desktopPdfReader && historyState.blogId
+                    ? `/${encodeURIComponent(String(historyState.blogId))}`
+                    : window.location.pathname;
+            history.pushState({ mobileReader: true, ...historyState }, '', nextUrl);
             mobileReaderHistoryPushed = true;
         }
         if (fallbackTimer) {
@@ -975,6 +1026,15 @@ function openMobileEmbedShell({
     loadMobileReaderFrame(frame, embedUrl);
     if (handoffPayload && sameUrlAlready) {
         pushMobileReaderHandoffToEmbed(frame, handoffPayload);
+    } else if (handoffPayload) {
+        frame.addEventListener(
+            'load',
+            () => {
+                if (frame.getAttribute('src') !== embedUrl) return;
+                pushMobileReaderHandoffToEmbed(frame, handoffPayload);
+            },
+            { once: true }
+        );
     }
 
     if (isAuthorShell) {
@@ -988,6 +1048,12 @@ function openMobileEmbedShell({
             if (frame.getAttribute('src') !== embedUrl) return;
             reveal();
         }, Math.max(revealFallbackMs, 3500));
+    } else if (revealOnEmbedReady) {
+        fallbackTimer = setTimeout(() => {
+            if (openSeq !== mobileReaderOpenSeq) return;
+            if (frame.getAttribute('src') !== embedUrl) return;
+            reveal();
+        }, revealFallbackMs);
     } else {
         frame.addEventListener('load', reveal, { once: true });
         fallbackTimer = setTimeout(reveal, revealFallbackMs);
@@ -1045,7 +1111,10 @@ function clearAuthorMobileReaderSeam() {
 
 function closeMobileInAppReader(options = {}) {
     const fromPopstate = Boolean(options.fromPopstate);
-    if (!document.body.classList.contains('mobile-reader-open')) {
+    const readerOpen =
+        document.body.classList.contains('mobile-reader-open') ||
+        document.body.classList.contains('desktop-pdf-reader-open');
+    if (!readerOpen) {
         mobileReaderHistoryPushed = false;
         return;
     }
@@ -1090,9 +1159,12 @@ function closeMobileInAppReader(options = {}) {
         const hadAuthorReader = Boolean(mobileReaderOpenAuthorHandle);
         document.body.classList.remove(
             'article-closing',
+            'article-open',
             'mobile-reader-open',
-            'mobile-author-reader-open'
+            'mobile-author-reader-open',
+            'desktop-pdf-reader-open'
         );
+        document.querySelector('.article-panel')?.classList.remove('article-panel-desktop-pdf-handoff');
         mobileReaderPendingOpen = null;
         mobileReaderOpenAuthorHandle = null;
         if (mobileReaderShellEl) {
@@ -1117,7 +1189,11 @@ function closeMobileInAppReader(options = {}) {
         const hadHistory = mobileReaderHistoryPushed;
         mobileReaderHistoryPushed = false;
 
-        if (!fromPopstate && hadHistory) {
+        if (options.goWall) {
+            if (location.pathname !== '/') {
+                history.replaceState(null, '', '/');
+            }
+        } else if (!fromPopstate && hadHistory) {
             history.back();
         }
     }, getArticlePreviewRevealMs());
@@ -1606,6 +1682,54 @@ function renderFirstPagePreview(panelEl, payload, onReady) {
     const title = payload.title || '';
     const author = payload.author || 'Anonymous';
     const published = formatPublishedReadable(payload.publishedAt);
+    const nativePdfUrl = String(payload.pdfUrl || '').trim();
+    if (nativePdfUrl && typeof window.GppPdfDocument !== 'undefined') {
+        const paintNativePdfPreview = async () => {
+            try {
+                const doc = await window.GppPdfDocument.loadDocument(nativePdfUrl);
+                const firstMetric = await window.GppPdfDocument.measurePageLayout(doc, 1);
+                mount.innerHTML = '';
+                const page = document.createElement('article');
+                page.className =
+                    'article-page article-page-left article-page-pdf-sheet home-preview-page';
+                const body = document.createElement('div');
+                body.className = 'article-page-body home-preview-body';
+                const wrap = document.createElement('div');
+                wrap.className = 'article-pdf-page-wrap';
+                body.appendChild(wrap);
+                page.appendChild(body);
+                if (typeof onReady === 'function') {
+                    panelEl.classList.add('article-preview-layout');
+                }
+                mount.appendChild(page);
+                await window.GppPdfDocument.renderPageToWrap(wrap, doc, 1);
+                if (typeof window.GppPdfPages !== 'undefined') {
+                    window.GppPdfPages.applyReaderGeometryForPages([firstMetric]);
+                    panelEl.dataset.handoffPdfUrl = nativePdfUrl;
+                    if (payload.pdfPageCount) {
+                        panelEl.dataset.handoffPdfPageCount = String(payload.pdfPageCount);
+                    }
+                    panelEl.dataset.handoffPreviewPageHeight = String(firstMetric.height);
+                    delete panelEl.dataset.handoffPdfPages;
+                }
+                const finish = () => {
+                    if (typeof onReady === 'function') {
+                        requestAnimationFrame(() => {
+                            void panelEl.offsetHeight;
+                            panelEl.classList.remove('article-preview-layout');
+                            onReady();
+                        });
+                    }
+                };
+                finish();
+            } catch (_) {
+                if (typeof onReady === 'function') onReady();
+            }
+        };
+        void paintNativePdfPreview();
+        return;
+    }
+
     const pdfPagesRaw = Array.isArray(payload.pdfPages) ? payload.pdfPages : [];
     if (pdfPagesRaw.length) {
         const paintPdfPreview = (pdfPages) => {
@@ -2198,6 +2322,8 @@ function writeHomeWallCache(snap) {
                     contentType: data.contentType || '',
                     contentKind: data.contentKind || '',
                     pdfPages: Array.isArray(data.pdfPages) ? data.pdfPages : [],
+                    pdfUrl: typeof data.pdfUrl === 'string' ? data.pdfUrl : '',
+                    pdfPageCount: Number(data.pdfPageCount) || 0,
                     preview:
                         typeof data.preview === 'string' ? data.preview.slice(0, 600) : '',
                     // Omit full article HTML from cache — fetch on preview click.
@@ -2239,17 +2365,94 @@ function applyPdfPagesToCard(card, pdfPages) {
     if (urls.length) {
         card.dataset.pdfPages = serializePdfPagesForDataset(urls);
         card.dataset.contentKind = 'pdf';
-    } else {
+    } else if (!String(card.dataset.pdfUrl || '').trim()) {
         delete card.dataset.pdfPages;
         delete card.dataset.contentKind;
     }
 }
 
-function setArticlePanelHandoffDatasets(panel, { title, author, publishedAt, article, pdfPages }) {
+function applyPdfFromFirestoreToCard(card, data) {
+    if (!card) return;
+    const pdfUrl = String(data?.pdfUrl || '').trim();
+    if (pdfUrl) {
+        card.dataset.pdfUrl = pdfUrl;
+        const pageCount = Number(data?.pdfPageCount);
+        if (Number.isFinite(pageCount) && pageCount > 0) {
+            card.dataset.pdfPageCount = String(pageCount);
+        } else {
+            delete card.dataset.pdfPageCount;
+        }
+        delete card.dataset.pdfPages;
+        card.dataset.contentKind = 'pdf';
+        return;
+    }
+    delete card.dataset.pdfUrl;
+    delete card.dataset.pdfPageCount;
+    applyPdfPagesToCard(card, data?.pdfPages);
+}
+
+function parseCardNativePdf(card) {
+    const pdfUrl = String(card?.dataset?.pdfUrl || '').trim();
+    if (!pdfUrl) return null;
+    const pageCount = Number(card?.dataset?.pdfPageCount);
+    return {
+        pdfUrl,
+        pdfPageCount: Number.isFinite(pageCount) && pageCount > 0 ? pageCount : 0,
+    };
+}
+
+function cardHasPdfContent(card) {
+    if (parseCardNativePdf(card)) return true;
+    return parseCardPdfPages(card).length > 0;
+}
+
+function pdfFieldsFromCard(card) {
+    const native = parseCardNativePdf(card);
+    if (native) {
+        return { pdfUrl: native.pdfUrl, pdfPageCount: native.pdfPageCount, pdfPages: [] };
+    }
+    return { pdfPages: parseCardPdfPages(card) };
+}
+
+function attachPdfFieldsToHandoffPayload(payload, card) {
+    const native = parseCardNativePdf(card);
+    if (native) {
+        payload.pdfUrl = native.pdfUrl;
+        if (native.pdfPageCount) payload.pdfPageCount = native.pdfPageCount;
+        if (typeof window.GppPdfPages !== 'undefined') {
+            payload.previewPageWidth = window.GppPdfPages.CANONICAL_WIDTH;
+            payload.previewPageHeight = window.GppPdfPages.DEFAULT_HEIGHT;
+        }
+        return payload;
+    }
+    const pdfPages = parseCardPdfPages(card);
+    if (pdfPages.length) {
+        payload.pdfPages = pdfPages;
+        if (typeof window.GppPdfPages !== 'undefined') {
+            payload.previewPageHeight = window.GppPdfPages.sheetHeight(pdfPages[0]);
+            payload.previewPageWidth = window.GppPdfPages.CANONICAL_WIDTH;
+        }
+    }
+    return payload;
+}
+
+function setArticlePanelHandoffDatasets(panel, { title, author, publishedAt, article, pdfPages, pdfUrl, pdfPageCount }) {
     if (!panel) return;
     panel.dataset.handoffTitle = title || '';
     panel.dataset.handoffAuthor = author || 'Anonymous';
     panel.dataset.handoffPublishedAt = publishedAt || '';
+    const nativeUrl = String(pdfUrl || '').trim();
+    if (nativeUrl) {
+        panel.dataset.handoffPdfUrl = nativeUrl;
+        if (pdfPageCount) panel.dataset.handoffPdfPageCount = String(pdfPageCount);
+        delete panel.dataset.handoffPdfPages;
+        delete panel.dataset.handoffPreviewPageHeight;
+        panel.dataset.handoffArticle = '';
+        return;
+    }
+    delete panel.dataset.handoffPdfUrl;
+    delete panel.dataset.handoffPdfPageCount;
+    delete panel.dataset.handoffPreviewPageHeight;
     const urls = Array.isArray(pdfPages) ? pdfPages.filter(Boolean) : [];
     if (urls.length) {
         panel.dataset.handoffPdfPages = serializePdfPagesForDataset(urls);
@@ -2260,10 +2463,21 @@ function setArticlePanelHandoffDatasets(panel, { title, author, publishedAt, art
     }
 }
 
+function enrichPdfHandoffPreviewRaster(panel, payload) {
+    if (!panel || !payload?.pdfUrl) return payload;
+    const canvas = panel.querySelector('#article-first-page canvas.article-pdf-page');
+    if (!canvas || canvas.width < 2) return payload;
+    try {
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        if (dataUrl.length > 900000) return payload;
+        payload.pdfPreviewRaster = dataUrl;
+    } catch (_) {
+        /* canvas tainted or too large */
+    }
+    return payload;
+}
+
 function readerHandoffPayloadFromPanel(panel, blogId) {
-    const pdfPages = panel?.dataset?.handoffPdfPages
-        ? parseCardPdfPages({ dataset: { pdfPages: panel.dataset.handoffPdfPages } })
-        : [];
     const payload = {
         blogId: String(blogId || ''),
         title: panel?.dataset?.handoffTitle || '',
@@ -2273,6 +2487,24 @@ function readerHandoffPayloadFromPanel(panel, blogId) {
         ...canonicalHandoffPageSize(),
         ts: Date.now(),
     };
+    const nativeUrl = String(panel?.dataset?.handoffPdfUrl || '').trim();
+    if (nativeUrl) {
+        payload.pdfUrl = nativeUrl;
+        const pc = Number(panel?.dataset?.handoffPdfPageCount);
+        if (Number.isFinite(pc) && pc > 0) payload.pdfPageCount = pc;
+        const previewH = Number(panel?.dataset?.handoffPreviewPageHeight);
+        if (typeof window.GppPdfPages !== 'undefined') {
+            payload.previewPageWidth = window.GppPdfPages.CANONICAL_WIDTH;
+            payload.previewPageHeight =
+                Number.isFinite(previewH) && previewH > 0
+                    ? previewH
+                    : window.GppPdfPages.DEFAULT_HEIGHT;
+        }
+        return enrichPdfHandoffPreviewRaster(panel, payload);
+    }
+    const pdfPages = panel?.dataset?.handoffPdfPages
+        ? parseCardPdfPages({ dataset: { pdfPages: panel.dataset.handoffPdfPages } })
+        : [];
     if (pdfPages.length) {
         payload.pdfPages = pdfPages;
         if (typeof window.GppPdfPages !== 'undefined') {
@@ -2288,14 +2520,13 @@ async function ensureBlogCardArticle(card) {
     const id = card.dataset.blogId;
     if (!id || !db) return card.dataset.article || '';
 
-    const pdfPages = parseCardPdfPages(card);
     const cachedArticle = card.dataset.article || '';
     /*
      * Wall cache (homeWallBlogsV2) omits article HTML but mount still marked
      * articleLoaded — do not treat that as a real fetch; load prose from Firestore.
      */
     if (card.dataset.articleLoaded === '1') {
-        if (pdfPages.length) return cachedArticle;
+        if (cardHasPdfContent(card)) return cachedArticle;
         if (cachedArticle.length > 0) return cachedArticle;
     }
 
@@ -2304,7 +2535,7 @@ async function ensureBlogCardArticle(card) {
         const data = snap.exists ? snap.data() : {};
         const article = typeof data.article === 'string' ? data.article : '';
         card.dataset.article = article;
-        applyPdfPagesToCard(card, data.pdfPages);
+        applyPdfFromFirestoreToCard(card, data);
         card.dataset.articleLoaded = '1';
         return article;
     } catch (_) {
@@ -2374,11 +2605,12 @@ function mountHomeWall(blogs) {
             const blogCardEl = card?.querySelector('.blog-card');
             if (blogCardEl) {
                 if (typeof doc.article === 'string') blogCardEl.dataset.article = doc.article;
-                applyPdfPagesToCard(blogCardEl, doc.pdfPages);
+                applyPdfFromFirestoreToCard(blogCardEl, doc);
                 const hasInlineArticle =
                     typeof doc.article === 'string' && doc.article.length > 0;
                 const hasInlinePdf =
-                    Array.isArray(doc.pdfPages) && doc.pdfPages.length > 0;
+                    String(doc.pdfUrl || '').trim() ||
+                    (Array.isArray(doc.pdfPages) && doc.pdfPages.length > 0);
                 if (hasInlineArticle || hasInlinePdf) {
                     blogCardEl.dataset.articleLoaded = '1';
                 }
@@ -4469,6 +4701,8 @@ function createBlogCard(blog, section, sectionIndex) {
         }
         const sectionIndex = Number(card.dataset.sectionIndex || 1);
         const seamIndex = SEAM_BY_SECTION[sectionIndex] || 2;
+        /* Lock highlight before async preview work so light textures don’t flash “off”. */
+        setPreviewSourceHighlight(card);
         applyArticlePreviewFromBlogCard(card, seamIndex);
     };
     // Persist preview data for the hover preview panel
@@ -4477,7 +4711,12 @@ function createBlogCard(blog, section, sectionIndex) {
     }
     card.dataset.title = titleText;
     card.dataset.publishedAt = data.publishedAt || '';
-    if (data.contentKind === 'pdf' || (Array.isArray(data.pdfPages) && data.pdfPages.length)) {
+    applyPdfFromFirestoreToCard(card, data);
+    if (
+        data.contentKind === 'pdf' ||
+        String(data.pdfUrl || '').trim() ||
+        (Array.isArray(data.pdfPages) && data.pdfPages.length)
+    ) {
         card.dataset.contentKind = 'pdf';
     }
 
@@ -5737,6 +5976,7 @@ function ensureArticlePreviewUi() {
 
     articlePanel.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (document.body.classList.contains('desktop-pdf-reader-open')) return;
         const id = articlePanel.dataset.blogId;
         if (!id) return;
         if (homeDirectArticleTapNav()) {
@@ -5760,7 +6000,10 @@ function ensureArticlePreviewUi() {
             if (e.target.closest('.article-panel')) return;
             if (e.target.closest('.mobile-reader-shell')) return;
             if (e.target.closest('.blog-card')) return;
-            if (document.body.classList.contains('mobile-reader-open')) {
+            if (
+                document.body.classList.contains('mobile-reader-open') ||
+                document.body.classList.contains('desktop-pdf-reader-open')
+            ) {
                 closeMobileInAppReader();
                 return;
             }
@@ -5793,12 +6036,11 @@ async function applyArticlePreviewFromBlogCard(card, seamIndex) {
     const title = card.dataset.title || '';
     await ensureBlogCardArticle(card);
     const rawArticle = card.dataset.article || '';
-    const pdfPages = parseCardPdfPages(card);
+    const pdfFields = pdfFieldsFromCard(card);
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
     const blogId = card.dataset.blogId || '';
-    const previewPayload = { title, article: rawArticle, author, publishedAt };
-    if (pdfPages.length) previewPayload.pdfPages = pdfPages;
+    const previewPayload = { title, article: rawArticle, author, publishedAt, ...pdfFields };
 
     // Same seam + already open: swap page content in place (no close/reopen churn).
     // interview/opinion both use seam 2 — this is the common in-gap switch.
@@ -5820,7 +6062,7 @@ async function applyArticlePreviewFromBlogCard(card, seamIndex) {
             author,
             publishedAt,
             article: rawArticle,
-            pdfPages,
+            ...pdfFields,
         });
         setPreviewSourceHighlight(card);
         renderFirstPagePreview(articleEl, previewPayload, () => {
@@ -5855,7 +6097,7 @@ async function applyArticlePreviewFromBlogCard(card, seamIndex) {
         author,
         publishedAt,
         article: rawArticle,
-        pdfPages,
+        ...pdfFields,
     });
     document.body.classList.remove('article-closing');
     setPreviewSourceHighlight(card);
@@ -6046,12 +6288,15 @@ function playExpandFullscreenThenNavigate(blogId) {
     }
 
     const writeHandoffAndGo = () => {
+        const payload = readerHandoffPayloadFromPanel(articlePanel, blogId);
         try {
-            sessionStorage.setItem(
-                READER_HANDOFF_KEY,
-                JSON.stringify(readerHandoffPayloadFromPanel(articlePanel, blogId))
-            );
+            sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(payload));
         } catch (_) {}
+        const nativePdf = Boolean(String(payload.pdfUrl || '').trim());
+        if (nativePdf && !homeDirectArticleTapNav()) {
+            openDesktopNativePdfReader(blogId, articlePanel, payload);
+            return;
+        }
         location.href = `/${blogId}`;
     };
 
@@ -6104,6 +6349,15 @@ function playExpandFullscreenThenNavigate(blogId) {
         document.body.classList.add('article-open');
     }
     void articlePanel.offsetHeight;
+    const nativePdfExpand = Boolean(String(articlePanel.dataset.handoffPdfUrl || '').trim());
+    if (nativePdfExpand && !homeDirectArticleTapNav()) {
+        try {
+            const prefetchPayload = readerHandoffPayloadFromPanel(articlePanel, blogId);
+            sessionStorage.setItem(READER_HANDOFF_KEY, JSON.stringify(prefetchPayload));
+            warmMobileReaderShellUnderWall();
+            loadMobileReaderFrame(mobileReaderFrameEl, `/${blogId}?embed=1&readerChrome=1`);
+        } catch (_) {}
+    }
     const onExpandComplete = () => {
         if (!articleExpandInFlight) return;
         articleExpandInFlight = false;
@@ -6154,11 +6408,10 @@ async function expandArticlePanelAndNavigate(blogId, card) {
     const title = card.dataset.title || '';
     await ensureBlogCardArticle(card);
     const rawArticle = card.dataset.article || '';
-    const pdfPages = parseCardPdfPages(card);
+    const pdfFields = pdfFieldsFromCard(card);
     const publishedAt = card.dataset.publishedAt || '';
     const author = card.closest('.cardcontainer')?.getAttribute('data-author') || 'Anonymous';
-    const previewPayload = { title, article: rawArticle, author, publishedAt };
-    if (pdfPages.length) previewPayload.pdfPages = pdfPages;
+    const previewPayload = { title, article: rawArticle, author, publishedAt, ...pdfFields };
 
     const articlePanel = document.querySelector('.article-panel');
     if (!articlePanel) {
@@ -6179,7 +6432,7 @@ async function expandArticlePanelAndNavigate(blogId, card) {
         author,
         publishedAt,
         article: rawArticle,
-        pdfPages,
+        ...pdfFields,
     });
 
     setActivePreviewSeam(seamIndex);

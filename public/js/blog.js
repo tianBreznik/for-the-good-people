@@ -86,13 +86,21 @@ let annotationOverlayRoot = null;
 const annotationColorSeed = Math.floor(Date.now() / 1000);
 const READER_HANDOFF_KEY = 'readerHandoffPayload';
 const READER_HANDOFF_MAX_AGE_MS = 90 * 1000;
-const READER_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+const READER_SEARCH = new URLSearchParams(location.search);
+const READER_EMBED = READER_SEARCH.get('embed') === '1';
+/** Desktop PDF on home wall: iframe handoff but full reader chrome (white, Wall/Dashboard). */
+const READER_EMBED_DESKTOP_CHROME = READER_EMBED && READER_SEARCH.get('readerChrome') === '1';
 const READER_EMBED_READY_TYPE = 'gpp-reader-embed-ready';
 const READER_EMBED_HANDOFF_TYPE = 'gpp-reader-handoff';
+const READER_EMBED_CLOSE_TYPE = 'gpp-reader-embed-close';
 
 if (READER_EMBED) {
     document.documentElement.classList.add('reader-embed');
     document.body.classList.add('reader-embed');
+    if (READER_EMBED_DESKTOP_CHROME) {
+        document.documentElement.classList.add('reader-embed-desktop-chrome');
+        document.body.classList.add('reader-embed-desktop-chrome');
+    }
     const viewportMeta = document.querySelector('meta[name="viewport"]');
     if (viewportMeta && !/interactive-widget/i.test(viewportMeta.content)) {
         viewportMeta.content = `${viewportMeta.content}, interactive-widget=resizes-content`;
@@ -126,11 +134,8 @@ function applyReaderHandoffPayload(payload) {
     const author = payload.author || 'Anonymous';
     if (titleTag) titleTag.textContent = title || 'Good People';
     currentBlogMeta = { title, publishedAt, author };
-    const pdfPages = Array.isArray(payload.pdfPages) ? payload.pdfPages.filter(Boolean) : [];
-    if (pdfPages.length) {
-        applyReaderSheetScaleForPdf(pdfPages);
-        handoffPdfPagesJson = pdfPagesSnapshot(pdfPages);
-        renderPdfArticleBody(pdfPages, { provisional: true });
+    if (payloadIsPdfArticle(payload)) {
+        paintPdfArticleHandoff(payload, { provisional: true });
         return true;
     }
     if (typeof payload.article === 'string' && payload.article.trim()) {
@@ -249,10 +254,17 @@ function mountCommentScreenForLayout(lastArticlePageEl) {
 
     if (!articleBody) return;
 
+    removeDedicatedCommentsPages(articleBody);
+
+    if (readerUsesPdfSheets(articleBody)) {
+        mountPdfCommentLayout(articleBody, composeDock);
+        pdfReaderCommentChromeMounted = true;
+        return;
+    }
+
     // Park list host so tearing down an old comments sheet doesn't destroy it.
     articleBody.appendChild(commentScreenEl);
     articleBody.appendChild(composeDock);
-    removeDedicatedCommentsPages(articleBody);
 
     // Prefer an explicit page only if it still has body content; else resolve fresh.
     let anchor = null;
@@ -274,11 +286,6 @@ function mountCommentScreenForLayout(lastArticlePageEl) {
 
     commentScreenEl.classList.remove('comment-screen--page-foot', 'comment-screen--above-footnotes');
     composeDock.classList.remove('comment-compose--page-foot', 'comment-compose--above-footnotes');
-
-    if (readerUsesPdfSheets(articleBody)) {
-        mountPdfCommentLayout(articleBody, composeDock);
-        return;
-    }
 
     // Same as desktop: compose on last content page foot; thread on its own sheet.
     if (anchor) pinComposeToContentPageFoot(composeDock, anchor);
@@ -1081,11 +1088,8 @@ function renderReaderHandoffIfPresent() {
     const author = payload.author || 'Anonymous';
     titleTag.textContent = title || 'Good People';
     currentBlogMeta = { title, publishedAt, author };
-    const pdfPages = Array.isArray(payload.pdfPages) ? payload.pdfPages.filter(Boolean) : [];
-    if (pdfPages.length) {
-        applyReaderSheetScaleForPdf(pdfPages);
-        handoffPdfPagesJson = pdfPagesSnapshot(pdfPages);
-        renderPdfArticleBody(pdfPages, { provisional: true });
+    if (payloadIsPdfArticle(payload)) {
+        paintPdfArticleHandoff(payload, { provisional: true });
         return true;
     }
     if (typeof payload.article === 'string' && payload.article.trim()) {
@@ -1102,6 +1106,97 @@ let handoffArticleHtml = null;
 let handoffPdfPagesJson = null;
 /** When set, viewport scale follows PDF sheet heights instead of 874px prose. */
 let readerPdfPagesForScale = null;
+let readerPdfNativeUrl = null;
+let readerPdfNativeDocPromise = null;
+/** In-flight native PDF paint (handoff) — await before Firestore re-render. */
+let readerNativePdfInflight = null;
+let readerNativePdfRenderedUrl = null;
+/** Preview→reader: keep sheet scale from wall handoff until layout settles. */
+let readerPdfHandoffScaleLocked = false;
+let readerPdfHandoffPreviewHeight = 0;
+let readerPdfHandoffSession = false;
+let pdfReaderCommentChromeMounted = false;
+
+function nativePdfUrlKey(url) {
+    const s = String(url || '').trim();
+    if (!s) return '';
+    const GPD = window.GppPdfDocument;
+    if (GPD && typeof GPD.absoluteUrl === 'function') {
+        try {
+            return GPD.absoluteUrl(s);
+        } catch (_) {
+            /* fall through */
+        }
+    }
+    return s;
+}
+
+function nativePdfUrlsMatch(a, b) {
+    const ka = nativePdfUrlKey(a);
+    const kb = nativePdfUrlKey(b);
+    return Boolean(ka && kb && ka === kb);
+}
+
+function countPaintedNativePdfPages() {
+    const body = document.getElementById('article-body');
+    if (!body) return 0;
+    let n = 0;
+    for (const canvas of body.querySelectorAll('.article-page-pdf-sheet canvas.article-pdf-page')) {
+        if (canvas.width > 0 && canvas.height > 0) n += 1;
+    }
+    return n;
+}
+
+function nativePdfSpreadSheetCount() {
+    const body = document.getElementById('article-body');
+    return body ? body.querySelectorAll('.article-page-pdf-sheet').length : 0;
+}
+
+async function ensureReaderNativePdfInflightDone() {
+    if (!readerNativePdfInflight) return;
+    try {
+        await readerNativePdfInflight;
+    } catch (_) {
+        /* handoff render failed — fall through to Firestore path */
+    }
+}
+
+function shouldFinalizePdfWithoutRebuild(data, pdfResolved) {
+    if (!pdfResolved || pdfResolved.kind === 'none') return false;
+    const snapshot = pdfArticleHandoffSnapshot(data);
+    if (handoffPdfPagesJson != null && snapshot !== handoffPdfPagesJson) return false;
+
+    if (pdfResolved.kind === 'raster') {
+        return (
+            handoffSpreadPainted &&
+            handoffPdfPagesJson != null &&
+            snapshot === handoffPdfPagesJson
+        );
+    }
+
+    const pdfUrl = String(pdfResolved.pdfUrl || '').trim();
+    if (!pdfUrl) return false;
+    const painted = countPaintedNativePdfPages();
+    const sheets = nativePdfSpreadSheetCount();
+    const need = pdfResolved.pageCount || sheets || 0;
+    const urlOnDom =
+        nativePdfUrlsMatch(readerNativePdfRenderedUrl, pdfUrl) ||
+        nativePdfUrlsMatch(readerPdfNativeUrl, pdfUrl);
+
+    if (painted > 0 && urlOnDom && (need === 0 || painted >= need)) return true;
+    if (painted > 0 && handoffPdfPagesJson != null && snapshot === handoffPdfPagesJson) {
+        return need === 0 || painted >= need || handoffSpreadPainted;
+    }
+    return handoffSpreadPainted && handoffPdfPagesJson != null && snapshot === handoffPdfPagesJson;
+}
+
+function pdfArticleHandoffSnapshot(source) {
+    if (typeof window.GppPdfPages !== 'undefined' && window.GppPdfPages.handoffSnapshotForArticle) {
+        return window.GppPdfPages.handoffSnapshotForArticle(source || {});
+    }
+    const pages = Array.isArray(source?.pdfPages) ? source.pdfPages : [];
+    return pdfPagesSnapshot(pages);
+}
 
 function pdfPagesSnapshot(pages) {
     if (typeof window.GppPdfPages !== 'undefined') {
@@ -1113,7 +1208,77 @@ function pdfPagesSnapshot(pages) {
     );
 }
 
+function payloadIsPdfArticle(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+    if (String(payload.pdfUrl || '').trim()) return true;
+    return Array.isArray(payload.pdfPages) && payload.pdfPages.length > 0;
+}
+
+function paintPdfHandoffRasterPlaceholder(payload) {
+    const raster = String(payload?.pdfPreviewRaster || '').trim();
+    if (!raster.startsWith('data:image/')) return;
+    if (countPaintedNativePdfPages() > 0 || nativePdfSpreadSheetCount() > 0) return;
+    const articleBody = preparePdfArticleShell();
+    if (!articleBody) return;
+    const pageCount = Math.max(1, Number(payload.pdfPageCount) || 1);
+    const wrap0 = appendPdfSheetPlaceholder(articleBody, 0);
+    const img = document.createElement('img');
+    img.className = 'article-pdf-page article-pdf-handoff-raster';
+    img.src = raster;
+    img.alt = 'Page 1';
+    img.decoding = 'sync';
+    wrap0.appendChild(img);
+    for (let i = 1; i < pageCount; i++) {
+        appendPdfSheetPlaceholder(articleBody, i);
+    }
+}
+
+function paintPdfArticleHandoff(payload, options) {
+    const snap = pdfArticleHandoffSnapshot(payload);
+    const nativeUrl = String(payload?.pdfUrl || '').trim();
+    if (nativeUrl) {
+        readerPdfHandoffSession = true;
+        readerPdfHandoffPreviewHeight = Number(payload?.previewPageHeight) || 0;
+        readerPdfHandoffScaleLocked = readerPdfHandoffPreviewHeight > 0;
+        paintPdfHandoffRasterPlaceholder(payload);
+    }
+    if (readerNativePdfInflight && handoffPdfPagesJson === snap) {
+        applyReaderSheetScaleForPdfFromPayload(payload);
+        return readerNativePdfInflight;
+    }
+    if (handoffPdfPagesJson === snap) {
+        const painted = countPaintedNativePdfPages();
+        if (painted > 0 || handoffSpreadPainted) {
+            applyReaderSheetScaleForPdfFromPayload(payload);
+            return undefined;
+        }
+    }
+    applyReaderSheetScaleForPdfFromPayload(payload);
+    handoffPdfPagesJson = snap;
+    return renderPdfArticleFromData(payload, options);
+}
+
+function applyReaderSheetScaleForPdfFromPayload(payload) {
+    const pages = Array.isArray(payload?.pdfPages) ? payload.pdfPages.filter(Boolean) : [];
+    if (pages.length) {
+        applyReaderSheetScaleForPdf(pages);
+        return;
+    }
+    const previewH = Number(payload?.previewPageHeight);
+    const previewW =
+        Number(payload?.previewPageWidth) ||
+        (typeof window.GppPdfPages !== 'undefined' ? window.GppPdfPages.CANONICAL_WIDTH : 620);
+    if (String(payload?.pdfUrl || '').trim() && previewH > 0 && typeof window.GppPdfPages !== 'undefined') {
+        window.GppPdfPages.applyReaderGeometryForPages([
+            { url: '', width: previewW, height: previewH },
+        ]);
+        return;
+    }
+    applyReaderSheetScale();
+}
+
 function applyReaderSheetScaleForPdf(pages) {
+    if (readerPdfHandoffScaleLocked) return;
     if (typeof window.GppPdfPages !== 'undefined') {
         window.GppPdfPages.applyReaderGeometryForPages(pages);
         return;
@@ -1123,9 +1288,8 @@ function applyReaderSheetScaleForPdf(pages) {
 
 function applyInitialReaderSheetScaleFromHandoff() {
     const payload = readReaderHandoffPayload();
-    const pdfPages = payload && Array.isArray(payload.pdfPages) ? payload.pdfPages.filter(Boolean) : [];
-    if (pdfPages.length) {
-        applyReaderSheetScaleForPdf(pdfPages);
+    if (payload && payloadIsPdfArticle(payload)) {
+        applyReaderSheetScaleForPdfFromPayload(payload);
         return;
     }
     applyReaderSheetScale();
@@ -1535,13 +1699,33 @@ function renderThreadedComments() {
     mountCommentScreenForLayout(lastArticlePageElForComments);
 }
 
+function unlockPdfHandoffScaleAfterPaint() {
+    window.setTimeout(() => {
+        readerPdfHandoffScaleLocked = false;
+        readerPdfHandoffSession = false;
+    }, 900);
+}
+
 function finalizeHandoffSpreadWithoutRebuild() {
+    if (readerReady) {
+        clearReaderHandoffPayload();
+        unlockPdfHandoffScaleAfterPaint();
+        return;
+    }
     readerReady = true;
     handoffSpreadPainted = false;
     handoffArticleHtml = null;
     handoffPdfPagesJson = null;
     const bodyEl = document.getElementById('article-body');
-    if (bodyEl && typeof ContentRefs !== 'undefined') {
+    const pdfSheets = bodyEl && readerUsesPdfSheets(bodyEl);
+    if (pdfSheets) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                ensurePdfReaderCommentChrome();
+            });
+        });
+    }
+    if (bodyEl && typeof ContentRefs !== 'undefined' && !pdfSheets) {
         if (ContentRefs.linkifyElement) ContentRefs.linkifyElement(bodyEl);
         if (ContentRefs.enhanceAuthorRefs) ContentRefs.enhanceAuthorRefs(bodyEl);
     }
@@ -1552,6 +1736,7 @@ function finalizeHandoffSpreadWithoutRebuild() {
     bindAnnotationSelectionUi();
     clearReaderHandoffPayload();
     ensureCommentsVisible();
+    unlockPdfHandoffScaleAfterPaint();
     if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
 }
 
@@ -1568,16 +1753,33 @@ const setupBlog = (data) => {
 
     numberofcomments = data.numberofcomments;
 
-    const render = () => {
-        const pdfPages = Array.isArray(data.pdfPages) ? data.pdfPages.filter(Boolean) : [];
-        if (pdfPages.length) {
-            const snapshot = pdfPagesSnapshot(pdfPages);
+    const render = async () => {
+        const pdfResolved =
+            typeof window.GppPdfPages !== 'undefined'
+                ? window.GppPdfPages.resolveArticlePdf(data)
+                : { kind: Array.isArray(data.pdfPages) && data.pdfPages.length ? 'raster' : 'none', pages: data.pdfPages };
+        if (pdfResolved.kind !== 'none') {
+            await ensureReaderNativePdfInflightDone();
+            const snapshot = pdfArticleHandoffSnapshot(data);
+            const painted = countPaintedNativePdfPages();
+            const handoffPayload = readReaderHandoffPayload();
+            const nativeFromPreview =
+                pdfResolved.kind === 'native' &&
+                handoffPayload &&
+                nativePdfUrlsMatch(handoffPayload.pdfUrl, pdfResolved.pdfUrl);
             const reuseHandoff =
-                handoffSpreadPainted &&
-                handoffPdfPagesJson != null &&
-                snapshot === handoffPdfPagesJson;
+                shouldFinalizePdfWithoutRebuild(data, pdfResolved) ||
+                (painted > 0 &&
+                    handoffPdfPagesJson != null &&
+                    snapshot === handoffPdfPagesJson) ||
+                readerPdfHandoffSession ||
+                nativeFromPreview ||
+                (pdfResolved.kind === 'native' && painted > 0);
 
             if (reuseHandoff) {
+                if (pdfResolved.kind === 'native' && pdfResolved.pdfUrl) {
+                    readerNativePdfRenderedUrl = String(pdfResolved.pdfUrl).trim();
+                }
                 if (READER_EMBED) bindCommentInputEmbedFocusFix();
                 bindReaderSpreadAndAnnotationListeners();
                 applyAnnotationHighlights();
@@ -1586,15 +1788,18 @@ const setupBlog = (data) => {
                 return;
             }
 
-            renderPdfArticleBody(pdfPages);
-            handoffSpreadPainted = false;
-            handoffPdfPagesJson = null;
-            handoffArticleHtml = null;
-            syncNotesGateUi();
-            setupCommentSection();
-            setupCommentContentRefs();
-            attachAnnotationsListener();
-            bindAnnotationSelectionUi();
+            await renderPdfArticleFromData(data);
+            if (!readerReady) {
+                handoffSpreadPainted = false;
+                handoffPdfPagesJson = null;
+                handoffArticleHtml = null;
+                syncNotesGateUi();
+                setupCommentSection();
+                setupCommentContentRefs();
+                attachAnnotationsListener();
+                bindAnnotationSelectionUi();
+            }
+            clearReaderHandoffPayload();
             return;
         }
 
@@ -1624,13 +1829,28 @@ const setupBlog = (data) => {
         attachAnnotationsListener();
         bindAnnotationSelectionUi();
     };
+
+    const pdfKindEarly =
+        typeof window.GppPdfPages !== 'undefined'
+            ? window.GppPdfPages.resolveArticlePdf(data).kind
+            : String(data?.pdfUrl || '').trim()
+              ? 'native'
+              : Array.isArray(data?.pdfPages) && data.pdfPages.length
+                ? 'raster'
+                : 'none';
+    const pdfArticle = pdfKindEarly !== 'none';
+
+    bindAnnotationNavigation();
     if (typeof ContentRefs !== 'undefined' && ContentRefs.ensureCatalog) {
+        ContentRefs.ensureCatalog().catch(() => {});
+    }
+    if (pdfArticle) {
+        void render();
+    } else if (typeof ContentRefs !== 'undefined' && ContentRefs.ensureCatalog) {
         ContentRefs.ensureCatalog().finally(render);
     } else {
-        render();
+        void render();
     }
-    bindAnnotationNavigation();
-    clearReaderHandoffPayload();
 }
 
 
@@ -2714,8 +2934,23 @@ function lastPdfArticleSheetPage(articleBody) {
 }
 
 /** PDF-only: compose on the last raster sheet (prose uses pinComposeToContentPageFoot). */
+function ensurePdfReaderCommentChrome() {
+    if (pdfReaderCommentChromeMounted) return;
+    const articleBody = document.getElementById('article-body');
+    if (!articleBody || !readerUsesPdfSheets(articleBody)) return;
+    const composeDock = ensureCommentComposeDock();
+    mountPdfCommentLayout(articleBody, composeDock);
+    pdfReaderCommentChromeMounted = true;
+}
+
 function pinComposeToPdfSheetFoot(dock, pdfPageEl) {
     if (!dock || !pdfPageEl) return;
+    if (
+        dock.parentElement === pdfPageEl &&
+        dock.classList.contains('comment-compose--pdf-sheet')
+    ) {
+        return;
+    }
     dock.classList.remove(
         'comment-compose--above-footnotes',
         'comment-compose--page-foot'
@@ -2762,15 +2997,8 @@ function mountPdfCommentLayout(articleBody, composeDock) {
     page.appendChild(commentScreenEl);
 }
 
-function renderPdfArticleSpread(pdfPages) {
+function preparePdfArticleShell() {
     const articleBody = document.getElementById('article-body');
-    const pages =
-        typeof window.GppPdfPages !== 'undefined'
-            ? window.GppPdfPages.normalize(pdfPages)
-            : pdfPages;
-    if (!articleBody || !pages.length) return;
-    readerPdfPagesForScale = pages;
-
     const blogRoot = document.querySelector('.blog');
     if (blogRoot) {
         const composeDock = document.getElementById('comment-compose');
@@ -2780,23 +3008,41 @@ function renderPdfArticleSpread(pdfPages) {
     const overlay = document.getElementById('annotation-overlay-root');
     if (overlay) document.body.appendChild(overlay);
     lastArticlePageElForComments = null;
-
+    if (!articleBody) return null;
     articleBody.innerHTML = '';
     if (overlay) {
         articleBody.appendChild(overlay);
         annotationOverlayRoot = overlay;
     }
+    return articleBody;
+}
+
+function appendPdfSheetPlaceholder(articleBody, index) {
+    const spread = createSpread();
+    spread.spread.classList.add('article-spread-pdf');
+    articleBody.appendChild(spread.spread);
+    const pageEl = spread.leftPage;
+    pageEl.classList.add('article-page-pdf-sheet');
+    const pageBody = ensureArticlePageBody(pageEl);
+    const wrap = document.createElement('div');
+    wrap.className = 'article-pdf-page-wrap';
+    pageBody.appendChild(wrap);
+    lastArticlePageElForComments = pageEl;
+    return wrap;
+}
+
+function renderPdfArticleSpread(pdfPages) {
+    const pages =
+        typeof window.GppPdfPages !== 'undefined'
+            ? window.GppPdfPages.normalize(pdfPages)
+            : pdfPages;
+    const articleBody = preparePdfArticleShell();
+    if (!articleBody || !pages.length) return;
+    readerPdfPagesForScale = pages;
 
     pages.forEach((entry, index) => {
         const url = entry.url || entry;
-        const spread = createSpread();
-        spread.spread.classList.add('article-spread-pdf');
-        articleBody.appendChild(spread.spread);
-        const pageEl = spread.leftPage;
-        pageEl.classList.add('article-page-pdf-sheet');
-        const pageBody = ensureArticlePageBody(pageEl);
-        const wrap = document.createElement('div');
-        wrap.className = 'article-pdf-page-wrap';
+        const wrap = appendPdfSheetPlaceholder(articleBody, index);
         const img = document.createElement('img');
         img.className = 'article-pdf-page';
         img.src = typeof url === 'string' ? url : entry.url;
@@ -2804,32 +3050,170 @@ function renderPdfArticleSpread(pdfPages) {
         img.decoding = 'async';
         if (index > 0) img.loading = 'lazy';
         wrap.appendChild(img);
-        pageBody.appendChild(wrap);
-
-        lastArticlePageElForComments = pageEl;
     });
 
     applyReaderSheetScaleForPdf(pages);
     bindReaderSpreadAndAnnotationListeners();
 }
 
-function renderPdfArticleBody(pdfPages, options = {}) {
-    const finish = (pages) => {
-        renderPdfArticleSpread(pages);
-        syncNotesGateUi();
-        if (READER_EMBED) bindCommentInputEmbedFocusFix();
-        applyAnnotationHighlights();
-        renderAnnotationList();
+function finishPdfArticleRender(options) {
+    if (options.provisional) {
+        handoffSpreadPainted = true;
+        scheduleEmbedParentReadyAfterPaint();
+        return;
+    }
 
-        if (options.provisional) {
-            scheduleEmbedParentReadyAfterPaint();
+    if (readerReady) {
+        if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
+        return;
+    }
+
+    syncNotesGateUi();
+    if (READER_EMBED) bindCommentInputEmbedFocusFix();
+    applyAnnotationHighlights();
+    renderAnnotationList();
+    readerReady = true;
+    setupCommentSection();
+    ensureCommentsVisible();
+    if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
+}
+
+function renderPdfArticleFromData(data, options = {}) {
+    const Gpp = window.GppPdfPages;
+    const resolved = Gpp ? Gpp.resolveArticlePdf(data || {}) : { kind: 'none' };
+    if (resolved.kind === 'native') {
+        return renderNativePdfArticle(resolved, options);
+    }
+    if (resolved.kind === 'raster') {
+        renderPdfArticleBody(resolved.pages, options);
+        return undefined;
+    }
+    return undefined;
+}
+
+async function renderNativePdfArticle(resolved, options = {}) {
+    const GPD = window.GppPdfDocument;
+    const pdfUrl = String(resolved.pdfUrl || '').trim();
+    if (!GPD || !pdfUrl) return;
+
+    await ensureReaderNativePdfInflightDone();
+
+    const work = async () => {
+        const urlKey = nativePdfUrlKey(pdfUrl);
+        if (nativePdfUrlKey(readerPdfNativeUrl) !== urlKey) {
+            readerPdfNativeUrl = pdfUrl;
+            readerPdfNativeDocPromise = GPD.loadDocument(pdfUrl);
+            if (!nativePdfUrlsMatch(readerNativePdfRenderedUrl, pdfUrl)) {
+                readerNativePdfRenderedUrl = null;
+            }
+        }
+        const doc = await readerPdfNativeDocPromise;
+        const pageCount = resolved.pageCount || doc.numPages || 0;
+        if (!pageCount) return;
+
+        const painted = countPaintedNativePdfPages();
+        const sameDoc =
+            nativePdfUrlsMatch(readerNativePdfRenderedUrl, pdfUrl) ||
+            (painted > 0 && nativePdfUrlsMatch(readerPdfNativeUrl, pdfUrl));
+
+        if (!options.forceRebuild && sameDoc && painted >= pageCount) {
+            readerNativePdfRenderedUrl = pdfUrl;
+            bindReaderSpreadAndAnnotationListeners();
+            finishPdfArticleRender(options);
             return;
         }
 
-        readerReady = true;
-        setupCommentSection();
-        ensureCommentsVisible();
-        if (READER_EMBED) scheduleEmbedParentReadyAfterPaint();
+        let articleBody = document.getElementById('article-body');
+        let wraps = [];
+
+        if (!options.forceRebuild && sameDoc && nativePdfSpreadSheetCount() > 0 && painted > 0) {
+            wraps = [...articleBody.querySelectorAll('.article-page-pdf-sheet .article-pdf-page-wrap')];
+            while (wraps.length < pageCount) {
+                wraps.push(appendPdfSheetPlaceholder(articleBody, wraps.length));
+            }
+        } else if (
+            !options.forceRebuild &&
+            painted > 0 &&
+            nativePdfUrlsMatch(readerPdfNativeUrl, pdfUrl) &&
+            nativePdfSpreadSheetCount() > 0
+        ) {
+            wraps = [...articleBody.querySelectorAll('.article-page-pdf-sheet .article-pdf-page-wrap')];
+            while (wraps.length < pageCount) {
+                wraps.push(appendPdfSheetPlaceholder(articleBody, wraps.length));
+            }
+        } else if (
+            !options.forceRebuild &&
+            articleBody &&
+            nativePdfSpreadSheetCount() > 0 &&
+            (articleBody.querySelector('.article-pdf-handoff-raster') ||
+                nativePdfUrlsMatch(readerPdfNativeUrl, pdfUrl))
+        ) {
+            wraps = [...articleBody.querySelectorAll('.article-page-pdf-sheet .article-pdf-page-wrap')];
+            while (wraps.length < pageCount) {
+                wraps.push(appendPdfSheetPlaceholder(articleBody, wraps.length));
+            }
+        } else {
+            articleBody = preparePdfArticleShell();
+            if (!articleBody) return;
+            for (let i = 0; i < pageCount; i++) {
+                wraps.push(appendPdfSheetPlaceholder(articleBody, i));
+            }
+        }
+
+        let metrics = readerPdfPagesForScale;
+        const metricsReady = Array.isArray(metrics) && metrics.length === pageCount;
+        if (!metricsReady) {
+            const prevFirstH =
+                metrics?.[0]?.height ||
+                readerPdfHandoffPreviewHeight ||
+                Number(
+                    getComputedStyle(document.documentElement).getPropertyValue('--reader-page-height')
+                );
+            metrics = await GPD.buildLayoutMetrics(doc);
+            readerPdfPagesForScale = metrics;
+            const newFirstH = metrics[0]?.height;
+            const scaleDrift =
+                Number.isFinite(prevFirstH) &&
+                Number.isFinite(newFirstH) &&
+                Math.abs(Number(prevFirstH) - Number(newFirstH)) > 2;
+            if (!readerPdfHandoffScaleLocked && scaleDrift) {
+                applyReaderSheetScaleForPdf(metrics);
+            }
+        }
+
+        for (let i = 0; i < wraps.length; i++) {
+            const wrap = wraps[i];
+            const handoffRaster = wrap.querySelector('img.article-pdf-handoff-raster');
+            if (i === 0 && handoffRaster && readerPdfHandoffSession) {
+                continue;
+            }
+            const canvas = wrap.querySelector('canvas.article-pdf-page');
+            if (canvas && canvas.width > 0 && canvas.height > 0) continue;
+            await GPD.renderPageToWrap(wrap, doc, i + 1);
+        }
+
+        readerNativePdfRenderedUrl = pdfUrl;
+        bindReaderSpreadAndAnnotationListeners();
+        finishPdfArticleRender(options);
+    };
+
+    readerNativePdfInflight = work();
+    try {
+        await readerNativePdfInflight;
+    } catch (err) {
+        console.error('Failed to render PDF', err);
+        readerPdfNativeUrl = null;
+        readerPdfNativeDocPromise = null;
+        readerNativePdfRenderedUrl = null;
+    } finally {
+        if (readerNativePdfInflight === work) readerNativePdfInflight = null;
+    }
+}
+
+function renderPdfArticleBody(pdfPages, options = {}) {
+    const finish = (pages) => {
+        renderPdfArticleSpread(pages);
+        finishPdfArticleRender(options);
     };
 
     if (typeof window.GppPdfPages !== 'undefined') {
@@ -3070,7 +3454,9 @@ function bindReaderSpreadAndAnnotationListeners() {
         const onSheetScale = () => {
             clearTimeout(spreadReflowTimer);
             spreadReflowTimer = setTimeout(() => {
-                applyReaderSheetScaleActive();
+                if (!readerPdfHandoffScaleLocked) {
+                    applyReaderSheetScaleActive();
+                }
                 scheduleAnnotationLayoutSync();
             }, 80);
         };
@@ -3111,7 +3497,10 @@ const renderArticleBody = (articleData, options = {}) => {
 
 applyInitialReaderSheetScaleFromHandoff();
 if (renderReaderHandoffIfPresent()) {
-    handoffSpreadPainted = true;
+    const handoffPayload = readReaderHandoffPayload();
+    if (!String(handoffPayload?.pdfUrl || '').trim()) {
+        handoffSpreadPainted = true;
+    }
 }
 
 const addArticle = (ele, data) => {
@@ -3177,9 +3566,42 @@ function bindRandomNavHover(selectors) {
     });
 }
 
+function bindDesktopEmbedReaderNav() {
+    if (!READER_EMBED_DESKTOP_CHROME) return;
+    const wall = document.querySelector('.reader-nav-wall');
+    if (wall && !wall.dataset.embedCloseBound) {
+        wall.dataset.embedCloseBound = '1';
+        wall.addEventListener('click', (e) => {
+            e.preventDefault();
+            /*
+             * Desktop PDF on home: reader runs in an iframe. postMessage + history.back()
+             * on the parent was flaky (URL stayed on /{id}, or close never ran). Same-origin
+             * top navigation always returns to the wall at /.
+             */
+            try {
+                if (window.top && window.top !== window) {
+                    window.top.location.assign('/');
+                    return;
+                }
+            } catch (_) {}
+            try {
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage(
+                        { type: READER_EMBED_CLOSE_TYPE },
+                        window.location.origin
+                    );
+                    return;
+                }
+            } catch (_) {}
+            location.assign('/');
+        });
+    }
+}
+
 /** Dashboard corner control — authors only (`real person` claim). */
 function setupReaderAuthorNav() {
     bindRandomNavHover('.reader-nav-wall, .reader-nav-dashboard');
+    bindDesktopEmbedReaderNav();
     const dash = document.getElementById('reader-dashboard-btn');
     if (!dash || !window.auth) return;
     const setVisible = (on) => {

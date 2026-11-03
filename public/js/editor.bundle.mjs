@@ -23439,12 +23439,11 @@ function openPublishConfirmDialog() {
   const dialog = document.getElementById("publish-confirm-dialog");
   if (!dialog) return;
   const pdfMode = isEditorPdfPublishMode();
-  const openNotesBtn = dialog.querySelector("[data-publish-open-notes]");
-  const draftBtn = dialog.querySelector("[data-publish-draft]");
+  const proseOnly = dialog.querySelector(".publish-confirm-prose-only");
   const pdfPublishBtn = dialog.querySelector("[data-publish-pdf]");
   const hint = dialog.querySelector("#publish-confirm-title");
-  if (openNotesBtn) openNotesBtn.hidden = pdfMode;
-  if (draftBtn) draftBtn.hidden = pdfMode;
+  dialog.classList.toggle("publish-confirm--pdf", pdfMode);
+  if (proseOnly) proseOnly.hidden = pdfMode;
   if (pdfPublishBtn) pdfPublishBtn.hidden = !pdfMode;
   if (hint) {
     hint.textContent = pdfMode ? "Publish this PDF to the wall." : "if this is your final version, you can open it for notes!";
@@ -24002,14 +24001,22 @@ async function commitPublishPdf() {
     const resolved = await resolvePublishDocName();
     if (resolved.blocked) return;
     const { docName, prior } = resolved;
-    const pdfPages = window.GppEditorPdf.getPageUrls();
+    const pdfPayload = window.GppEditorPdf.getPublishPayload?.() || null;
+    if (!pdfPayload?.pdfUrl) {
+      alert("Please upload a PDF first");
+      publishBtn.disabled = false;
+      publishBtn.textContent = "Publish";
+      return;
+    }
     const blogData = {
       title: pieceTitle,
       preview: pieceTitle,
       article: "",
       articleFormat: "pdf",
       contentKind: "pdf",
-      pdfPages,
+      pdfUrl: pdfPayload.pdfUrl,
+      pdfPageCount: pdfPayload.pdfPageCount || 0,
+      pdfPages: [],
       contentType,
       publishedAt: prior?.publishedAt || formatPublishedAt(),
       author: prior?.author || authorIdFromAuth() || "Anonymous",
@@ -24057,7 +24064,7 @@ async function loadBlogData() {
       location.replace(`/${encodeURIComponent(blogId)}`);
       return;
     }
-    if (Array.isArray(data.pdfPages) && data.pdfPages.length) {
+    if (data.pdfUrl || Array.isArray(data.pdfPages) && data.pdfPages.length) {
       location.replace(`/${encodeURIComponent(blogId)}`);
       return;
     }

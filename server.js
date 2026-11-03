@@ -626,6 +626,32 @@ app.get('/editor', (req, res) => {
     res.sendFile(path.join(initial_path, 'editor.html'));
 });
 
+app.post('/upload/pdf', (req, res) => {
+    const file = req.files?.pdf || req.files?.file;
+    if (!file) {
+        return res.status(400).json({ error: 'missing_pdf' });
+    }
+    const mime = String(file.mimetype || '').toLowerCase();
+    const name = String(file.name || '');
+    if (mime !== 'application/pdf' && !/\.pdf$/i.test(name)) {
+        return res.status(400).json({ error: 'not_a_pdf' });
+    }
+    const rawName = name
+        .replace(/[^A-Za-z0-9._-]+/g, '_')
+        .replace(/^\.+/, '')
+        .slice(0, 80) || 'document.pdf';
+    const pdfName = rawName.toLowerCase().endsWith('.pdf') ? rawName : `${rawName}.pdf`;
+    const filename = `${Date.now()}-${pdfName}`;
+    const uploadPath = path.join(uploadsDir, filename);
+    file.mv(uploadPath, (err) => {
+        if (err) {
+            console.error('upload/pdf', err);
+            return res.status(500).json({ error: 'upload_failed' });
+        }
+        res.json(`/uploads/${filename}`);
+    });
+});
+
 app.post('/upload', (req, res) => {
     if (!req.files || !req.files.image) {
         return res.status(400).json({ error: 'missing_image' });

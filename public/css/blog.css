@@ -290,7 +290,9 @@ body.reader-loading #comment-screen {
     min-height: 0;
 }
 
-#article-body .article-page.article-page-pdf-sheet .article-pdf-page {
+#article-body .article-page.article-page-pdf-sheet .article-pdf-page,
+#article-body .article-page.article-page-pdf-sheet .article-pdf-handoff-raster,
+#article-body .article-page.article-page-pdf-sheet canvas.article-pdf-page {
     display: block;
     width: 100%;
     height: auto;
@@ -457,6 +459,26 @@ body.reader-loading #comment-screen {
 body.reader-embed .reader-nav-wall,
 body.reader-embed .reader-nav-dashboard {
     display: none !important;
+}
+
+/* Desktop wall PDF: iframe handoff with normal reader chrome (not mobile gray embed). */
+html.reader-embed-desktop-chrome,
+body.reader-embed-desktop-chrome {
+    background: #fff;
+}
+
+body.reader-embed-desktop-chrome .blog {
+    max-width: min(1340px, calc(100vw - 40px));
+    margin: 0 auto;
+    padding:
+        max(0px, calc((100dvh - (var(--reader-page-height) * var(--sheet-scale, 1))) / 2))
+        20px
+        56px;
+}
+
+body.reader-embed-desktop-chrome .reader-nav-wall,
+body.reader-embed-desktop-chrome .reader-nav-dashboard {
+    display: block !important;
 }
 
 /* Comment list host + compose dock chrome */
@@ -1466,4 +1488,27 @@ body.reader-embed #commentInput {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/*
+ * Desktop native PDF on home wall (?embed=1&readerChrome=1) — must beat generic
+ * body.reader-embed rules (gray bg + 8px top pad) or the sheet jumps after handoff.
+ */
+html.reader-embed.reader-embed-desktop-chrome,
+body.reader-embed.reader-embed-desktop-chrome {
+    background: #fff !important;
+}
+
+body.reader-embed.reader-embed-desktop-chrome .blog {
+    max-width: min(1340px, calc(100vw - 40px)) !important;
+    margin: 0 auto !important;
+    padding:
+        max(0px, calc((100dvh - (var(--reader-page-height) * var(--sheet-scale, 1))) / 2))
+        20px
+        56px !important;
+}
+
+body.reader-embed.reader-embed-desktop-chrome .reader-nav-wall,
+body.reader-embed.reader-embed-desktop-chrome .reader-nav-dashboard {
+    display: block !important;
 }

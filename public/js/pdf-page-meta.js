@@ -16,9 +16,9 @@
             }
             if (!item || typeof item !== 'object') continue;
             const url = String(item.url || item.u || '').trim();
-            if (!url) continue;
             const width = Number(item.width ?? item.w) || CANONICAL_WIDTH;
             const height = Number(item.height ?? item.h) || 0;
+            if (!url && !(height > 0 || width > 0)) continue;
             out.push({ url, width, height });
         }
         return out;
@@ -128,6 +128,39 @@
         return JSON.stringify(normalize(pages).map((p) => p.url));
     }
 
+    /** Firestore / handoff: native PDF file vs legacy rasterized pages. */
+    function resolveArticlePdf(data) {
+        if (!data || typeof data !== 'object') return { kind: 'none' };
+        const pdfUrl = String(data.pdfUrl || '').trim();
+        if (pdfUrl) {
+            const pageCount = Number(data.pdfPageCount);
+            return {
+                kind: 'native',
+                pdfUrl,
+                pageCount: Number.isFinite(pageCount) && pageCount > 0 ? pageCount : 0,
+            };
+        }
+        const pages = normalize(data.pdfPages);
+        if (pages.length) return { kind: 'raster', pages };
+        return { kind: 'none' };
+    }
+
+    function handoffSnapshotForArticle(data) {
+        const resolved = resolveArticlePdf(data);
+        if (resolved.kind === 'native') {
+            return JSON.stringify({ pdfUrl: resolved.pdfUrl });
+        }
+        if (resolved.kind === 'raster') {
+            return handoffSnapshot(resolved.pages);
+        }
+        return '';
+    }
+
+    /** Layout metrics array for scale helpers (native or raster). */
+    function metricsFromPages(pages) {
+        return normalize(pages);
+    }
+
     global.GppPdfPages = {
         CANONICAL_WIDTH,
         DEFAULT_HEIGHT,
@@ -138,6 +171,9 @@
         ensureHeights,
         snapshot,
         handoffSnapshot,
+        resolveArticlePdf,
+        handoffSnapshotForArticle,
+        metricsFromPages,
         applySheetFitScaleForPages,
         applyPreviewScaleForFirstPage,
         applyReaderGeometryForPages,

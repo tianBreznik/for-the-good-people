@@ -5,14 +5,23 @@
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.02em;
+    align-self: center;
+    box-sizing: border-box;
+    height: 28px;
+    min-height: 28px;
+    max-height: 28px;
     min-width: 2.5rem;
-    color: #000;
-    -webkit-text-fill-color: #000;
+    width: auto;
+    max-width: none;
+    padding: 0 7px;
+    line-height: 1;
+    color: #1f1f1f;
+    -webkit-text-fill-color: currentColor;
 }
 
-.toolbar-pdf-btn.is-active {
-    background: linear-gradient(to bottom, #fff 0%, #e8e8e8 100%);
-    box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #888;
+.toolbar-pdf-btn.active {
+    color: #1a3a6e;
+    -webkit-text-fill-color: #1a3a6e;
 }
 
 .editor-pdf-pages {
@@ -72,7 +81,7 @@ body.editor-pdf-mode #tiptap-editor {
 body.editor-pdf-mode .toolbar-buttons .toolbar-btn:not(.toolbar-pdf-btn),
 body.editor-pdf-mode .toolbar-buttons .toolbar-color,
 body.editor-pdf-mode .toolbar-buttons .toolbar-color-wrap,
-body.editor-pdf-mode .toolbar-buttons .toolbar-divider:not(.toolbar-publish-divider) {
+body.editor-pdf-mode .toolbar-buttons .toolbar-divider:not(.toolbar-publish-divider):not(.toolbar-pdf-divider) {
     opacity: 0.35;
     pointer-events: none;
 }
@@ -298,7 +307,12 @@ body.editor-page {
 }
 .toolbar-btn.wide { width: 28px; min-width: 28px; max-width: 28px; padding: 0; font-size: 11px; letter-spacing: 0; }
 .toolbar-divider { width: 1px; height: 24px; background: #b9b9b9; margin: 0 4px; }
-.toolbar-publish-divider { display: inline-block; }
+.toolbar-publish-divider,
+.toolbar-pdf-divider {
+    display: inline-block;
+    align-self: center;
+    flex-shrink: 0;
+}
 
 .toolbar-select {
     height: 28px;
@@ -1401,10 +1415,18 @@ body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
         display: none;
     }
 
-    .toolbar-publish-divider {
+    .toolbar-publish-divider,
+    .toolbar-pdf-divider {
         display: inline-block;
         height: 28px;
         margin: 0 2px;
+        align-self: center;
+    }
+
+    .toolbar-pdf-btn {
+        height: 36px;
+        min-height: 36px;
+        max-height: 36px;
     }
 
     .toolbar-close-btn {
@@ -1727,6 +1749,22 @@ body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
     width: max-content;
 }
 
+.publish-confirm-prose-only {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.publish-confirm-popover.publish-confirm--pdf .publish-confirm-prose-only,
+.popover-btn[hidden],
+.publish-confirm-pdf-only[hidden] {
+    display: none !important;
+}
+
+.publish-confirm-popover:not(.publish-confirm--pdf) .publish-confirm-pdf-only {
+    display: none !important;
+}
+
 .popover-btn {
     padding: 3px 8px;
     border: 1px solid #808080;
@@ -1759,6 +1797,11 @@ body.editor-loading-post .tiptap-editor .ProseMirror .editor-page-top-inset {
 .popover-btn[data-publish-open-notes]:hover {
     color: #c62828;
     border-color: #c62828;
+}
+
+.popover-btn[data-publish-pdf]:hover {
+    color: #1565c0;
+    border-color: #1565c0;
 }
 
 .popover-btn[data-publish-only]:hover {

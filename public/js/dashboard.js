@@ -118,6 +118,7 @@ function ensureDashboardNewPostLink() {
 function isPdfBlog(data) {
     if (!data || typeof data !== 'object') return false;
     if (data.contentKind === 'pdf' || data.articleFormat === 'pdf') return true;
+    if (String(data.pdfUrl || '').trim()) return true;
     return Array.isArray(data.pdfPages) && data.pdfPages.length > 0;
 }
 

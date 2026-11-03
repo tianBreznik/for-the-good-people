@@ -2592,8 +2592,8 @@ body.home-titles-instant .home-main-stage {
 }
 
 /* Article titles: solid white highlight on hover, or locked while that title’s preview is open */
-.title-section .blog-card:not(.section-heading-card):hover .blog-title,
-.title-section .blog-card.preview-source .blog-title {
+html:not([data-home-texture='stucco']):not([data-home-texture='stucco8']) .title-section .blog-card:not(.section-heading-card):hover .blog-title,
+html:not([data-home-texture='stucco']):not([data-home-texture='stucco8']) .title-section .blog-card.preview-source .blog-title {
     color: #fff;
     -webkit-text-fill-color: #fff;
     -webkit-text-stroke: 0;
@@ -2602,8 +2602,8 @@ body.home-titles-instant .home-main-stage {
     filter: none;
 }
 
-html[data-home-texture] .title-section .blog-card:not(.section-heading-card):hover .blog-title,
-html[data-home-texture] .title-section .blog-card.preview-source .blog-title {
+html[data-home-texture='grycon'] .title-section .blog-card:not(.section-heading-card):hover .blog-title,
+html[data-home-texture='grycon'] .title-section .blog-card.preview-source .blog-title {
     background-image: linear-gradient(#fff, #fff) !important;
     background-size: auto !important;
     background-position: center !important;
@@ -3076,12 +3076,16 @@ html[data-home-texture='stucco8'] .blog-card.hover:not([data-author="about"]):no
  * Must beat title pearl / author white-rim :hover so the pair matches.
  * Bright textures keep this light glow — unmatched items darken via wash instead.
  */
+html[data-home-texture='stucco'] .title-section .blog-card:not(.section-heading-card):hover .blog-title,
+html[data-home-texture='stucco8'] .title-section .blog-card:not(.section-heading-card):hover .blog-title,
 html[data-home-texture] .title-section .blog-card.link-glow .blog-title,
 html[data-home-texture] .title-section .blog-card.link-glow:hover .blog-title,
+html[data-home-texture] .title-section .blog-card.preview-source .blog-title,
 html[data-home-texture] .author-section .blog-card.author-card.link-glow .blog-title,
 html[data-home-texture] .author-section .blog-card.author-card.link-glow:hover .blog-title,
 .title-section .blog-card.link-glow .blog-title,
 .title-section .blog-card.link-glow:hover .blog-title,
+.title-section .blog-card.preview-source .blog-title,
 .author-section .blog-card.author-card.link-glow .blog-title,
 .author-section .blog-card.author-card.link-glow:hover .blog-title,
 .blog-card.link-glow .blog-title,
@@ -3100,6 +3104,8 @@ html[data-home-texture] .author-section .blog-card.author-card.link-glow:hover .
 /* Whitest stucco: brighter halo + whisper of dark edge so the link separates from the wall */
 html[data-home-texture='stucco'] .title-section .blog-card.link-glow .blog-title,
 html[data-home-texture='stucco'] .title-section .blog-card.link-glow:hover .blog-title,
+html[data-home-texture='stucco'] .title-section .blog-card.preview-source .blog-title,
+html[data-home-texture='stucco'] .title-section .blog-card:not(.section-heading-card):hover .blog-title,
 html[data-home-texture='stucco'] .author-section .blog-card.author-card.link-glow .blog-title,
 html[data-home-texture='stucco'] .author-section .blog-card.author-card.link-glow:hover .blog-title {
     text-shadow:
@@ -3108,6 +3114,20 @@ html[data-home-texture='stucco'] .author-section .blog-card.author-card.link-glo
         0 0 14px rgba(255, 255, 255, 0.4),
         0 0 1px rgba(32, 28, 24, 0.32),
         0 1px 2px rgba(32, 28, 24, 0.2);
+}
+
+html[data-home-texture='stucco8'] .title-section .blog-card.link-glow .blog-title,
+html[data-home-texture='stucco8'] .title-section .blog-card.link-glow:hover .blog-title,
+html[data-home-texture='stucco8'] .title-section .blog-card.preview-source .blog-title,
+html[data-home-texture='stucco8'] .title-section .blog-card:not(.section-heading-card):hover .blog-title,
+html[data-home-texture='stucco8'] .author-section .blog-card.author-card.link-glow .blog-title,
+html[data-home-texture='stucco8'] .author-section .blog-card.author-card.link-glow:hover .blog-title {
+    text-shadow:
+        0 0 0.55px rgba(255, 255, 255, 0.92),
+        0 0 4px rgba(255, 255, 255, 0.55),
+        0 0 12px rgba(255, 255, 255, 0.35),
+        0 0 1px rgba(40, 32, 24, 0.38),
+        0 1px 2px rgba(40, 32, 24, 0.22);
 }
 
 /* While an author bio is open, unrelated titles can’t be hovered/clicked */
@@ -3641,7 +3661,8 @@ body.mobile-author-reader-open.mobile-reader-open .home-main-stage .author-secti
     max-height: none !important;
 }
 
-.home-preview-page.article-page-pdf-sheet .article-pdf-page {
+.home-preview-page.article-page-pdf-sheet .article-pdf-page,
+.home-preview-page.article-page-pdf-sheet canvas.article-pdf-page {
     display: block;
     width: 100%;
     height: auto;
@@ -5422,6 +5443,68 @@ body.home-login-open {
         opacity: 1;
         transform: scale(1) translateY(0);
     }
+}
+
+/* Desktop native PDF: in-app embed reader (no full page reload after preview expand). */
+body.desktop-pdf-reader-open .mobile-reader-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    background: #fff;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+body.desktop-pdf-reader-open .mobile-reader-shell[hidden] {
+    display: none !important;
+}
+
+body.desktop-pdf-reader-open .mobile-reader-shell.mobile-reader-warming {
+    display: flex !important;
+    pointer-events: none;
+}
+
+body.desktop-pdf-reader-open.mobile-reader-open:not(.mobile-reader-closing) .mobile-reader-shell {
+    pointer-events: auto;
+}
+
+/* Desktop PDF embed does not always add mobile-reader-open; shell must still capture hits for iframe nav. */
+body.desktop-pdf-reader-open:not(.mobile-reader-closing) .mobile-reader-shell:not([hidden]):not(.mobile-reader-warming) {
+    pointer-events: auto;
+}
+
+body.desktop-pdf-reader-open.mobile-reader-open:not(.mobile-reader-closing),
+body.desktop-pdf-reader-open:not(.mobile-reader-closing):has(.mobile-reader-shell:not([hidden]):not(.mobile-reader-warming)) {
+    overflow: hidden;
+}
+
+body.desktop-pdf-reader-open .mobile-reader-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    background: #fff;
+}
+
+body.desktop-pdf-reader-open .mobile-reader-close {
+    display: none !important;
+}
+
+/* Native PDF desktop handoff: hide preview panel only after embed matches (no layout jump). */
+body.desktop-pdf-reader-open.article-open .article-panel.article-panel-desktop-pdf-handoff {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+body.desktop-pdf-reader-open .mobile-reader-shell,
+body.desktop-pdf-reader-open .mobile-reader-frame {
+    background: #fff;
 }
 
 

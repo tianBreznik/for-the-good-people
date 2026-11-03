@@ -1,13 +1,14 @@
 /**
- * PDF publish — dialog (title + file), rasterize to sheet images, replace editor pages.
+ * PDF publish — upload native PDF, preview pages with pdf.js (vector render), publish pdfUrl.
  * Requires pdf.js (global pdfjsLib) on editor.html.
  */
 (function (global) {
-    const PDF_RASTER_WIDTH = 620;
-
-    let pageUrls = [];
+    /** @type {{ url: string, pageCount: number } | null} */
+    let pdfSource = null;
     let processing = false;
     let dialogPendingFromUrl = false;
+    /** @type {Promise<any> | null} */
+    let docPromise = null;
 
     function $(id) {
         return document.getElementById(id);
@@ -34,7 +35,10 @@
     }
 
     function setPdfToolbarActive(on) {
-        $('toolbar-pdf-btn')?.classList.toggle('is-active', on);
+        const btn = $('toolbar-pdf-btn');
+        if (!btn) return;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
 
     function setPdfMode(on) {
@@ -52,40 +56,48 @@
         } catch (_) {}
     }
 
-    function renderPdfPagesInCanvas() {
+    async function getDocument() {
+        if (!pdfSource?.url) return null;
+        if (docPromise) return docPromise;
+        const GPD = global.GppPdfDocument;
+        if (!GPD) throw new Error('pdf_document_missing');
+        docPromise = GPD.loadDocument(pdfSource.url);
+        return docPromise;
+    }
+
+    async function renderPdfPagesInCanvas() {
         const mount = $('editor-pdf-pages');
-        if (!mount) return;
+        if (!mount || !pdfSource?.url) {
+            if (mount) mount.innerHTML = '';
+            return;
+        }
+        const GPD = global.GppPdfDocument;
+        const Gpp = global.GppPdfPages;
+        if (!GPD) return;
+
         mount.innerHTML = '';
-        if (!pageUrls.length) return;
+        const doc = await getDocument();
+        const count = pdfSource.pageCount || doc.numPages || 0;
+        const metrics = [];
 
-        const pages = global.GppPdfPages
-            ? global.GppPdfPages.normalize(pageUrls)
-            : pageUrls.map((u) => (typeof u === 'string' ? { url: u, width: PDF_RASTER_WIDTH, height: 0 } : u));
-
-        pages.forEach((entry, index) => {
-            const url = entry.url;
+        for (let index = 0; index < count; index++) {
             const page = document.createElement('article');
             page.className =
                 'article-page article-page-left article-page-pdf-sheet editor-pdf-sheet';
-
             const body = document.createElement('div');
             body.className = 'article-page-body';
             const wrap = document.createElement('div');
             wrap.className = 'article-pdf-page-wrap';
-            const img = document.createElement('img');
-            img.className = 'article-pdf-page';
-            img.src = url;
-            img.alt = `Page ${index + 1}`;
-            img.decoding = 'async';
-            if (index > 0) img.loading = 'lazy';
-            wrap.appendChild(img);
             body.appendChild(wrap);
             page.appendChild(body);
-
             mount.appendChild(page);
-        });
-        if (global.GppPdfPages && isPdfMode()) {
-            global.GppPdfPages.applySheetFitScaleForPages(pageUrls);
+
+            const layout = await GPD.renderPageToWrap(wrap, doc, index + 1);
+            if (layout) metrics.push({ url: pdfSource.url, width: layout.width, height: layout.height });
+        }
+
+        if (Gpp && metrics.length) {
+            Gpp.applyReaderGeometryForPages(metrics);
         }
     }
 
@@ -104,8 +116,8 @@
         }
         if (fileField) fileField.value = '';
         setDialogStatus(
-            pageUrls.length
-                ? 'Choose a new PDF to replace pages, or keep the current file and update the title.'
+            pdfSource?.url
+                ? 'Choose a new PDF to replace, or keep the current file and update the title.'
                 : ''
         );
         dialog.hidden = false;
@@ -120,6 +132,9 @@
         dialog.setAttribute('aria-hidden', 'true');
         setDialogStatus('');
         dialogPendingFromUrl = false;
+        if (!pdfSource?.url) {
+            setPdfMode(false);
+        }
     }
 
     function setDialogBusy(busy) {
@@ -132,10 +147,10 @@
         $('pdf-upload-file') && ($('pdf-upload-file').disabled = busy);
     }
 
-    async function uploadBlob(blob, name) {
+    async function uploadPdfFile(file) {
         const fd = new FormData();
-        fd.append('image', blob, name);
-        const response = await fetch('/upload', { method: 'POST', body: fd });
+        fd.append('pdf', file);
+        const response = await fetch('/upload/pdf', { method: 'POST', body: fd });
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || 'upload_failed');
         const path = typeof data === 'string' ? data : data.url || data.path;
@@ -143,45 +158,18 @@
         return path.startsWith('/') ? path : `/${path}`;
     }
 
-    async function rasterizeAndUpload(file, onProgress) {
-        if (!global.pdfjsLib) throw new Error('pdf_js_missing');
-        const lib = global.pdfjsLib;
-        if (lib.GlobalWorkerOptions && !lib.GlobalWorkerOptions.workerSrc) {
-            lib.GlobalWorkerOptions.workerSrc =
-                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        }
+    async function ingestPdfFile(file, onProgress) {
+        const GPD = global.GppPdfDocument;
+        if (!GPD || !global.pdfjsLib) throw new Error('pdf_js_missing');
         onProgress('Reading PDF…');
-        const data = await file.arrayBuffer();
-        const pdf = await lib.getDocument({ data }).promise;
-        const urls = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-            onProgress(`Rendering page ${i} of ${pdf.numPages}…`);
-            const page = await pdf.getPage(i);
-            const baseViewport = page.getViewport({ scale: 1 });
-            const scale = PDF_RASTER_WIDTH / baseViewport.width;
-            const viewport = page.getViewport({ scale });
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.floor(viewport.width);
-            canvas.height = Math.floor(viewport.height);
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error('canvas_unavailable');
-            await page.render({ canvasContext: ctx, viewport }).promise;
-            const blob = await new Promise((resolve, reject) => {
-                canvas.toBlob(
-                    (b) => (b ? resolve(b) : reject(new Error('encode_failed'))),
-                    'image/webp',
-                    0.9
-                );
-            });
-            onProgress(`Uploading page ${i}…`);
-            const url = await uploadBlob(blob, `pdf-p${i}-${Date.now()}.webp`);
-            urls.push({
-                url,
-                width: canvas.width,
-                height: canvas.height,
-            });
-        }
-        return urls;
+        const buffer = await file.arrayBuffer();
+        const doc = await GPD.loadDocumentFromData(buffer);
+        const pageCount = doc.numPages || 0;
+        if (!pageCount) throw new Error('empty_pdf');
+        onProgress('Uploading PDF…');
+        const url = await uploadPdfFile(file);
+        docPromise = Promise.resolve(doc);
+        return { url, pageCount };
     }
 
     async function submitPdfUploadDialog() {
@@ -195,14 +183,14 @@
             return;
         }
         const file = fileField?.files && fileField.files[0];
-        if (!file && !pageUrls.length) {
+        if (!file && !pdfSource?.url) {
             alert('Please choose a PDF file.');
             fileField?.focus();
             return;
         }
         if (!file) {
             syncHiddenTitle(title);
-            renderPdfPagesInCanvas();
+            await renderPdfPagesInCanvas();
             setPdfMode(true);
             closePdfUploadDialog();
             titleInputEl()?.dispatchEvent(new Event('input', { bubbles: true }));
@@ -215,17 +203,19 @@
 
         processing = true;
         setDialogBusy(true);
-        pageUrls = [];
+        docPromise = null;
         try {
-            pageUrls = await rasterizeAndUpload(file, setDialogStatus);
-            setDialogStatus(`Ready — ${pageUrls.length} page${pageUrls.length === 1 ? '' : 's'}.`);
+            pdfSource = await ingestPdfFile(file, setDialogStatus);
+            setDialogStatus(`Ready — ${pdfSource.pageCount} page${pdfSource.pageCount === 1 ? '' : 's'}.`);
             syncHiddenTitle(title);
             setPdfMode(true);
-            renderPdfPagesInCanvas();
+            await renderPdfPagesInCanvas();
             closePdfUploadDialog();
             titleInputEl()?.dispatchEvent(new Event('input', { bubbles: true }));
         } catch (err) {
             console.error(err);
+            pdfSource = null;
+            docPromise = null;
             setDialogStatus('');
             alert('Could not process PDF. Try a smaller file or different PDF.');
         } finally {
@@ -234,8 +224,20 @@
         }
     }
 
+    function handlePdfToolbarClick() {
+        if (isPdfMode()) {
+            closePdfUploadDialog();
+            setPdfMode(false);
+            return;
+        }
+        setPdfMode(true);
+        if (!pdfSource?.url) {
+            openPdfUploadDialog();
+        }
+    }
+
     function bindUi() {
-        $('toolbar-pdf-btn')?.addEventListener('click', () => openPdfUploadDialog());
+        $('toolbar-pdf-btn')?.addEventListener('click', () => handlePdfToolbarClick());
 
         $('pdf-upload-dialog')?.querySelectorAll('[data-pdf-upload-cancel]').forEach((el) => {
             el.addEventListener('click', () => closePdfUploadDialog());
@@ -252,7 +254,8 @@
         });
 
         const params = new URLSearchParams(global.location.search);
-        if (params.get('mode') === 'pdf' && !pageUrls.length) {
+        if (params.get('mode') === 'pdf' && !pdfSource?.url) {
+            setPdfMode(true);
             dialogPendingFromUrl = true;
             requestAnimationFrame(() => {
                 if (dialogPendingFromUrl) openPdfUploadDialog();
@@ -260,19 +263,32 @@
         }
     }
 
-    function getPageUrls() {
-        return pageUrls.slice();
+    function getPublishPayload() {
+        if (!pdfSource?.url) return null;
+        return {
+            pdfUrl: pdfSource.url,
+            pdfPageCount: pdfSource.pageCount || 0,
+        };
     }
 
-    function loadExistingPages(urls) {
-        pageUrls = Array.isArray(urls) ? urls.filter(Boolean) : [];
-        if (!pageUrls.length) return;
+    /** @deprecated legacy raster — use getPublishPayload */
+    function getPageUrls() {
+        const p = getPublishPayload();
+        if (!p) return [];
+        return [{ url: p.pdfUrl, width: 620, height: 0 }];
+    }
+
+    function loadExistingNative(pdfUrl, pageCount) {
+        const url = String(pdfUrl || '').trim();
+        if (!url) return;
+        pdfSource = { url, pageCount: Number(pageCount) || 0 };
+        docPromise = null;
         setPdfMode(true);
-        renderPdfPagesInCanvas();
+        void renderPdfPagesInCanvas();
     }
 
     function hasReadyPdf() {
-        return pageUrls.length > 0;
+        return Boolean(pdfSource?.url);
     }
 
     function getTitle() {
@@ -288,9 +304,10 @@
     global.GppEditorPdf = {
         isPdfMode,
         setPdfMode,
+        getPublishPayload,
         getPageUrls,
         hasReadyPdf,
-        loadExistingPages,
+        loadExistingNative,
         renderPdfPagesInCanvas,
         openPdfUploadDialog,
         getTitle,
