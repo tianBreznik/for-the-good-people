@@ -17,6 +17,21 @@ import {
 
 export const editorPaginationKey = new PluginKey('editorPagination');
 
+/** Canvas uses `zoom: var(--sheet-scale)` for fit; pack math stays 1:1 canonical px. */
+function getEditorDisplayScale(view) {
+    const canvas = view?.dom?.closest('.editor-pages-canvas');
+    if (canvas) {
+        const z = parseFloat(getComputedStyle(canvas).zoom);
+        if (Number.isFinite(z) && z > 0) return z;
+    }
+    return getReaderPageMetrics().sheetScale || 1;
+}
+
+function layoutPxFromDom(px, scale) {
+    const s = Number(scale) > 0 ? Number(scale) : 1;
+    return Math.max(0, Math.round(px / s));
+}
+
 function marginBottom(el) {
     if (!el || !window.getComputedStyle) return 0;
     return parseFloat(window.getComputedStyle(el).marginBottom) || 0;
@@ -56,8 +71,9 @@ function elementContentHeight(view, id) {
         `p[data-variant="footnote"][data-footnote-id="${escapeAttr(id)}"]`
     );
     if (!el) return 22;
+    const scale = getEditorDisplayScale(view);
     const rect = el.getBoundingClientRect();
-    return Math.max(0, rect.height) + marginBottom(el);
+    return layoutPxFromDom(rect.height, scale) + marginBottom(el);
 }
 
 function measureFootnoteContentHeight(view, ids) {
@@ -157,9 +173,12 @@ function canSplitBlock(node) {
  *   includeMarginBottom — only for the final chunk of a paragraph; mid chunks have
  *   no margin box between them and the next in-paragraph break.
  */
-function measureDomCloneHeight(sourceEl, mutateClone, opts = {}) {
+function measureDomCloneHeight(sourceEl, mutateClone, opts = {}, view = null) {
     if (!sourceEl || !sourceEl.cloneNode) return 0;
-    const width = sourceEl.getBoundingClientRect().width || sourceEl.clientWidth || 520;
+    const scale = getEditorDisplayScale(view || { dom: sourceEl.closest('.ProseMirror') });
+    const width =
+        layoutPxFromDom(sourceEl.getBoundingClientRect().width || sourceEl.clientWidth || 520, scale) ||
+        520;
     const pm = sourceEl.closest('.ProseMirror') || sourceEl.parentElement || document.body;
     let tray = pm.querySelector(':scope > .editor-measure-tray');
     if (!tray) {
@@ -194,7 +213,7 @@ function measureDomCloneHeight(sourceEl, mutateClone, opts = {}) {
     try {
         const h = probe.getBoundingClientRect().height;
         const mb = opts.includeMarginBottom ? marginBottom(probe) : 0;
-        return Math.max(0, Math.round(h + mb));
+        return layoutPxFromDom(h + mb, scale);
     } finally {
         probe.remove();
     }
@@ -265,7 +284,7 @@ const MID_SPLIT_MIN_WORDS = 3;
  * Max words from `fromWord` that fit in maxHeightPx (prefix of the remaining text).
  * Returns 0 if even one word is too tall.
  */
-function maxWordsFitting(dom, totalWords, fromWord, maxHeightPx) {
+function maxWordsFitting(dom, totalWords, fromWord, maxHeightPx, view) {
     const remaining = Math.max(0, totalWords - fromWord);
     if (remaining <= 0 || maxHeightPx < 8) return 0;
     let low = 1;
@@ -282,7 +301,7 @@ function maxWordsFitting(dom, totalWords, fromWord, maxHeightPx) {
             }
         // Collapse margins: inter-block margins are owned by Y-distance packing;
         // mid-chunk fits never include the paragraph's end margin.
-        }, { continuation: true, includeMarginBottom: false });
+        }, { continuation: true, includeMarginBottom: false }, view);
         if (h <= maxHeightPx + 0.5) {
             best = mid;
             low = mid + 1;
@@ -417,6 +436,7 @@ function ensurePageBacks(host, pageCount, metrics, footerHeights = [], pageFootn
  * Title→next already includes the byline widget between them.
  */
 function collectTopLevelBlocks(view) {
+    const scale = getEditorDisplayScale(view);
     const items = [];
     view.state.doc.forEach((node, pos) => {
         if (node.type.name === 'paragraph' && node.attrs?.variant === 'footnote') return;
@@ -434,17 +454,17 @@ function collectTopLevelBlocks(view) {
 
     const blocks = [];
     // Floated images share vertical space with following siblings; avoid double-counting.
-    let pendingFloatBottom = null;
+    let pendingFloatBottomPx = null;
 
     for (let i = 0; i < items.length; i += 1) {
         const { node, pos, dom } = items[i];
-        const top = dom.getBoundingClientRect().top;
-        let bottom;
+        const topPx = dom.getBoundingClientRect().top;
+        let spanBottomPx;
         if (i + 1 < items.length) {
-            bottom = items[i + 1].dom.getBoundingClientRect().top;
+            spanBottomPx = items[i + 1].dom.getBoundingClientRect().top;
         } else {
             const rect = dom.getBoundingClientRect();
-            bottom = rect.bottom + marginBottom(dom);
+            spanBottomPx = rect.bottom + marginBottom(dom) * scale;
             if (node.type.name === 'heading' && node.attrs?.docTitle) {
                 let sib = dom.nextSibling;
                 while (sib) {
@@ -458,7 +478,10 @@ function collectTopLevelBlocks(view) {
                         }
                         if (sib.classList.contains('editor-title-byline')) {
                             const br = sib.getBoundingClientRect();
-                            bottom = Math.max(bottom, br.bottom + marginBottom(sib));
+                            spanBottomPx = Math.max(
+                                spanBottomPx,
+                                br.bottom + marginBottom(sib) * scale
+                            );
                         }
                         break;
                     }
@@ -471,11 +494,11 @@ function collectTopLevelBlocks(view) {
         // prior pass doesn't inflate the next pack. Clone measure is for mid-para
         // chunks only — whole-block clones miss sibling margin collapse.
         const breaks = dom.querySelectorAll('.editor-page-break');
-        let breakH = 0;
+        let breakHPx = 0;
         breaks.forEach((b) => {
-            breakH += b.getBoundingClientRect().height || 0;
+            breakHPx += b.getBoundingClientRect().height || 0;
         });
-        let height = Math.max(0, bottom - top - breakH);
+        let spanPx = Math.max(0, spanBottomPx - topPx - breakHPx);
 
         const align = node.attrs?.align;
         const isFloatImg =
@@ -483,15 +506,16 @@ function collectTopLevelBlocks(view) {
 
         if (isFloatImg) {
             const rect = dom.getBoundingClientRect();
-            height = Math.max(0, rect.height + marginBottom(dom));
-            pendingFloatBottom = top + height;
-        } else if (pendingFloatBottom != null && top < pendingFloatBottom - 1) {
-            // Text wrapping beside the float: only count height past the float bottom.
-            height = Math.max(0, bottom - top - breakH - Math.max(0, pendingFloatBottom - top));
-            if (bottom >= pendingFloatBottom - 1) pendingFloatBottom = null;
+            spanPx = Math.max(spanPx, rect.height + marginBottom(dom) * scale);
+            pendingFloatBottomPx = topPx + spanPx;
+        } else if (pendingFloatBottomPx != null && topPx < pendingFloatBottomPx - 1) {
+            spanPx = Math.max(0, spanPx - Math.max(0, pendingFloatBottomPx - topPx));
+            if (spanBottomPx >= pendingFloatBottomPx - 1) pendingFloatBottomPx = null;
         } else {
-            pendingFloatBottom = null;
+            pendingFloatBottomPx = null;
         }
+
+        let height = layoutPxFromDom(spanPx, scale);
 
         if (node.type.name === 'image' && !isFloatImg && height > getReaderPageMetrics().pageHeight * 0.85) {
             height = Math.floor(getReaderPageMetrics().pageHeight * 0.55);
@@ -645,14 +669,20 @@ function buildDecorations(view) {
             }
         };
 
-        const measureChunk = (count, isLast) => measureDomCloneHeight(dom, (clone) => {
-            if (wordOffset > 0) {
-                truncateCloneToWordCount(clone, wordOffset + count);
-                truncateCloneDropPrefix(clone, wordOffset);
-            } else {
-                truncateCloneToWordCount(clone, count);
-            }
-        }, { continuation: true, includeMarginBottom: Boolean(isLast) });
+        const measureChunk = (count, isLast) =>
+            measureDomCloneHeight(
+                dom,
+                (clone) => {
+                    if (wordOffset > 0) {
+                        truncateCloneToWordCount(clone, wordOffset + count);
+                        truncateCloneDropPrefix(clone, wordOffset);
+                    } else {
+                        truncateCloneToWordCount(clone, count);
+                    }
+                },
+                { continuation: true, includeMarginBottom: Boolean(isLast) },
+                view
+            );
 
         while (wordOffset < words.length && guard < 40) {
             guard += 1;
@@ -673,7 +703,7 @@ function buildDecorations(view) {
                 continue;
             }
 
-            const fitCount = maxWordsFitting(dom, words.length, wordOffset, remaining);
+            const fitCount = maxWordsFitting(dom, words.length, wordOffset, remaining, view);
 
             if (fitCount <= 0) {
                 if (cursorY > padTop + 0.5) {
@@ -864,9 +894,15 @@ export function createEditorPaginationExtension() {
                         },
                     },
                     view(view) {
-                        /* Pack metrics are fixed; resize only updates display --sheet-scale. */
+                        let lastScale = getEditorDisplayScale(view);
                         const onResize = () => {
                             applyCanonicalSheetCssVars(document.documentElement);
+                            const nextScale = getEditorDisplayScale(view);
+                            if (Math.abs(nextScale - lastScale) > 0.001) {
+                                lastScale = nextScale;
+                                signatureRef.current = '';
+                                schedule(view);
+                            }
                         };
                         const onImg = (e) => {
                             if (e.target && e.target.tagName === 'IMG') {
