@@ -3196,26 +3196,15 @@ html[data-home-texture='stucco8'] .blog-card.search-miss:hover .blog-title {
     top: 0;
     z-index: 6;
     left: 0;
-    isolation: isolate;
     box-sizing: border-box;
     justify-content: flex-start;
     align-items: flex-start;
-    background: transparent;
-    /* Same top inset as before (startY 12); keep bottom tight so articles sit close. */
-    padding: 12px 8px 2px;
-}
-
-/* Stone band behind sticky label — pane backdrop is static; this matches it while titles scroll under. */
-.title-section > .section-title-container::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
     background-image: var(--bg-image);
     background-size: 50vw auto;
     background-position: calc(-1 * var(--col-start, 0vw)) -100vh;
     background-repeat: repeat;
+    /* Same top inset as before (startY 12); keep bottom tight so articles sit close. */
+    padding: 12px 8px 2px;
 }
 
 /*
@@ -3509,24 +3498,20 @@ body.search-closing .home-main-pane:has(.section-title-container:hover)::after {
  * Y is shifted by one viewport so the homepage continues the splash slab’s
  * stone (same 50vw tile grid) — no “texture restart” at the wall seam. */
 .column-section {
-    position: relative;
-    z-index: 1;
-    background: transparent;
-    /* No rubber-band: fixed/sticky stone must not shear against scrolling content. */
-    overscroll-behavior-y: none;
+    z-index: 2;
+    background-image: var(--bg-image);
+    background-size: 50vw auto;
+    background-position-x: calc(-1 * var(--col-start, 0vw));
+    background-position-y: -100vh;
+    background-repeat: repeat;
     /* Keep slab motion on a stable layer; reduces post-transition text snap with clip-text inside */
     will-change: transform;
 }
 
-.home-main-pane[data-col="1"],
 .column-section[data-col="1"] { --col-start: 0vw; }
-.home-main-pane[data-col="2"],
 .column-section[data-col="2"] { --col-start: 20vw; }
-.home-main-pane[data-col="3"],
 .column-section[data-col="3"] { --col-start: 40vw; }
-.home-main-pane[data-col="4"],
 .column-section[data-col="4"] { --col-start: 60vw; }
-.home-main-pane[data-col="5"],
 .column-section[data-col="5"] {
     --col-start: 80vw;
     --section-accent: rgba(255, 255, 255, 0.8);
@@ -3927,22 +3912,8 @@ body.search-closing .home-main-stage {
     position: absolute;
     top: 0;
     bottom: 0;
-    overflow: hidden;
     container-type: inline-size;
     container-name: home-col;
-}
-
-/* Static stone slice — the column scrolls over this, not through it. */
-.home-main-pane::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background-image: var(--bg-image);
-    background-size: 50vw auto;
-    background-position: calc(-1 * var(--col-start, 0vw)) -100vh;
-    background-repeat: repeat;
 }
 
 @media (min-width: 901px) {
@@ -4077,13 +4048,12 @@ body.search-closing .home-main-stage {
     }
 
     /* One desktop column per pane — 5× scale on the shared 50vw stone grid. */
-    .home-main-pane::before {
-        background-size: var(--home-mobile-bg-size-x) auto;
-        background-position: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw)) var(--home-mobile-bg-y);
-    }
-
     .home-main-pane > .column-section[data-col] {
-        background: transparent;
+        background-image: var(--bg-image);
+        background-size: var(--home-mobile-bg-size-x) auto;
+        background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
+        background-position-y: var(--home-mobile-bg-y);
+        background-repeat: repeat;
         position: absolute !important;
         top: 0 !important;
         bottom: 0 !important;
@@ -4095,13 +4065,23 @@ body.search-closing .home-main-stage {
         overflow-x: hidden;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
-        overscroll-behavior-y: none;
         will-change: auto;
     }
 
-    .home-main-pane .title-section > .section-title-container::before {
+    .home-main-pane > .column-section[data-col="1"],
+    .home-main-pane > .column-section[data-col="2"],
+    .home-main-pane > .column-section[data-col="3"],
+    .home-main-pane > .column-section[data-col="4"],
+    .home-main-pane > .column-section[data-col="5"] {
+        background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
+        background-position-y: var(--home-mobile-bg-y);
+    }
+
+    .home-main-pane .title-section > .section-title-container {
         background-size: var(--home-mobile-bg-size-x) auto;
-        background-position: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw)) var(--home-mobile-bg-y);
+        background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
+        background-position-y: var(--home-mobile-bg-y);
+        background-repeat: repeat;
     }
 
     .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,
@@ -4142,7 +4122,7 @@ body.search-closing .home-main-stage {
         /* Clear Safari chrome + emboss bleed so the rail isn't clipped off-screen. */
         --author-rail-inset: var(--home-chrome-inline, max(12px, env(safe-area-inset-right, 0px) + 8px));
         padding-right: max(10px, env(safe-area-inset-right, 0px));
-        /* Room above bottom login/folder chrome (texture sits top-right). */
+        /* Room above the shared bottom chrome (texture + login). */
         padding-bottom: max(88px, env(safe-area-inset-bottom, 0px) + 56px);
     }
 
@@ -4239,7 +4219,8 @@ body.search-closing .home-main-stage {
     .author-section #auth-controls {
         box-sizing: border-box;
         left: auto !important;
-        right: var(--home-chrome-inline-right, var(--home-chrome-inline, max(12px, env(safe-area-inset-right, 0px) + 8px))) !important;
+        /* Mirror texture picker: same bottom, opposite corner. */
+        right: var(--home-chrome-inline, max(12px, env(safe-area-inset-right, 0px) + 8px)) !important;
         bottom: var(--home-chrome-bottom, max(10px, env(safe-area-inset-bottom, 0px) + 6px)) !important;
         width: auto !important;
         max-width: none;
@@ -4789,7 +4770,7 @@ body.password-reset-page .home-login-create-account {
     margin-top: 10px;
 }
 
-/* Texture switcher — desktop: bottom-left; mobile: top-right (see @media below). */
+/* Texture switcher — bottom-left swatches */
 .home-texture-switcher {
     position: fixed;
     left: max(12px, env(safe-area-inset-left, 0px) + 8px);
@@ -4857,24 +4838,14 @@ body.password-reset-page .home-login-create-account {
 
 @media (max-width: 900px) {
     :root {
-        /* Shared baseline — login/folder (bottom-right); texture (top-right). */
+        /* Shared baseline — texture (left) + login/folder (right). */
         --home-chrome-bottom: max(10px, env(safe-area-inset-bottom, 0px) + 6px);
         --home-chrome-inline: max(12px, env(safe-area-inset-left, 0px) + 8px);
-        --home-chrome-inline-right: max(12px, env(safe-area-inset-right, 0px) + 8px);
-        /* Align with .section-title-container top padding (12px). */
-        --home-chrome-top: max(12px, env(safe-area-inset-top, 0px) + 8px);
     }
 
     .home-texture-switcher {
-        left: auto;
-        bottom: auto;
-        right: var(--home-chrome-inline-right);
-        top: var(--home-chrome-top);
-        transform: translateY(-10px);
-    }
-
-    .home-texture-switcher.is-revealed {
-        transform: translateY(0);
+        left: var(--home-chrome-inline);
+        bottom: var(--home-chrome-bottom);
     }
     .home-texture-swatch {
         width: 24px;
@@ -4896,7 +4867,7 @@ body.password-reset-page .home-login-create-account {
     body.article-open .home-texture-switcher,
     body.article-closing .home-texture-switcher,
     body.mobile-reader-open .home-texture-switcher {
-        transform: translateY(-10px);
+        transform: translateY(10px);
     }
 }
 

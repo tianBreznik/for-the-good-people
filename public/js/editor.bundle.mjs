@@ -20639,18 +20639,6 @@ if (typeof window !== "undefined") {
 
 // public/js/editor-pagination.js
 var editorPaginationKey = new PluginKey("editorPagination");
-function getEditorDisplayScale(view) {
-  const canvas = view?.dom?.closest(".editor-pages-canvas");
-  if (canvas) {
-    const z = parseFloat(getComputedStyle(canvas).zoom);
-    if (Number.isFinite(z) && z > 0) return z;
-  }
-  return getReaderPageMetrics().sheetScale || 1;
-}
-function layoutPxFromDom(px, scale) {
-  const s = Number(scale) > 0 ? Number(scale) : 1;
-  return Math.max(0, Math.round(px / s));
-}
 function marginBottom(el) {
   if (!el || !window.getComputedStyle) return 0;
   return parseFloat(window.getComputedStyle(el).marginBottom) || 0;
@@ -20687,9 +20675,8 @@ function elementContentHeight(view, id) {
     `p[data-variant="footnote"][data-footnote-id="${escapeAttr(id)}"]`
   );
   if (!el) return 22;
-  const scale = getEditorDisplayScale(view);
   const rect = el.getBoundingClientRect();
-  return layoutPxFromDom(rect.height, scale) + marginBottom(el);
+  return Math.max(0, rect.height) + marginBottom(el);
 }
 function measureFootnoteContentHeight(view, ids) {
   if (!ids || !ids.length) return 0;
@@ -20764,10 +20751,9 @@ function canSplitBlock(node) {
   if (v === "footnote" || v === "poetry" || v === "poetry-author") return false;
   return true;
 }
-function measureDomCloneHeight(sourceEl, mutateClone, opts = {}, view = null) {
+function measureDomCloneHeight(sourceEl, mutateClone, opts = {}) {
   if (!sourceEl || !sourceEl.cloneNode) return 0;
-  const scale = getEditorDisplayScale(view || { dom: sourceEl.closest(".ProseMirror") });
-  const width = layoutPxFromDom(sourceEl.getBoundingClientRect().width || sourceEl.clientWidth || 520, scale) || 520;
+  const width = sourceEl.getBoundingClientRect().width || sourceEl.clientWidth || 520;
   const pm = sourceEl.closest(".ProseMirror") || sourceEl.parentElement || document.body;
   let tray = pm.querySelector(":scope > .editor-measure-tray");
   if (!tray) {
@@ -20801,7 +20787,7 @@ function measureDomCloneHeight(sourceEl, mutateClone, opts = {}, view = null) {
   try {
     const h = probe.getBoundingClientRect().height;
     const mb = opts.includeMarginBottom ? marginBottom(probe) : 0;
-    return layoutPxFromDom(h + mb, scale);
+    return Math.max(0, Math.round(h + mb));
   } finally {
     probe.remove();
   }
@@ -20856,7 +20842,7 @@ function wordsOnLastLine(wordCount, measureChunk) {
 }
 var ORPHAN_LAST_LINE_MAX = 2;
 var MID_SPLIT_MIN_WORDS = 3;
-function maxWordsFitting(dom, totalWords, fromWord, maxHeightPx, view) {
+function maxWordsFitting(dom, totalWords, fromWord, maxHeightPx) {
   const remaining = Math.max(0, totalWords - fromWord);
   if (remaining <= 0 || maxHeightPx < 8) return 0;
   let low = 1;
@@ -20871,7 +20857,7 @@ function maxWordsFitting(dom, totalWords, fromWord, maxHeightPx, view) {
       } else {
         truncateCloneToWordCount(clone, mid);
       }
-    }, { continuation: true, includeMarginBottom: false }, view);
+    }, { continuation: true, includeMarginBottom: false });
     if (h <= maxHeightPx + 0.5) {
       best = mid;
       low = mid + 1;
@@ -20992,7 +20978,6 @@ function ensurePageBacks(host, pageCount, metrics, footerHeights = [], pageFootn
   });
 }
 function collectTopLevelBlocks(view) {
-  const scale = getEditorDisplayScale(view);
   const items = [];
   view.state.doc.forEach((node, pos) => {
     if (node.type.name === "paragraph" && node.attrs?.variant === "footnote") return;
@@ -21008,16 +20993,16 @@ function collectTopLevelBlocks(view) {
     items.push({ node, pos, dom });
   });
   const blocks = [];
-  let pendingFloatBottomPx = null;
+  let pendingFloatBottom = null;
   for (let i = 0; i < items.length; i += 1) {
     const { node, pos, dom } = items[i];
-    const topPx = dom.getBoundingClientRect().top;
-    let spanBottomPx;
+    const top = dom.getBoundingClientRect().top;
+    let bottom;
     if (i + 1 < items.length) {
-      spanBottomPx = items[i + 1].dom.getBoundingClientRect().top;
+      bottom = items[i + 1].dom.getBoundingClientRect().top;
     } else {
       const rect = dom.getBoundingClientRect();
-      spanBottomPx = rect.bottom + marginBottom(dom) * scale;
+      bottom = rect.bottom + marginBottom(dom);
       if (node.type.name === "heading" && node.attrs?.docTitle) {
         let sib = dom.nextSibling;
         while (sib) {
@@ -21028,10 +21013,7 @@ function collectTopLevelBlocks(view) {
             }
             if (sib.classList.contains("editor-title-byline")) {
               const br = sib.getBoundingClientRect();
-              spanBottomPx = Math.max(
-                spanBottomPx,
-                br.bottom + marginBottom(sib) * scale
-              );
+              bottom = Math.max(bottom, br.bottom + marginBottom(sib));
             }
             break;
           }
@@ -21040,24 +21022,23 @@ function collectTopLevelBlocks(view) {
       }
     }
     const breaks = dom.querySelectorAll(".editor-page-break");
-    let breakHPx = 0;
+    let breakH = 0;
     breaks.forEach((b) => {
-      breakHPx += b.getBoundingClientRect().height || 0;
+      breakH += b.getBoundingClientRect().height || 0;
     });
-    let spanPx = Math.max(0, spanBottomPx - topPx - breakHPx);
+    let height = Math.max(0, bottom - top - breakH);
     const align = node.attrs?.align;
     const isFloatImg = node.type.name === "image" && (align === "left" || align === "right");
     if (isFloatImg) {
       const rect = dom.getBoundingClientRect();
-      spanPx = Math.max(spanPx, rect.height + marginBottom(dom) * scale);
-      pendingFloatBottomPx = topPx + spanPx;
-    } else if (pendingFloatBottomPx != null && topPx < pendingFloatBottomPx - 1) {
-      spanPx = Math.max(0, spanPx - Math.max(0, pendingFloatBottomPx - topPx));
-      if (spanBottomPx >= pendingFloatBottomPx - 1) pendingFloatBottomPx = null;
+      height = Math.max(0, rect.height + marginBottom(dom));
+      pendingFloatBottom = top + height;
+    } else if (pendingFloatBottom != null && top < pendingFloatBottom - 1) {
+      height = Math.max(0, bottom - top - breakH - Math.max(0, pendingFloatBottom - top));
+      if (bottom >= pendingFloatBottom - 1) pendingFloatBottom = null;
     } else {
-      pendingFloatBottomPx = null;
+      pendingFloatBottom = null;
     }
-    let height = layoutPxFromDom(spanPx, scale);
     if (node.type.name === "image" && !isFloatImg && height > getReaderPageMetrics().pageHeight * 0.85) {
       height = Math.floor(getReaderPageMetrics().pageHeight * 0.55);
     }
@@ -21180,19 +21161,14 @@ function buildDecorations(view) {
         );
       }
     };
-    const measureChunk = (count, isLast) => measureDomCloneHeight(
-      dom,
-      (clone) => {
-        if (wordOffset > 0) {
-          truncateCloneToWordCount(clone, wordOffset + count);
-          truncateCloneDropPrefix(clone, wordOffset);
-        } else {
-          truncateCloneToWordCount(clone, count);
-        }
-      },
-      { continuation: true, includeMarginBottom: Boolean(isLast) },
-      view
-    );
+    const measureChunk = (count, isLast) => measureDomCloneHeight(dom, (clone) => {
+      if (wordOffset > 0) {
+        truncateCloneToWordCount(clone, wordOffset + count);
+        truncateCloneDropPrefix(clone, wordOffset);
+      } else {
+        truncateCloneToWordCount(clone, count);
+      }
+    }, { continuation: true, includeMarginBottom: Boolean(isLast) });
     while (wordOffset < words.length && guard < 40) {
       guard += 1;
       footerZone = footerZoneHeight(
@@ -21210,7 +21186,7 @@ function buildDecorations(view) {
         breakBeforeRemainder();
         continue;
       }
-      const fitCount = maxWordsFitting(dom, words.length, wordOffset, remaining, view);
+      const fitCount = maxWordsFitting(dom, words.length, wordOffset, remaining);
       if (fitCount <= 0) {
         if (cursorY > padTop + 0.5) {
           breakBeforeRemainder();
@@ -21363,15 +21339,8 @@ function createEditorPaginationExtension() {
             }
           },
           view(view) {
-            let lastScale = getEditorDisplayScale(view);
             const onResize = () => {
               applyCanonicalSheetCssVars(document.documentElement);
-              const nextScale = getEditorDisplayScale(view);
-              if (Math.abs(nextScale - lastScale) > 1e-3) {
-                lastScale = nextScale;
-                signatureRef.current = "";
-                schedule(view);
-              }
             };
             const onImg = (e) => {
               if (e.target && e.target.tagName === "IMG") {
