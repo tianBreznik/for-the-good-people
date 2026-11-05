@@ -3189,43 +3189,24 @@ html[data-home-texture='stucco8'] .blog-card.search-miss:hover .blog-title {
     font-size: clamp(2rem, 2.6vw, 2.6rem);
 }
 
-/* Pin section labels (#SCENE / interview / …) while the column scrolls.
-   Full-width + matching stone covers titles sliding underneath. */
+/* Section labels (#SCENE / interview / …) scroll with the column stone — one slab with article titles. */
 .title-section > .section-title-container {
-    position: sticky;
-    top: 0;
-    z-index: 6;
+    position: static;
+    top: auto;
+    z-index: auto;
     left: 0;
     box-sizing: border-box;
     justify-content: flex-start;
     align-items: flex-start;
-    background-image: var(--bg-image);
-    background-size: 50vw auto;
-    background-position: calc(-1 * var(--col-start, 0vw)) -100vh;
-    background-repeat: repeat;
-    /* Same top inset as before (startY 12); keep bottom tight so articles sit close. */
-    padding: 12px 8px 2px;
-}
-
-/*
- * Sticky top:0 sticks to the viewport/scrollport above the translated wall and
- * paints across the bio underlay (stage is z-index:2). While the strip is open,
- * park labels in normal flow so they ride with the wall slide instead.
- */
-body.bio-open .title-section > .section-title-container,
-body.bio-closing .title-section > .section-title-container,
-body.search-open .title-section > .section-title-container,
-body.search-closing .title-section > .section-title-container {
-    position: relative;
-    top: auto;
-    z-index: 1;
+    background-image: none;
+    background-color: transparent;
+    padding: 0;
 }
 
 .title-section > .section-title-container .blog-card {
     padding: 0;
 }
 
-/* In-flow so the sticky bar gets real height (titles are otherwise position:absolute). */
 .title-section > .section-title-container .blog-title {
     position: relative;
     left: auto;
@@ -3335,8 +3316,7 @@ body.search-closing .title-section > .section-title-container {
 
 /*
  * Desktop: column edge lines when the section title is hovered.
- * Paint on the pane (not inset box-shadow on the scrolling column) so the
- * sticky section header’s stone fill can’t cover the top of the lines.
+ * Paint on the pane (not inset box-shadow on the scrolling column).
  */
 .home-main-pane:has(.section-title-container:hover)::before,
 .home-main-pane:has(.section-title-container:hover)::after {
@@ -3903,6 +3883,16 @@ body.search-closing .home-main-stage {
     scrollbar-gutter: auto;
     scrollbar-width: none;
 }
+
+@media (min-width: 901px) {
+    /* Desktop: heavy slab scroll (wheel handled in home.js). */
+    .home-main-stage .column-section {
+        overscroll-behavior: none;
+        overscroll-behavior-y: none;
+        scroll-behavior: auto;
+        -webkit-overflow-scrolling: auto;
+    }
+}
 .home-main-stage .column-section::-webkit-scrollbar {
     width: 0;
     height: 0;
@@ -4075,13 +4065,6 @@ body.search-closing .home-main-stage {
     .home-main-pane > .column-section[data-col="5"] {
         background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
         background-position-y: var(--home-mobile-bg-y);
-    }
-
-    .home-main-pane .title-section > .section-title-container {
-        background-size: var(--home-mobile-bg-size-x) auto;
-        background-position-x: calc(-1 * var(--home-mobile-col-scale) * var(--col-start, 0vw));
-        background-position-y: var(--home-mobile-bg-y);
-        background-repeat: repeat;
     }
 
     .home-main-pane .column-section .blog-card:not(.section-heading-card):not([data-author='about']):not([data-author='post']) .blog-title,

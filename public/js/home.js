@@ -688,6 +688,66 @@ function initHomeActiveColumnFromScroll(track) {
     requestAnimationFrame(sync);
 }
 
+/** Column lists scroll like heavy stone slabs — no elastic overscroll or inertial coasting. */
+const HOME_COLUMN_WHEEL_GAIN = 0.32;
+const HOME_COLUMN_WHEEL_STEP_MAX_PX = 28;
+
+function bindHomeColumnRigidScrollEl(el) {
+    if (el.dataset.rigidScrollBound === '1') return;
+    el.dataset.rigidScrollBound = '1';
+
+    const clampScrollTop = () => {
+        if (isHomeNarrowLayout()) return;
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        if (el.scrollTop < 0) el.scrollTop = 0;
+        else if (el.scrollTop > max) el.scrollTop = max;
+    };
+
+    el.addEventListener('scroll', clampScrollTop, { passive: true });
+
+    el.addEventListener(
+        'wheel',
+        (e) => {
+            if (isHomeNarrowLayout()) return;
+            if (e.defaultPrevented || e.ctrlKey) return;
+            let dy = e.deltaY;
+            if (e.deltaMode === 1) dy *= 16;
+            else if (e.deltaMode === 2) dy *= el.clientHeight;
+            e.preventDefault();
+            if (!dy) return;
+
+            const max = Math.max(0, el.scrollHeight - el.clientHeight);
+            if (max <= 0) return;
+
+            const capped =
+                Math.sign(dy) *
+                Math.min(Math.abs(dy), HOME_COLUMN_WHEEL_STEP_MAX_PX) *
+                HOME_COLUMN_WHEEL_GAIN;
+            el.scrollTop = Math.max(0, Math.min(max, el.scrollTop + capped));
+        },
+        { passive: false }
+    );
+}
+
+function initHomeColumnRigidScroll(root = document) {
+    const columns = root.querySelectorAll?.('.home-main-stage .column-section');
+    if (!columns?.length) return;
+
+    columns.forEach((el) => {
+        if (!isHomeNarrowLayout()) bindHomeColumnRigidScrollEl(el);
+    });
+
+    if (root === document || root.classList?.contains('home-main-stage')) {
+        if (document.documentElement.dataset.homeRigidScrollResizeBound === '1') return;
+        document.documentElement.dataset.homeRigidScrollResizeBound = '1';
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('.home-main-stage .column-section').forEach((el) => {
+                if (!isHomeNarrowLayout()) bindHomeColumnRigidScrollEl(el);
+            });
+        });
+    }
+}
+
 /** Fine pointer (mouse/trackpad). Used to distinguish desktop preview clicks from mobile tap-nav. */
 function homeFinePointerHoverUi() {
     return typeof window.matchMedia !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -2587,6 +2647,7 @@ function mountHomeWall(blogs) {
     }
     document.body.appendChild(stage);
     initHomeActiveColumnFromScroll(track);
+    initHomeColumnRigidScroll(stage);
     const authorSection = sections[5];
     for (let i = 1; i <= 4; i++) {
         createSectionTitleCard(sections[i], SECTION_LABELS[i]);
@@ -5663,6 +5724,8 @@ function positionCardsInSection(section, options = {}) {
         card.style.removeProperty('left');
         card.style.removeProperty('top');
         card.style.removeProperty('width');
+        card.style.removeProperty('position');
+        card.style.removeProperty('z-index');
         title.offsetHeight;
 
         let rect = title.getBoundingClientRect();
@@ -5780,28 +5843,19 @@ function positionCardsInSection(section, options = {}) {
         const height = rect.height + 2;
 
         if (isTitleSection && isSectionHeading) {
-            // In-flow sticky: pins at column top; articles stay absolutely positioned below.
-            card.style.position = 'sticky';
-            card.style.top = '0';
-            card.style.zIndex = '6';
-            card.style.left = '0';
-            card.style.right = 'auto';
-            /*
-             * Keep the sticky chrome full-bleed for the stone cover, but size the
-             * inner heading card to the glyph box so column swipes don’t hit empty
-             * title-bar width (see mobile pointer-events on .blog-title).
-             */
-            card.style.width = '100%';
             const headingCard = card.querySelector('.section-heading-card');
+            card.style.position = 'absolute';
+            card.style.top = `${y}px`;
+            card.style.width = `${width}px`;
+            card.style.height = `${height}px`;
+            card.style.left = '8px';
+            card.style.right = 'auto';
             if (headingCard) {
                 headingCard.style.width = 'fit-content';
                 headingCard.style.maxWidth = '100%';
             }
-            card.style.removeProperty('height');
             title.style.textAlign = 'left';
-            card.offsetHeight;
-            // Same 4px stack gap as between article cards — don't add extra air under the label.
-            y = card.offsetHeight + 4;
+            y += height + 4;
             return;
         }
 
@@ -5835,12 +5889,7 @@ function positionCardsInSection(section, options = {}) {
         section.appendChild(spacer);
     }
     const baseH = Math.max(y, startY);
-    // Sticky section titles already contribute their height in normal flow — don't double-count.
-    const stickyTitle = isTitleSection
-        ? section.querySelector(':scope > .section-title-container')
-        : null;
-    const stickyH = stickyTitle ? stickyTitle.offsetHeight : 0;
-    const spacerH = Math.max(0, baseH - stickyH);
+    const spacerH = Math.max(0, baseH);
     spacer.dataset.baseHeight = String(baseH);
     if (section.classList.contains('author-section')) {
         const clearance = measureAuthChromeClearancePx();
