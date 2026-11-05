@@ -2614,7 +2614,7 @@ async function commitPublish({ openNotes = false } = {}) {
     try {
         publishBtn.disabled = true;
         publishBtn.textContent = 'Publishing...';
-
+        
         const resolved = await resolvePublishDocName();
         if (resolved.blocked) return;
         const { docName, prior } = resolved;

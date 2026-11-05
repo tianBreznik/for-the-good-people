@@ -2350,7 +2350,7 @@ function dismissPopup() {
     });
 }
 
-const HOME_WALL_CACHE_KEY = 'homeWallBlogsV2';
+const HOME_WALL_CACHE_KEY = 'homeWallBlogsV3';
 
 function readHomeWallCache() {
     try {
@@ -2604,6 +2604,8 @@ async function ensureBlogCardArticle(card) {
 }
 
 let homeWallMounted = false;
+/** Blog id set last used to paint the wall — compared to server snapshot on refresh. */
+let mountedWallBlogIds = '';
 
 function mountHomeWall(blogs) {
     const existingSection = document.querySelector('.blogs-section');
@@ -2955,11 +2957,48 @@ function mountHomeWall(blogs) {
     applyHomeEntryAfterGridReady();
 }
 
+function homeWallBlogIds(blogs) {
+    const list = blogs?.docs ? blogs.docs : Array.isArray(blogs) ? blogs : [];
+    return list
+        .map((entry) => (entry.id != null ? entry.id : entry))
+        .filter(Boolean)
+        .sort()
+        .join('\0');
+}
+
+function unmountHomeWall() {
+    document.querySelector('.home-main-stage')?.remove();
+    homeWallMounted = false;
+}
+
 function tryMountHomeWall(blogs) {
     if (homeWallMounted || !blogs) return false;
     homeWallMounted = true;
+    mountedWallBlogIds = homeWallBlogIds(blogs);
     mountHomeWall(blogs);
     return true;
+}
+
+function fetchHomeWallBlogsSnap() {
+    if (!db) return Promise.reject(new Error('Firestore unavailable'));
+    // Bypass Firestore’s local persistence so delete/re-publish shows up immediately in dev.
+    return db
+        .collection('blogs')
+        .get({ source: 'server' })
+        .catch(() => db.collection('blogs').get());
+}
+
+function applyHomeWallServerSnap(snap) {
+    writeHomeWallCache(snap);
+    const freshIds = homeWallBlogIds(snap);
+    if (!homeWallMounted) {
+        tryMountHomeWall(snap);
+        return;
+    }
+    if (freshIds !== mountedWallBlogIds) {
+        unmountHomeWall();
+        tryMountHomeWall(snap);
+    }
 }
 
 function bootHomeWall() {
@@ -2970,12 +3009,8 @@ function bootHomeWall() {
         if (!homeWallMounted) showHomeBlogsLoadFailure(new Error('Firestore unavailable'));
         return;
     }
-    db.collection('blogs')
-        .get()
-        .then((snap) => {
-            writeHomeWallCache(snap);
-            tryMountHomeWall(snap);
-        })
+    fetchHomeWallBlogsSnap()
+        .then(applyHomeWallServerSnap)
         .catch((err) => {
             console.error('Failed to load home blogs', err);
             if (!homeWallMounted) showHomeBlogsLoadFailure(err);

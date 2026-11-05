@@ -417,7 +417,7 @@ function ensureAnnotationOverlayRoot() {
     let root = document.getElementById('annotation-overlay-root');
     if (!root) {
         root = document.createElement('div');
-        root.id = 'annotation-overlay-root';
+    root.id = 'annotation-overlay-root';
     }
     if (root.parentElement !== host) {
         host.appendChild(root);
@@ -1306,11 +1306,11 @@ function applyReaderSheetScaleActive() {
 resolveBlogDocument(blogId)
     .then((doc) => {
         if (doc && doc.exists) {
-            setupBlog(doc.data());
+        setupBlog(doc.data());
         } else {
             location.replace('/');
-        }
-    })
+    }
+})
     .catch((err) => {
         console.error('Failed to load blog', err);
         location.replace('/');
@@ -1492,23 +1492,23 @@ async function submitComment(commentindex) {
     const author = currentCommentAuthorHandle();
     const uid = auth.currentUser?.uid || null;
 
-    comments
-        .doc(blogId + '_' + commentindex)
-        .set({
+        comments
+            .doc(blogId + '_' + commentindex)
+            .set({
             content: parsed.content,
-            postedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
+                postedAt: `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`,
             responseTo: parsed.responseUser,
             user: author,
             uid,
             replyId: parsed.replyId,
-        })
-        .then(() => {
+            })
+            .then(() => {
             console.log('Document created');
         });
 
-    numberofcomments++;
-    docRef.update({
-        numberofcomments: numberofcomments,
+        numberofcomments++;
+        docRef.update({
+            numberofcomments: numberofcomments,
     });
     input.value = '';
     input.setAttribute('name', '');
@@ -1794,12 +1794,12 @@ const setupBlog = (data) => {
                 handoffPdfPagesJson = null;
                 handoffArticleHtml = null;
                 syncNotesGateUi();
-                setupCommentSection();
+        setupCommentSection();
                 setupCommentContentRefs();
-                attachAnnotationsListener();
-                bindAnnotationSelectionUi();
+        attachAnnotationsListener();
+        bindAnnotationSelectionUi();
             }
-            clearReaderHandoffPayload();
+        clearReaderHandoffPayload();
             return;
         }
 
@@ -1936,7 +1936,7 @@ function createArticleByline(meta) {
         }
     } else {
         authorEl = document.createElement('span');
-        authorEl.className = 'article-byline-author';
+    authorEl.className = 'article-byline-author';
         authorEl.textContent = author;
     }
     authorEl.style.color = mastheadAuthorColor(author);
@@ -2267,7 +2267,7 @@ function measureFittedFootnoteBand(defMap, idList, maxBand, probeWidthPx) {
     try {
         for (let i = 0; i < ids.length; i += 1) {
             const id = ids[i];
-            const html = defMap.get(id);
+        const html = defMap.get(id);
             if (!html) continue;
             const temp = document.createElement('div');
             temp.innerHTML = html;
@@ -3274,7 +3274,7 @@ function renderArticleSpread(blocks, footnoteDefMap) {
         blocksIncludeDocTitle(blocks) ||
         blocksHaveHeadingMatchingTitle(blocks, currentBlogMeta?.title);
     if (!titleInBody) {
-        currentPage.appendChild(createInlineMasthead(currentBlogMeta));
+    currentPage.appendChild(createInlineMasthead(currentBlogMeta));
     }
     let currentPageBody = ensureArticlePageBody(currentPage);
 
@@ -3406,8 +3406,8 @@ function renderArticleSpread(blocks, footnoteDefMap) {
                     openFreshPage();
                     fillLeft.forEach((n) => currentPageBody.appendChild(n));
                 } else {
-                    moveToNextPage();
-                    currentPageBody.appendChild(split.rightPart);
+                moveToNextPage();
+                currentPageBody.appendChild(split.rightPart);
                 }
             } else {
                 moveToNextPage();
