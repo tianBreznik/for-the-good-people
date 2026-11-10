@@ -58,10 +58,22 @@ if (window.visualViewport) {
 /** Once the splash is dismissed, skip it when returning to home (shared across tabs). */
 const HOME_ENTRY_DISMISSED_KEY = 'homeEntryDismissed';
 
+/** ?splash=… on the home URL — any value except 0/false forces the curtain (clears dismiss in home.html). */
+function isForceHomeSplashPreview() {
+    try {
+        const splash = new URLSearchParams(window.location.search).get('splash');
+        if (splash == null || splash === '') return false;
+        const s = String(splash).toLowerCase();
+        if (s === '0' || s === 'false') return false;
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
 function isHomeEntryDismissed() {
     try {
-        // /?splash=1 forces the curtain for texture checks
-        if (new URLSearchParams(window.location.search).get('splash') === '1') return false;
+        if (isForceHomeSplashPreview()) return false;
         if (localStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1') return true;
         // Migrate older same-tab flag so prior sessions still skip splash.
         if (sessionStorage.getItem(HOME_ENTRY_DISMISSED_KEY) === '1') {
@@ -156,7 +168,9 @@ function applyHomeEntryAfterGridReady() {
     }
 } catch (e) {}
 
-    const entryDismissed = isHomeEntryDismissed() || hasPendingAdminHomeAction();
+    const entryDismissed =
+        !isForceHomeSplashPreview() &&
+        (isHomeEntryDismissed() || hasPendingAdminHomeAction());
 
     if (topdiv && (fromLogin || entryDismissed) && !topdiv.classList.contains('fade')) {
         dismissSplashImmediately();
@@ -312,7 +326,10 @@ const authorHomeProfiles = Object.create(null);
 const authorAvatarByName = Object.create(null);
 
 // Returning visitors / admin / author deep-links: skip splash immediately (don't wait for blogs).
-if (hasPendingAdminHomeAction() || isHomeEntryDismissed() || homeAuthorQueryHandle()) {
+if (
+    !isForceHomeSplashPreview() &&
+    (hasPendingAdminHomeAction() || isHomeEntryDismissed() || homeAuthorQueryHandle())
+) {
     markHomeEntryDismissed({ hideNow: true });
     dismissSplashImmediately();
     revealHomeTitlesWithEmerge({ instant: true });

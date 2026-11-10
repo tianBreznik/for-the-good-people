@@ -33,9 +33,14 @@
     <script src="js/page-geometry-boot.js"></script>
     <script>
         // Skip splash + restore texture before paint.
-        // Force splash preview: /?splash=1 (also clears the dismiss flag).
+        // Force splash preview: /?splash=1 (or any ?splash except 0/false; clears the dismiss flag).
         try {
-            var forceSplash = /(?:\?|&)splash=1(?:&|$)/.test(location.search);
+            var _splash = new URLSearchParams(location.search).get('splash');
+            var forceSplash =
+                _splash != null &&
+                _splash !== '' &&
+                String(_splash).toLowerCase() !== '0' &&
+                String(_splash).toLowerCase() !== 'false';
             var authorDeepLink = /(?:\?|&)author=/.test(location.search);
             if (forceSplash) {
                 localStorage.removeItem('homeEntryDismissed');
